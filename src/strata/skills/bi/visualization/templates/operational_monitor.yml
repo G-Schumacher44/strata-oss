@@ -1,0 +1,93 @@
+# Template: operational_monitor_v1
+# Audience: ops team, analyst, on-call — people who need to spot problems fast
+# Question type: "Is [process] running correctly right now?"
+# Layout: status indicators → volume trend → error/exception breakdown → recent activity
+
+template: operational_monitor_v1
+audience: operational
+description: "Status tiles with thresholds + volume trend + exception breakdown. Built for scanning, not reading."
+
+sections:
+
+  status:
+    layout: row
+    tiles:
+      - id: primary_volume
+        chart: single_value
+        fill:
+          measure: REQUIRED          # e.g. orders_processed_today, records_ingested
+          label: REQUIRED
+        threshold:
+          warn_below: OPTIONAL       # numeric — tile turns yellow below this
+          alert_below: OPTIONAL      # numeric — tile turns red below this
+        comparison: yesterday
+        color_rule: higher_is_better
+
+      - id: error_rate
+        chart: single_value
+        fill:
+          measure: OPTIONAL          # e.g. error_rate, failure_count
+          label: OPTIONAL
+        threshold:
+          warn_above: OPTIONAL
+          alert_above: OPTIONAL
+        comparison: yesterday
+        color_rule: lower_is_better
+
+      - id: lag_indicator
+        chart: single_value
+        fill:
+          measure: OPTIONAL          # e.g. processing_lag_minutes, last_ingest_age_hours
+          label: OPTIONAL
+        threshold:
+          warn_above: OPTIONAL
+          alert_above: OPTIONAL
+        color_rule: lower_is_better
+
+  volume_trend:
+    layout: full_width
+    chart: area
+    title: REQUIRED
+    fill:
+      measure: REQUIRED
+      time_dimension: REQUIRED
+      granularity: hour              # override: day for slower processes
+    color: brand_primary
+    threshold_lines:
+      warn: OPTIONAL
+      alert: OPTIONAL
+
+  exceptions:
+    layout: half_width
+    chart: table
+    title: REQUIRED                  # e.g. "Recent errors"
+    fill:
+      dimensions: REQUIRED           # comma-separated: e.g. error_type, source_system
+      measure: REQUIRED              # e.g. error_count
+      limit: 20
+      sort: descending
+    show_row_numbers: true
+
+  recent_activity:
+    layout: half_width
+    chart: table
+    title: REQUIRED                  # e.g. "Latest records processed"
+    fill:
+      dimensions: REQUIRED           # e.g. record_id, status, created_at
+      limit: 25
+      sort: most_recent_first
+
+filters:
+  - type: date_range
+    field: REQUIRED
+    default: today
+    user_can_change: true
+
+  - type: dimension_filter
+    field: OPTIONAL                  # e.g. source_system, pipeline_name
+    label: OPTIONAL
+
+drill:
+  exceptions:
+    target_explore: REQUIRED
+    fields: OPTIONAL

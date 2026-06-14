@@ -1,0 +1,106 @@
+name: Setup OSS labels and topics
+
+# Run once after merging the oss-public-setup PR.
+# Trigger manually from Actions → "Setup OSS labels and topics" → Run workflow.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create / update labels
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const labels = [
+              // Type
+              { name: 'bug',           color: 'd73a4a', description: 'Something is broken' },
+              { name: 'enhancement',   color: 'a2eeef', description: 'New feature or improvement' },
+              { name: 'documentation', color: '0075ca', description: 'Docs improvement or addition' },
+              { name: 'question',      color: 'd876e3', description: 'Scoped question (use Discussions for open Q&A)' },
+              { name: 'refactor',      color: 'e4e669', description: 'Code improvement, no behavior change' },
+              // Priority
+              { name: 'P0-critical',   color: 'b60205', description: 'Blocking / data-integrity issue — fix immediately' },
+              { name: 'P1',            color: 'e4e209', description: 'High priority — next sprint' },
+              { name: 'P2',            color: 'ffd33d', description: 'Medium priority — backlog' },
+              // Workflow
+              { name: 'needs-triage',  color: 'e6b8a2', description: 'Not yet reviewed by a maintainer' },
+              { name: 'good first issue', color: '7057ff', description: 'Good entry point for new contributors' },
+              { name: 'help wanted',   color: '008672', description: 'Extra attention or expertise needed' },
+              { name: 'blocked',       color: 'ee0701', description: 'Waiting on external dependency or decision' },
+              // Strata area
+              { name: 'lookml',        color: '0e8a16', description: 'LookML IR, parsing, or extends resolution' },
+              { name: 'bigquery',      color: '1d76db', description: 'BigQuery enrichment, schema drift, or SQL analysis' },
+              { name: 'mcp',           color: '5319e7', description: 'MCP server tools or stdio transport' },
+              { name: 'cli',           color: '006b75', description: 'CLI commands or user-facing behavior' },
+              { name: 'ci',            color: 'f9d0c4', description: 'CI workflows, automation, or release process' },
+            ];
+
+            let created = 0, updated = 0, failed = 0;
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ...label,
+                });
+                console.log(`✓ created  ${label.name}`);
+                created++;
+              } catch (e) {
+                if (e.status === 422) {
+                  try {
+                    await github.rest.issues.updateLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      ...label,
+                    });
+                    console.log(`↺ updated  ${label.name}`);
+                    updated++;
+                  } catch (ue) {
+                    console.error(`✗ update failed  ${label.name}: ${ue.message}`);
+                    failed++;
+                  }
+                } else {
+                  console.error(`✗ create failed  ${label.name}: ${e.message}`);
+                  failed++;
+                }
+              }
+            }
+            console.log(`\nDone: ${created} created, ${updated} updated, ${failed} failed`);
+            if (failed > 0) core.setFailed(`${failed} label(s) failed`);
+
+      - name: Set repository topics
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.repos.replaceAllTopics({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                names: [
+                  'lookml',
+                  'looker',
+                  'bigquery',
+                  'mcp',
+                  'model-context-protocol',
+                  'data-governance',
+                  'analytics-engineering',
+                  'bi',
+                  'cli',
+                  'python',
+                ],
+              });
+              console.log('✓ Topics set successfully');
+            } catch (e) {
+              console.error(`✗ Topics failed (may need admin scope): ${e.message}`);
+              console.log('Manual fallback: Settings → Topics → add: lookml looker bigquery mcp model-context-protocol data-governance analytics-engineering bi cli python');
+              // Don't fail the whole job over topics
+            }

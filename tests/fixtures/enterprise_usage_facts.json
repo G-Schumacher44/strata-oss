@@ -1,0 +1,92 @@
+{
+  "period": {
+    "start": "2026-05-07",
+    "end": "2026-06-06",
+    "days": 30
+  },
+  "explore_usage": [
+    {"model": "em_customers_base", "explore": "customers", "query_count": 1200, "last_queried_at": "2026-06-06T09:00:00Z"},
+    {"model": "em_customers_base", "explore": "customer_segments", "query_count": 450, "last_queried_at": "2026-06-06T08:30:00Z"},
+    {"model": "em_orders_base", "explore": "orders", "query_count": 2100, "last_queried_at": "2026-06-06T09:15:00Z"},
+    {"model": "em_orders_base", "explore": "order_detail", "query_count": 320, "last_queried_at": "2026-06-05T16:00:00Z"},
+    {"model": "em_finance_base", "explore": "finance", "query_count": 890, "last_queried_at": "2026-06-06T08:00:00Z"},
+    {"model": "em_finance_base", "explore": "revenue_trends", "query_count": 234, "last_queried_at": "2026-06-05T17:30:00Z"},
+    {"model": "em_products_base", "explore": "products", "query_count": 670, "last_queried_at": "2026-06-06T07:45:00Z"},
+    {"model": "em_products_base", "explore": "sales_ops", "query_count": 540, "last_queried_at": "2026-06-06T08:15:00Z"},
+    {"model": "em_marketing_base", "explore": "marketing", "query_count": 780, "last_queried_at": "2026-06-06T09:30:00Z"},
+    {"model": "em_marketing_base", "explore": "cart_analysis", "query_count": 180, "last_queried_at": "2026-06-05T14:00:00Z"},
+    {"model": "em_shipping_base", "explore": "shipping", "query_count": 95, "last_queried_at": "2026-06-04T11:00:00Z"},
+    {"model": "em_ops_base", "explore": "daily_ops", "query_count": 1450, "last_queried_at": "2026-06-06T06:00:00Z"},
+    {"model": "em_executive_base", "explore": "executive_summary", "query_count": 680, "last_queried_at": "2026-06-06T07:00:00Z"},
+    {"model": "em_analytics_us", "explore": "customers_us", "query_count": 390, "last_queried_at": "2026-06-06T08:45:00Z"},
+    {"model": "em_analytics_us", "explore": "orders_us", "query_count": 720, "last_queried_at": "2026-06-06T09:00:00Z"},
+    {"model": "em_analytics_us", "explore": "finance_us", "query_count": 280, "last_queried_at": "2026-06-05T15:00:00Z"},
+    {"model": "em_analytics_eu", "explore": "orders_eu", "query_count": 380, "last_queried_at": "2026-06-06T08:00:00Z"},
+    {"model": "em_analytics_eu", "explore": "marketing_eu", "query_count": 195, "last_queried_at": "2026-06-05T13:30:00Z"},
+    {"model": "em_analytics_apac", "explore": "shipping_apac", "query_count": 65, "last_queried_at": "2026-06-03T10:00:00Z"},
+    {"model": "em_finance_reporting", "explore": "finance_detailed", "query_count": 420, "last_queried_at": "2026-06-06T08:30:00Z"},
+    {"model": "em_finance_reporting", "explore": "executive_finance", "query_count": 310, "last_queried_at": "2026-06-05T17:00:00Z"},
+    {"model": "em_ops_reporting", "explore": "products_ops", "query_count": 230, "last_queried_at": "2026-06-05T14:30:00Z"},
+    {"model": "em_ops_reporting", "explore": "ops_detailed", "query_count": 175, "last_queried_at": "2026-06-04T09:00:00Z"},
+    {"model": "em_executive_dash", "explore": "executive_kpi", "query_count": 890, "last_queried_at": "2026-06-06T07:30:00Z"},
+    {"model": "em_data_science", "explore": "customers_ds", "query_count": 145, "last_queried_at": "2026-06-05T16:30:00Z"},
+    {"model": "em_data_science", "explore": "orders_ds", "query_count": 210, "last_queried_at": "2026-06-05T15:45:00Z"},
+    {"model": "em_marketing_ops", "explore": "marketing_detailed", "query_count": 155, "last_queried_at": "2026-06-05T12:00:00Z"},
+    {"model": "em_marketing_ops", "explore": "cart_deep_dive", "query_count": 88, "last_queried_at": "2026-06-04T14:00:00Z"},
+    {"model": "em_legacy_v1", "explore": "legacy_orders", "query_count": 0, "last_queried_at": null},
+    {"model": "em_legacy_v1", "explore": "legacy_customers", "query_count": 0, "last_queried_at": null},
+    {"model": "em_legacy_v1", "explore": "legacy_inventory", "query_count": 0, "last_queried_at": null},
+    {"model": "em_legacy_v2", "explore": "dead_orders_v2", "query_count": 0, "last_queried_at": null},
+    {"model": "em_legacy_v2", "explore": "dead_finance_v2", "query_count": 0, "last_queried_at": null},
+    {"model": "em_legacy_migration", "explore": "migration_orders", "query_count": 0, "last_queried_at": null}
+  ],
+  "content_references": [
+    {"content_type": "dashboard", "content_id": "dash_exec_01", "model": "em_executive_dash", "explore": "executive_kpi", "title": "Executive KPI Board"},
+    {"content_type": "dashboard", "content_id": "dash_exec_01", "model": "em_executive_base", "explore": "executive_summary", "title": "Executive KPI Board"},
+    {"content_type": "dashboard", "content_id": "dash_finance_01", "model": "em_finance_reporting", "explore": "finance_detailed", "title": "Finance Monthly"},
+    {"content_type": "dashboard", "content_id": "dash_ops_01", "model": "em_ops_base", "explore": "daily_ops", "title": "Daily Ops"},
+    {"content_type": "dashboard", "content_id": "dash_ops_01", "model": "em_ops_reporting", "explore": "ops_detailed", "title": "Daily Ops"},
+    {"content_type": "dashboard", "content_id": "dash_marketing_01", "model": "em_marketing_base", "explore": "marketing", "title": "Marketing Attribution"},
+    {"content_type": "look", "content_id": "look_clv_01", "model": "em_customers_base", "explore": "customers", "title": "CLV by Segment"},
+    {"content_type": "look", "content_id": "look_orders_01", "model": "em_orders_base", "explore": "orders", "title": "Order Volume Trend"},
+    {"content_type": "look", "content_id": "look_abandoned_01", "model": "em_marketing_base", "explore": "cart_analysis", "title": "Cart Abandonment by Channel"},
+    {"content_type": "look", "content_id": "look_shipping_01", "model": "em_shipping_base", "explore": "shipping", "title": "Shipping Margin by Speed"}
+  ],
+  "pdt_builds": [
+    {
+      "view": "pdt_customer_value_score",
+      "build_count": 120,
+      "last_built_at": "2026-06-06T05:00:00Z",
+      "bytes_processed": 3000000000000000,
+      "estimated_cost_usd": 18750.0
+    },
+    {
+      "view": "pdt_attribution_full_funnel",
+      "build_count": 180,
+      "last_built_at": "2026-06-06T04:00:00Z",
+      "bytes_processed": 7200000000000000,
+      "estimated_cost_usd": 45000.0
+    },
+    {
+      "view": "pdt_cohort_retention",
+      "build_count": 30,
+      "last_built_at": "2026-06-06T06:00:00Z",
+      "bytes_processed": 255000000000,
+      "estimated_cost_usd": 1.59
+    },
+    {
+      "view": "pdt_regional_kpi",
+      "build_count": 60,
+      "last_built_at": "2026-06-06T05:30:00Z",
+      "bytes_processed": 192000000000,
+      "estimated_cost_usd": 1.20
+    },
+    {
+      "view": "pdt_sales_velocity",
+      "build_count": 90,
+      "last_built_at": "2026-06-06T04:30:00Z",
+      "bytes_processed": 504000000000,
+      "estimated_cost_usd": 3.15
+    }
+  ]
+}

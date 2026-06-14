@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "strata": {
+      "command": "/ABSOLUTE/PATH/TO/REPO/.venv/bin/strata-mcp",
+      "env": {
+        "STRATA_REPO_PATH": "/path/to/your/lookml",
+        "STRATA_USAGE_FIXTURE": "/path/to/usage_facts.json",
+        "STRATA_SCHEMA_FIXTURE": "/path/to/schema_facts.json"
+      }
+    }
+  }
+}

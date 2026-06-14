@@ -1,0 +1,76 @@
+name: Feature request
+description: Propose a new analysis tool, CLI command, skill, or workflow improvement
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, search [existing issues](https://github.com/G-Schumacher44/strata-oss/issues) and the README roadmap.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where would this feature live?
+      multiple: true
+      options:
+        - LookML IR / parser
+        - Dead code detection
+        - PDT cost / ledger
+        - Schema drift detection
+        - MCP server (new tool)
+        - CLI command
+        - Dashboard / chart output
+        - Conductor / handoffs
+        - Skills
+        - BigQuery enrichment
+        - Looker OAuth / auth
+        - CI / workflow
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What governance or analysis gap does this address? What do you have to do manually today?
+      placeholder: |
+        When I change a BigQuery table name, I have to manually hunt through LookML to find all
+        raw `sql_table_name:` references. The blast-radius tool shows field-level impact but
+        misses raw table references that aren't view-sourced.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution
+      description: MCP tool signature, CLI flag, output shape — whatever you have. Rough is fine.
+      placeholder: |
+        A new `strata_find_table_refs(table: str)` MCP tool that scans the IR for raw
+        `sql_table_name:`, `derived_table: sql:`, and `sql:` references, returning file:line citations.
+
+  - type: textarea
+    id: looker-bq-context
+    attributes:
+      label: Looker / BigQuery context
+      description: What repo size, Looker version, or BQ setup makes this especially valuable?
+      placeholder: |
+        - ~50 models, 200 explores, heavily uses derived tables
+        - Tables frequently renamed during dbt migrations
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria (optional)
+      description: What would "done" look like?
+      placeholder: |
+        - [ ] New MCP tool returns matches with file:line citations
+        - [ ] Works fully offline (no live BQ/Looker required)
+        - [ ] Test coverage against enterprise_mono playground
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

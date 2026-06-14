@@ -1,0 +1,20 @@
+{
+  "explore_usage": [
+    {"model": "thelook",            "explore": "order_items",          "query_count": 4820, "last_queried_at": "2026-06-05"},
+    {"model": "thelook",            "explore": "inventory_items",      "query_count": 312,  "last_queried_at": "2026-05-28"},
+    {"model": "thelook",            "explore": "orders",               "query_count": 88,   "last_queried_at": "2026-04-14"},
+    {"model": "thelook",            "explore": "products",             "query_count": 0,    "last_queried_at": null},
+    {"model": "thelook",            "explore": "users",                "query_count": 0,    "last_queried_at": null},
+    {"model": "strata_playground",  "explore": "user_lifetime_value",  "query_count": 210,  "last_queried_at": "2026-06-04"},
+    {"model": "strata_playground",  "explore": "dead_revenue_report",  "query_count": 0,    "last_queried_at": null},
+    {"model": "strata_playground",  "explore": "order_items_extended", "query_count": 0,    "last_queried_at": null}
+  ],
+  "content_references": [
+    {"content_type": "dashboard", "content_id": "1", "model": "thelook",           "explore": "order_items"},
+    {"content_type": "look",      "content_id": "2", "model": "strata_playground", "explore": "user_lifetime_value"}
+  ],
+  "pdt_builds": [
+    {"view": "pdt_order_summary", "build_count": 30,  "last_built_at": "2026-06-05T05:00:00Z", "bytes_processed": 2500000000, "estimated_cost_usd": 13.5},
+    {"view": "pdt_daily_revenue", "build_count": 720, "last_built_at": "2026-06-06T00:00:00Z", "bytes_processed": 8000000000, "estimated_cost_usd": 432.0}
+  ]
+}

@@ -1,0 +1,16 @@
+# Conductor working state is branch-specific: dev holds the live working
+# conductor (slices, handoffs, benchmark matrix); main keeps a clean template
+# baseline. The `ours` merge driver makes local dev→main merges KEEP main's
+# clean version of these files instead of dragging dev's churn onto main.
+#
+# One-time local setup (per clone) to activate the driver:
+#   git config merge.ours.driver true
+#
+# NOTE: custom merge drivers only run for LOCAL merges. Merge dev→main from the
+# git CLI (git checkout main && git merge dev), not the GitHub "Merge" button,
+# or main's conductor will pick up dev's changes.
+conductor/index.md            merge=ours
+conductor/handoff-log.md      merge=ours
+conductor/handoff-archive.md  merge=ours
+conductor/benchmark-matrix.md merge=ours
+conductor/slice-*.md          merge=ours

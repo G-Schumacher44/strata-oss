@@ -1,0 +1,57 @@
+name: strata-weekly
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Looker usage window in days"
+        default: "30"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcs_analytics
+            repo: tests/lookml/gcs_analytics
+            usage: tests/fixtures/gcs_usage_facts.json
+            schema: tests/fixtures/gcs_schema_facts.json
+          - name: thelook
+            repo: tests/lookml/thelook
+            usage: tests/fixtures/playground_usage_facts.json
+            schema: tests/fixtures/playground_schema_facts.json
+          - name: enterprise_mono
+            repo: tests/lookml/enterprise_mono
+            usage: tests/fixtures/enterprise_usage_facts.json
+            schema: tests/fixtures/enterprise_schema_facts.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run Strata check
+        run: |
+          strata check \
+            --repo ${{ matrix.repo }} \
+            --usage-fixture ${{ matrix.usage }} \
+            --schema-fixture ${{ matrix.schema }}
+      - name: Run Strata outputs
+        run: |
+          strata outputs \
+            --repo ${{ matrix.repo }} \
+            --usage-fixture ${{ matrix.usage }} \
+            --schema-fixture ${{ matrix.schema }} \
+            --out output/${{ matrix.name }}
+      - name: Notification dry run
+        run: python scripts/notify.py --artifacts output/${{ matrix.name }} --repo-name ${{ matrix.name }} --dry-run

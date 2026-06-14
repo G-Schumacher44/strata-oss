@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/G-Schumacher44/strata-oss/discussions
+    about: >
+      Ask how-to questions, share your Strata setup, or discuss governance approaches.
+      Discussions is the place for Q&A — Issues are reserved for bugs and feature requests.
+      (Discussions will be available once enabled in repo Settings.)
+  - name: Security vulnerability
+    url: https://github.com/G-Schumacher44/strata-oss/blob/main/SECURITY.md
+    about: Read SECURITY.md before reporting a vulnerability publicly.

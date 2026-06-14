@@ -1,0 +1,40 @@
+{
+  "explore_usage": [
+    {
+      "model": "test_model",
+      "explore": "customer",
+      "query_count": 42,
+      "last_queried_at": "2026-06-01T12:00:00Z"
+    },
+    {
+      "model": "test_model",
+      "explore": "orphan_explore",
+      "query_count": 0,
+      "last_queried_at": null
+    },
+    {
+      "model": "refined_explore",
+      "explore": "refined_customer",
+      "query_count": 7,
+      "last_queried_at": "2026-06-05T08:30:00Z"
+    }
+  ],
+  "content_references": [
+    {
+      "content_id": "dash_1",
+      "content_type": "dashboard",
+      "model": "test_model",
+      "explore": "customer",
+      "title": "Customer Health"
+    }
+  ],
+  "pdt_builds": [
+    {
+      "view": "pdt_orders",
+      "build_count": 30,
+      "last_built_at": "2026-06-05T05:00:00Z",
+      "bytes_processed": 1200000000,
+      "estimated_cost_usd": 6.5
+    }
+  ]
+}

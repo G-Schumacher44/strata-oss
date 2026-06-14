@@ -1,0 +1,101 @@
+name: Bug report
+description: Report a bug or unexpected behavior in Strata
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. The more context you provide, the faster we can reproduce and fix it.
+
+  - type: input
+    id: strata-version
+    attributes:
+      label: Strata version
+      description: Run `strata --version` or check `pyproject.toml`
+      placeholder: "0.1.5"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.11.9"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Strata is affected?
+      multiple: true
+      options:
+        - LookML IR / parser
+        - Dead code detection
+        - PDT cost / ledger
+        - Schema drift detection
+        - MCP server (stdio tools)
+        - CLI command
+        - Dashboard / chart output
+        - Conductor / handoffs
+        - Skills
+        - BigQuery enrichment
+        - Looker OAuth / auth
+        - CI / workflow
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: looker-bq-context
+    attributes:
+      label: Looker / BigQuery context
+      description: |
+        LookML repo structure (anonymous is fine), Looker version if known, BQ project setup,
+        offline fixtures vs. live enrichment, MCP client used (Claude Code, Cursor, Gemini…).
+      placeholder: |
+        - LookML repo: ~20 models, 80 explores, cross-model extends
+        - Mode: offline fixture JSON (no live Looker)
+        - MCP client: Claude Code
+        - Looker version: 24.x (if known)
+
+  - type: textarea
+    id: lookml-snippet
+    attributes:
+      label: LookML / SQL snippet (if applicable)
+      description: Paste a minimal LookML or SQL snippet that demonstrates the problem. Remove sensitive project/column names.
+      render: yaml
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. `export STRATA_REPO_PATH=tests/lookml/enterprise_mono`
+        2. `strata build`
+        3. `strata check`
+        4. See error: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / error output
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, `strata mcp validate` output, IR cache state, etc.

@@ -1,0 +1,52 @@
+{
+  "tables": [
+    {
+      "name": "acme-analytics.gold_marts.fct_sales_operations",
+      "columns": ["product_id", "order_date", "sales_velocity_7d", "trend_signal", "inventory_quantity", "inventory_risk_tier", "gross_profit", "net_margin", "return_rate"]
+    },
+    {
+      "name": "acme-analytics.gold_marts.fct_product_profitability",
+      "columns": ["product_id", "product_date", "units_sold", "units_returned", "gross_revenue", "net_revenue", "gross_profit", "net_margin", "return_rate", "margin_pct"]
+    },
+    {
+      "name": "acme-analytics.gold_marts.fct_marketing_attribution",
+      "columns": ["metric_date", "channel", "recovered_orders", "total_orders", "abandoned_carts", "converted_carts", "abandoned_value", "avg_time_to_purchase_hours", "at_risk_customers", "total_customers"]
+    },
+    {
+      "name": "acme-analytics.gold_marts.fct_cart_abandonment",
+      "columns": ["cart_date", "channel", "total_carts", "abandoned_carts", "converted_carts", "conversion_rate", "abandoned_value", "avg_time_to_purchase_hours"]
+    },
+    {
+      "name": "acme-analytics.gold_marts.fct_customer_segments",
+      "columns": ["customer_segment", "predicted_clv_bucket", "actual_clv_bucket", "customer_count", "avg_net_clv", "avg_order_value", "avg_total_spent"]
+    },
+    {
+      "name": "acme-analytics.gold_marts.fct_finance_revenue",
+      "columns": ["order_date", "order_channel", "gross_revenue", "net_revenue", "shipping_revenue", "shipping_cost", "shipping_margin"]
+    },
+    {
+      "name": "acme-analytics.gold_marts.fct_daily_dashboard",
+      "columns": ["metric_date", "orders_count", "gross_revenue", "net_revenue", "avg_order_value", "carts_created", "cart_conversion_rate", "returns_count", "return_rate", "refund_total", "revenue_7d_avg", "revenue_30d_avg", "revenue_30d_std", "revenue_anomaly_flag"]
+    },
+    {
+      "name": "acme-analytics.gold_marts.fct_shipping_analysis",
+      "columns": ["order_date", "order_channel", "shipping_speed", "orders", "shipping_revenue", "shipping_cost", "shipping_margin", "shipping_margin_pct"]
+    },
+    {
+      "name": "acme-analytics.silver.int_customer_lifetime_value",
+      "columns": ["customer_id", "total_spent", "total_refunded", "net_clv", "order_count", "return_count", "avg_order_value", "first_order_date", "last_order_date", "days_since_last_order", "customer_segment", "predicted_clv_bucket", "actual_clv_bucket", "ingest_dt"]
+    },
+    {
+      "name": "acme-analytics.silver.int_customer_retention_signals",
+      "columns": ["customer_id", "email", "first_name", "last_name", "customer_status", "loyalty_tier", "clv_bucket", "last_purchase_date", "total_orders", "marketing_opt_in", "snapshot_dt"]
+    },
+    {
+      "name": "acme-analytics.silver.int_attributed_purchases",
+      "columns": ["order_id", "order_dt", "order_channel", "customer_tier", "payment_method", "is_expedited", "gross_total", "net_total", "total_discount_amount"]
+    },
+    {
+      "name": "acme-analytics.silver.int_inventory_risk",
+      "columns": ["product_id", "product_name", "category", "unit_price", "cost_price", "inventory_quantity", "risk_tier", "locked_capital", "attention_score", "ingest_dt"]
+    }
+  ]
+}

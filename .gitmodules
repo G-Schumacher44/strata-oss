@@ -1,0 +1,6 @@
+[submodule "tests/lookml/thelook"]
+	path = tests/lookml/thelook
+	url = https://github.com/G-Schumacher44/thelook-strata-playground
+[submodule "tests/lookml/gcs_analytics"]
+	path = tests/lookml/gcs_analytics
+	url = https://github.com/G-Schumacher44/gcs-analytics-lookml

@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "strata"
+version = "0.1.5"
+requires-python = ">=3.11"
+description = "Agentic BI toolkit for Looker and BigQuery — MCP server, LookML governance analysis, and BI engineering skills"
+license = {text = "Apache-2.0"}
+authors = [{name = "Garrett Schumacher", email = "me@garrettschumacher.com"}]
+dependencies = [
+  "networkx>=3.0",
+  "mcp>=1.0",
+  "click>=8.0",
+  "pyyaml>=6.0",
+  "anyio>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov",
+  "ruff>=0.4",
+  "mypy>=1.10",
+  "pre-commit",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008", "SIM108", "E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_return_any = false
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/strata"]
+include = ["src/strata/skills/**", "src/strata/viz/charts/**", "src/strata/bootstrap/templates/**", "src/strata/assets/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[project.scripts]
+strata       = "strata.cli.main:strata_cli"
+strata-mcp   = "strata.mcp.server:main"
+strata-chart = "strata.viz.render:main"
+
+[tool.hatch.envs.default]
+python = "3.11"

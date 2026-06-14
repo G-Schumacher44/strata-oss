@@ -1,0 +1,28 @@
+{
+  "tables": [
+    {
+      "name": "analytics.chain_base",
+      "columns": ["base_only", "final_only", "id", "middle_only"]
+    },
+    {
+      "name": "analytics.customer_snapshot",
+      "columns": ["created_at", "email", "id", "lifetime_value", "segment", "state", "status"]
+    },
+    {
+      "name": "analytics.customers",
+      "columns": ["created_at", "email", "id", "state", "status"]
+    },
+    {
+      "name": "analytics.orders",
+      "columns": ["customer_id", "order_count"]
+    },
+    {
+      "name": "analytics.orphan_view",
+      "columns": ["id"]
+    },
+    {
+      "name": "analytics.simple",
+      "columns": ["id"]
+    }
+  ]
+}

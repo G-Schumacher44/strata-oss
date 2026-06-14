@@ -1,0 +1,93 @@
+# Template: executive_kpi_v1
+# Audience: C-suite, VP, director — people who read dashboards in 30 seconds
+# Question type: "How is [primary metric] performing?"
+# Layout: hero KPIs → trend → categorical breakdown
+
+template: executive_kpi_v1
+audience: executive
+description: "Hero KPI tiles + trend line + categorical breakdown. Primary metric front and center."
+
+sections:
+
+  hero:
+    layout: row
+    tiles:
+      - id: primary_kpi
+        chart: single_value
+        fill:
+          measure: REQUIRED          # e.g. total_revenue, order_count
+          label: REQUIRED            # human-readable label for tile
+        comparison: period_over_period
+        comparison_type: week_over_week  # override if needed: month_over_month
+        color_rule: higher_is_better     # override if needed: lower_is_better, neutral
+        font_size: large
+
+      - id: secondary_kpi
+        chart: single_value
+        fill:
+          measure: OPTIONAL          # supporting metric — leave blank to omit tile
+          label: OPTIONAL
+        comparison: period_over_period
+        color_rule: higher_is_better
+
+      - id: tertiary_kpi
+        chart: single_value
+        fill:
+          measure: OPTIONAL
+          label: OPTIONAL
+        comparison: period_over_period
+        color_rule: neutral
+
+  trend:
+    layout: full_width
+    chart: line
+    title: REQUIRED                  # e.g. "Revenue over time"
+    fill:
+      measure: REQUIRED              # same as primary_kpi measure
+      time_dimension: REQUIRED       # date/timestamp field to plot against
+      granularity: day               # override: week, month
+    color: brand_primary
+    show_points: false
+    comparison_lines: previous_period
+
+  breakdown:
+    layout: half_width
+    chart: bar_horizontal
+    title: REQUIRED                  # e.g. "Revenue by region"
+    fill:
+      measure: REQUIRED              # same as primary_kpi measure
+      dimension: REQUIRED            # categorical breakdown field
+      limit: 10
+      sort: descending
+    color: brand_secondary
+    show_value_labels: true
+
+  secondary_breakdown:
+    layout: half_width
+    chart: bar_horizontal
+    title: OPTIONAL
+    fill:
+      measure: OPTIONAL
+      dimension: OPTIONAL
+      limit: 10
+      sort: descending
+    color: brand_tertiary
+
+filters:
+  - type: date_range
+    field: REQUIRED                  # the time_dimension field
+    default: last_30_days
+    user_can_change: true
+
+  - type: dimension_filter
+    field: OPTIONAL                  # e.g. region, department
+    label: OPTIONAL
+    user_can_change: true
+
+drill:
+  primary_kpi:
+    target_explore: REQUIRED         # explore to drill into
+    fields: OPTIONAL                 # comma-separated field list for drill
+  trend:
+    target_explore: REQUIRED
+    fields: OPTIONAL

@@ -1,0 +1,112 @@
+name: strata-ci
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Ruff check
+        run: ruff check src/ tests/ scripts/
+
+      - name: Ruff format
+        run: ruff format --check src/ tests/ scripts/
+
+      - name: Mypy check
+        run: mypy src/strata --ignore-missing-imports
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Strata check — gcs_analytics
+        run: |
+          strata check \
+            --repo tests/lookml/gcs_analytics \
+            --usage-fixture tests/fixtures/gcs_usage_facts.json \
+            --schema-fixture tests/fixtures/gcs_schema_facts.json
+
+      - name: Strata outputs — gcs_analytics
+        run: |
+          strata outputs \
+            --repo tests/lookml/gcs_analytics \
+            --usage-fixture tests/fixtures/gcs_usage_facts.json \
+            --schema-fixture tests/fixtures/gcs_schema_facts.json \
+            --out output/gcs_analytics
+
+      - name: Strata check — thelook
+        run: |
+          strata check \
+            --repo tests/lookml/thelook \
+            --usage-fixture tests/fixtures/playground_usage_facts.json \
+            --schema-fixture tests/fixtures/playground_schema_facts.json
+
+      - name: Strata outputs — thelook
+        run: |
+          strata outputs \
+            --repo tests/lookml/thelook \
+            --usage-fixture tests/fixtures/playground_usage_facts.json \
+            --schema-fixture tests/fixtures/playground_schema_facts.json \
+            --out output/thelook
+
+      - name: Strata check — enterprise_mono
+        run: |
+          strata check \
+            --repo tests/lookml/enterprise_mono \
+            --usage-fixture tests/fixtures/enterprise_usage_facts.json \
+            --schema-fixture tests/fixtures/enterprise_schema_facts.json
+
+      - name: Strata outputs — enterprise_mono
+        run: |
+          strata outputs \
+            --repo tests/lookml/enterprise_mono \
+            --usage-fixture tests/fixtures/enterprise_usage_facts.json \
+            --schema-fixture tests/fixtures/enterprise_schema_facts.json \
+            --out output/enterprise_mono
+
+      - name: Build fixture IR
+        run: |
+          strata build \
+            --repo tests/fixtures \
+            --usage-fixture tests/fixtures/usage_facts.json \
+            --cache /tmp/strata_ir.db
+
+      - name: MCP server preflight
+        run: |
+          strata mcp validate
+          strata mcp config
+        env:
+          STRATA_REPO_PATH: tests/fixtures
+
+      - name: Strata generate-schema dry run
+        run: |
+          strata generate-schema \
+            --repo tests/lookml/enterprise_mono \
+            --out /tmp/schema_facts_ci.json \
+            --dry-run
+
+      - name: Notification dry run
+        run: python scripts/notify.py --artifacts output/gcs_analytics --dry-run
+
+      - name: Lint L0 layer constraints
+        run: |
+          if grep -rn "import requests\|import httpx\|import anthropic\|import openai\|import google.generativeai" src/strata/ir/ 2>/dev/null | grep -v ".pyc"; then
+            echo "FAIL: network or LLM import found in L0 IR layer"
+            exit 1
+          fi
+          echo "L0 constraint check: clean"

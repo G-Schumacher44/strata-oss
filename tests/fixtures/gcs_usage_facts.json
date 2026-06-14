@@ -1,0 +1,22 @@
+{
+  "period": {"start": "2026-05-07", "end": "2026-06-06", "days": 30},
+  "explore_usage": [
+    {"model": "gcs_analytics", "explore": "sales_performance",  "query_count": 850,  "last_queried_at": "2026-06-06T08:00:00Z"},
+    {"model": "gcs_analytics", "explore": "marketing",          "query_count": 340,  "last_queried_at": "2026-06-06T07:30:00Z"},
+    {"model": "gcs_analytics", "explore": "customers",          "query_count": 120,  "last_queried_at": "2026-06-05T18:00:00Z"},
+    {"model": "gcs_analytics", "explore": "finance",            "query_count": 620,  "last_queried_at": "2026-06-06T09:00:00Z"},
+    {"model": "gcs_analytics", "explore": "shipping",           "query_count": 45,   "last_queried_at": "2026-05-29T14:00:00Z"},
+    {"model": "gcs_legacy",    "explore": "legacy_orders",      "query_count": 0,    "last_queried_at": null},
+    {"model": "gcs_legacy",    "explore": "legacy_inventory",   "query_count": 0,    "last_queried_at": null}
+  ],
+  "content_references": [
+    {"content_type": "dashboard", "content_id": "dash_sales_01",   "model": "gcs_analytics", "explore": "sales_performance"},
+    {"content_type": "dashboard", "content_id": "dash_finance_01",  "model": "gcs_analytics", "explore": "finance"},
+    {"content_type": "dashboard", "content_id": "dash_mktg_01",     "model": "gcs_analytics", "explore": "marketing"},
+    {"content_type": "look",      "content_id": "look_clv_01",      "model": "gcs_analytics", "explore": "customers"}
+  ],
+  "pdt_builds": [
+    {"view": "pdt_customer_ltv",       "build_count": 30,  "last_built_at": "2026-06-06T05:00:00Z", "bytes_processed": 5200000000,  "estimated_cost_usd": 28.00},
+    {"view": "pdt_retention_signals",  "build_count": 30,  "last_built_at": "2026-06-06T05:00:00Z", "bytes_processed": 28600000000, "estimated_cost_usd": 156.00}
+  ]
+}

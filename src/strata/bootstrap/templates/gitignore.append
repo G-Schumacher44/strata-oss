@@ -1,0 +1,86 @@
+# Strata
+strata_ir.db
+.strata/
+*.strata_cache
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.env/
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Secrets / credentials — never commit these
+.env
+.env.*
+.env.local
+.env.production
+*.json.bak
+*_token.json
+*_credentials.json
+*_service_account.json
+gcloud_token*
+application_default_credentials.json
+looker_token.json
+~/.strata/
+
+# LookML / BI
+*.lkml.bak
+
+# Node / frontend (if applicable)
+node_modules/
+.next/
+out/
+dist/
+*.lock
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temp
+tmp/
+temp/
+*.tmp
+*.temp

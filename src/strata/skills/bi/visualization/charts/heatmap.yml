@@ -1,0 +1,24 @@
+# Chart type: heatmap — two-dimensional breakdown with color intensity
+# Usage:  strata-chart heatmap data.json --open
+# Data:   two nominal/ordinal columns (axes) + one quantitative column (color intensity)
+
+title: "Chart Title"                 # replace with your chart title
+mark: rect
+encoding:
+  x:
+    field: x_dimension               # replace: first categorical column (e.g. product, day_of_week)
+    type: nominal
+    title:                           # optional: friendly axis label
+  y:
+    field: y_dimension               # replace: second categorical column (e.g. region, hour)
+    type: nominal
+    title:                           # optional: friendly axis label
+  color:
+    field: measure                   # replace: quantitative column for color intensity
+    type: quantitative
+    title:                           # optional: legend label
+    scale:
+      scheme: blues                  # color scheme: blues|reds|greens|oranges|viridis|turbo
+show_labels: false
+width: 640
+height: 400

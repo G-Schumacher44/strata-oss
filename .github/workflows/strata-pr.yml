@@ -1,0 +1,45 @@
+name: strata-pr
+
+on:
+  pull_request:
+
+jobs:
+  pr-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Get changed files
+        id: changed
+        run: |
+          # Get all .lkml files first, then fill the quota with other changed files
+          # to ensure LookML analysis isn't displaced by documentation or other changes.
+          BASE="${{ github.event.pull_request.base.sha }}"
+          LKML=$(git diff --name-only "$BASE" HEAD -- '*.lkml' | head -100)
+          ALL=$(git diff --name-only "$BASE" HEAD | head -200)
+          FILES=$(echo -e "$LKML\n$ALL" | sort -u | head -200 | tr '\n' ' ')
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          echo "count=$(echo "$FILES" | wc -w)" >> "$GITHUB_OUTPUT"
+
+      - name: Run Strata PR analysis
+        if: steps.changed.outputs.count != '0' && steps.changed.outputs.files != ''
+        run: |
+          python scripts/pr_comment.py \
+            --repo . \
+            --changed ${{ steps.changed.outputs.files }} \
+            --pr "${{ github.event.pull_request.number }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

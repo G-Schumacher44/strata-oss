@@ -1,0 +1,22 @@
+# Public export denylist.
+#
+# `scripts/check_public_release.py` treats these patterns as private-release
+# blockers when auditing a candidate public branch. Keep this file conservative:
+# public publishing is an explicit export, not a mirror of origin/main or dev.
+
+.cursor/
+.mcp.json
+.strata
+.strata/
+caches/
+output/
+
+# Live Conductor working state. Framework docs/templates may be public, but
+# active slices, handoffs, reviews, archives, and benchmark notes are not.
+conductor/benchmark-matrix.md
+conductor/handoff-archive.md
+conductor/handoff-log.md
+conductor/review/
+conductor/archive/
+conductor/revert-spec.md
+conductor/slice-*.md

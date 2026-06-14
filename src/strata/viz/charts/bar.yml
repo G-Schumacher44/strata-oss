@@ -1,0 +1,22 @@
+# Chart type: bar — categorical comparison ("X by Y")
+# Usage:  strata-chart bar data.json --open
+# Data:   one nominal column (categories) + one quantitative column (values)
+
+title: "Chart Title"                 # replace with your chart title
+mark: bar
+encoding:
+  x:
+    field: category                  # replace: nominal/ordinal column (e.g. region, product, status)
+    type: nominal
+    title:                           # optional: friendly axis label (auto-formatted if blank)
+    sort: "-y"                       # sort bars by value descending
+  y:
+    field: value                     # replace: quantitative column (e.g. revenue, count, pct)
+    type: quantitative
+    title:                           # optional: friendly axis label
+  color:
+    field:                           # optional: set to color-code bars by a column (usually same as x)
+    type: nominal
+show_labels: false                   # set true to show values on bars
+width: 640
+height: 400

@@ -1,0 +1,23 @@
+# Chart type: line — trend over time
+# Usage:  strata-chart line data.json --open
+# Data:   one temporal/ordinal column (dates) + one quantitative column (values)
+#         optional: one nominal column for multi-series
+
+title: "Chart Title"                 # replace with your chart title
+mark: line
+encoding:
+  x:
+    field: date                      # replace: date column
+    type: temporal                   # use ordinal if dates are pre-formatted strings (e.g. "Jan 2026")
+    title:                           # optional: friendly axis label
+    # NOTE: temporal requires full ISO dates (2026-01-01). For month/week labels use type: ordinal
+  y:
+    field: value                     # replace: quantitative column (e.g. revenue, sessions, errors)
+    type: quantitative
+    title:                           # optional: friendly axis label
+  color:
+    field:                           # optional: nominal column for multi-series (e.g. region, product)
+    type: nominal
+show_labels: false
+width: 720
+height: 360

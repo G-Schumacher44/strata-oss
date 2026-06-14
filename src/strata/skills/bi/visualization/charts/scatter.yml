@@ -1,0 +1,24 @@
+# Chart type: scatter — correlation between two measures
+# Usage:  strata-chart scatter data.json --open
+# Data:   two quantitative columns + optional grouping/size column
+
+title: "Chart Title"                 # replace with your chart title
+mark: point
+encoding:
+  x:
+    field: x_measure                 # replace: first quantitative column (e.g. cost, sessions)
+    type: quantitative
+    title:                           # optional: friendly axis label
+  y:
+    field: y_measure                 # replace: second quantitative column (e.g. revenue, conversions)
+    type: quantitative
+    title:                           # optional: friendly axis label
+  color:
+    field:                           # optional: nominal column for color grouping
+    type: nominal
+  size:
+    field:                           # optional: quantitative column for bubble size
+    type: quantitative
+show_labels: false
+width: 500
+height: 500

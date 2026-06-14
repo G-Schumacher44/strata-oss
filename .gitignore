@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+conductor/.validation-log
+.strata
+.DS_Store
+*.db
+output/
+*_test_output.txt
+
+# Local MCP config holds machine-specific paths — use .mcp.json.example as the template
+.mcp.json
+
+# Gemini CLI workspace settings
+.gemini/

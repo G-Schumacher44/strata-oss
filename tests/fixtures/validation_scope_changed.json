@@ -1,0 +1,20 @@
+{
+  "changed": [
+    {
+      "kind": "view",
+      "name": "customer_extended"
+    },
+    {
+      "kind": "physical_table",
+      "name": "analytics.orders"
+    },
+    {
+      "kind": "view",
+      "name": "customer_extended"
+    },
+    {
+      "kind": "physical_table",
+      "name": "analytics.missing"
+    }
+  ]
+}

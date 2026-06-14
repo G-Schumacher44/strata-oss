@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "strata": {
+      "command": "{{STRATA_MCP_CMD}}",
+      "env": {
+        "STRATA_REPO_PATH": "{{REPO_PATH}}"
+      }
+    }
+  }
+}
