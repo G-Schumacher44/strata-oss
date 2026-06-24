@@ -249,7 +249,7 @@ def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[s
         (Path.home() / ".strata" / "output").resolve(),
         Path("/tmp").resolve(),
     ]
-    if not any(str(resolved).startswith(str(r)) for r in allowed_roots):
+    if not any(resolved.is_relative_to(r) for r in allowed_roots):
         raise ValueError(f"out_path must be within ~/.strata/output/ or /tmp/. Got: {out_path!r}")
 
     try:
