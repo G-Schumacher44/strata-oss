@@ -182,7 +182,13 @@ def strata_find_field(graph: IRGraph, query: str, kind: str = "all") -> dict[str
         if len(matches) >= 50:
             break
 
-    return {"query": query, "kind": kind, "matches": matches, "count": len(matches)}
+    return {
+        "query": query,
+        "kind": kind,
+        "matches": matches,
+        "count": len(matches),
+        "truncated": len(matches) >= 50,
+    }
 
 
 def strata_view_sources(graph: IRGraph, model: str | None = None) -> dict[str, Any]:

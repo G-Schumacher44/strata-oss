@@ -238,3 +238,32 @@ def test_strata_chart_templates():
     for t in templates:
         assert "mark" in t
         assert t["mark"] in {"bar", "line", "point", "rect"}
+
+
+def test_strata_find_field_truncated_flag_absent_when_under_cap():
+    graph = build_resolved_graph(FIXTURES)
+    result = strata_find_field(graph, "")
+    assert result["count"] < 50
+    assert result["truncated"] is False
+
+
+def test_strata_find_field_truncated_flag_present_at_cap():
+    from strata.ir.types import IRGraph, IRNode
+
+    # Build a synthetic graph with 51 matching field nodes to trigger the cap.
+    graph = IRGraph(repo_path="/synthetic", built_at="2026-01-01T00:00:00+00:00")
+    for i in range(51):
+        node_id = f"field:big_view.metric_{i:03d}"
+        graph.add_node(
+            IRNode(
+                id=node_id,
+                kind="field",
+                name=f"big_view.metric_{i:03d}",
+                source_file="big_view.view.lkml",
+                attrs={"field_kind": "measure", "view": "big_view", "field_name": f"metric_{i:03d}"},
+            )
+        )
+
+    result = strata_find_field(graph, "metric")
+    assert result["count"] == 50
+    assert result["truncated"] is True
