@@ -6,7 +6,7 @@
 
 <div align="center">
 
-[![CI](https://github.com/G-Schumacher44/strata/actions/workflows/strata-ci.yml/badge.svg?branch=main)](https://github.com/G-Schumacher44/strata/actions/workflows/strata-ci.yml)
+[![CI](https://github.com/G-Schumacher44/strata-oss/actions/workflows/strata-ci.yml/badge.svg?branch=main)](https://github.com/G-Schumacher44/strata-oss/actions/workflows/strata-ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed.svg)](https://modelcontextprotocol.io)
@@ -71,7 +71,7 @@ Three LookML repos and matching fixture JSON ship in the repo. Run the full
 analysis stack offline in under a minute:
 
 ```bash
-git clone https://github.com/G-Schumacher44/strata.git
+git clone https://github.com/G-Schumacher44/strata-oss.git
 cd strata
 pip install -e ".[dev]"
 ```
