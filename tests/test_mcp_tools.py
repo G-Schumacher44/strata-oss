@@ -267,3 +267,28 @@ def test_strata_find_field_truncated_flag_present_at_cap():
     result = strata_find_field(graph, "metric")
     assert result["count"] == 50
     assert result["truncated"] is True
+
+
+def test_strata_find_field_truncated_flag_false_at_exactly_fifty_matches():
+    from strata.ir.types import IRGraph, IRNode
+
+    # Exactly 50 matching field nodes: all 50 are returned, nothing is omitted,
+    # so truncated must be False. This is the off-by-one boundary: len(matches)
+    # can never exceed the 50 cap, so `len(matches) >= 50` wrongly reports
+    # truncated=True here even though nothing was cut.
+    graph = IRGraph(repo_path="/synthetic", built_at="2026-01-01T00:00:00+00:00")
+    for i in range(50):
+        node_id = f"field:big_view.metric_{i:03d}"
+        graph.add_node(
+            IRNode(
+                id=node_id,
+                kind="field",
+                name=f"big_view.metric_{i:03d}",
+                source_file="big_view.view.lkml",
+                attrs={"field_kind": "measure", "view": "big_view", "field_name": f"metric_{i:03d}"},
+            )
+        )
+
+    result = strata_find_field(graph, "metric")
+    assert result["count"] == 50
+    assert result["truncated"] is False
