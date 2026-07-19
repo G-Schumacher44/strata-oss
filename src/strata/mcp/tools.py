@@ -153,7 +153,8 @@ def strata_find_field(graph: IRGraph, query: str, kind: str = "all") -> dict[str
         return {"error": f"kind must be one of: {', '.join(sorted(valid_kinds))}"}
 
     query_lower = query.lower()
-    matches = []
+    matches: list[dict[str, Any]] = []
+    total = 0
     for node_id, node in graph.nodes.items():
         if not node_id.startswith("field:"):
             continue
@@ -167,22 +168,28 @@ def strata_find_field(graph: IRGraph, query: str, kind: str = "all") -> dict[str
         desc_hit = query_lower in str(node.attrs.get("description", "")).lower()
         group_hit = query_lower in str(node.attrs.get("group_label", "")).lower()
         if name_hit or sql_hit or tag_hit or label_hit or desc_hit or group_hit:
-            matches.append(
-                {
-                    "view": node.attrs.get("view", node_id.split(":")[1].split(".")[0]),
-                    "field": node.attrs.get("field_name", node.name.split(".")[-1]),
-                    "type": field_kind,
-                    "sql": node.attrs.get("sql"),
-                    "label": node.attrs.get("label"),
-                    "description": node.attrs.get("description"),
-                    "source_file": node.source_file,
-                    "source_line": node.attrs.get("source_line"),
-                }
-            )
-        if len(matches) >= 50:
-            break
+            total += 1
+            if len(matches) < 50:
+                matches.append(
+                    {
+                        "view": node.attrs.get("view", node_id.split(":")[1].split(".")[0]),
+                        "field": node.attrs.get("field_name", node.name.split(".")[-1]),
+                        "type": field_kind,
+                        "sql": node.attrs.get("sql"),
+                        "label": node.attrs.get("label"),
+                        "description": node.attrs.get("description"),
+                        "source_file": node.source_file,
+                        "source_line": node.attrs.get("source_line"),
+                    }
+                )
 
-    return {"query": query, "kind": kind, "matches": matches, "count": len(matches)}
+    return {
+        "query": query,
+        "kind": kind,
+        "matches": matches,
+        "count": len(matches),
+        "truncated": total > 50,
+    }
 
 
 def strata_view_sources(graph: IRGraph, model: str | None = None) -> dict[str, Any]:
