@@ -130,3 +130,14 @@ def test_render_chart_rejects_path_escape():
     data_json = '[{"category": "A", "value": 1}]'
     with pytest.raises(ValueError, match="out_path must be within"):
         strata_render_chart(spec_yaml, data_json, "/etc/strata_pwned.html")
+
+
+def test_render_chart_rejects_adjacent_directory_prefix_collision():
+    # Regression: "/tmp-evil/x.html".startswith("/tmp") is True — startswith must not be used.
+    # Path.is_relative_to() correctly rejects adjacent directories sharing a prefix.
+    from strata.mcp.tools import strata_render_chart
+
+    spec_yaml = "mark: bar\nencoding:\n  x:\n    field: category\n  y:\n    field: value"
+    data_json = '[{"category": "A", "value": 1}]'
+    with pytest.raises(ValueError, match="out_path must be within"):
+        strata_render_chart(spec_yaml, data_json, "/tmp-evil/strata_pwned.html")
