@@ -130,3 +130,13 @@ def test_render_chart_rejects_path_escape():
     data_json = '[{"category": "A", "value": 1}]'
     with pytest.raises(ValueError, match="out_path must be within"):
         strata_render_chart(spec_yaml, data_json, "/etc/strata_pwned.html")
+
+
+def test_render_chart_rejects_tmp_sibling_bypass():
+    """Guard must not match /tmp-evil/ as a sibling of the /tmp allowed root."""
+    from strata.mcp.tools import strata_render_chart
+
+    spec_yaml = "mark: bar\nencoding:\n  x:\n    field: category\n  y:\n    field: value"
+    data_json = '[{"category": "A", "value": 1}]'
+    with pytest.raises(ValueError, match="out_path must be within"):
+        strata_render_chart(spec_yaml, data_json, "/tmp-evil/strata_pwned.html")
