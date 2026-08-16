@@ -28,7 +28,7 @@ added to `tests/test_security.py`.
 - Operator action needed: review and merge PR #14.
 
 ```
-Commit: a15859e
+Commit: cc2f8e6
 Conductor Mode: patch
 Context Budget: low
 Context Loaded: AGENTS.md, conductor/CONDUCTOR_MODES.md, conductor/handoff-log.md latest block, src/strata/mcp/tools.py, tests/test_security.py.
