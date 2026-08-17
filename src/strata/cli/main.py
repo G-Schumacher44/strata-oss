@@ -21,7 +21,7 @@ from strata.cli.validate import validate
 
 
 @click.group()
-@click.version_option(package_name="strata")
+@click.version_option(package_name="strata-lookml")
 def strata_cli() -> None:
     """Strata BI Agentic Toolkit — govern, analyze, and visualize LookML repos."""
 

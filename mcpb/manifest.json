@@ -1,0 +1,44 @@
+{
+  "manifest_version": "0.4",
+  "name": "strata",
+  "display_name": "Strata",
+  "version": "0.1.6",
+  "description": "Read-only LookML governance toolkit for Looker and BigQuery — MCP server with 18 analysis tools over a resolved LookML dependency graph.",
+  "author": {
+    "name": "Garrett Schumacher",
+    "email": "me@garrettschumacher.com",
+    "url": "https://github.com/G-Schumacher44/strata-oss"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/G-Schumacher44/strata-oss.git"
+  },
+  "homepage": "https://github.com/G-Schumacher44/strata-oss",
+  "license": "Apache-2.0",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "src/server.py"],
+      "env": {
+        "STRATA_REPO_PATH": "${user_config.repo_path}"
+      }
+    }
+  },
+  "user_config": {
+    "repo_path": {
+      "type": "directory",
+      "title": "LookML repo path",
+      "description": "Absolute path to the LookML repository Strata should analyze.",
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  },
+  "keywords": ["lookml", "looker", "bigquery", "governance", "bi", "semantic-layer"]
+}

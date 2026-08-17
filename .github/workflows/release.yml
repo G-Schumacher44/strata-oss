@@ -5,11 +5,16 @@ on:
     tags:
       - 'v*.*.*'
 
+# Job ordering is load-bearing (PR #18, Codex P1): the GitHub Release is created LAST,
+# only after PyPI publish succeeds. The .mcpb bundle's shim resolves `strata-lookml`
+# from PyPI at launch — a Release attached before (or without) a successful publish
+# hands users a bundle that cannot start. If publish-pypi fails, no Release appears
+# and the tag can be deleted + re-pushed after the fix; nothing public is left behind.
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,69 +23,114 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Fail closed BEFORE anything is built or published if the tag disagrees with any
+      # of the three duplicated version fields (PR #18, Codex P2): pyproject.toml,
+      # mcpb/manifest.json, and the mcpb shim's exact pin. A v0.1.7 tag pushed after a
+      # missed bump would otherwise publish the WRONG immutable version to PyPI.
+      - name: Verify tag matches all version fields
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          python3 - "$TAG_VERSION" <<'PY'
+          import json, sys, tomllib, re
+          tag = sys.argv[1]
+          errors = []
+          pyproject = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          if pyproject != tag:
+              errors.append(f"pyproject.toml version {pyproject!r} != tag {tag!r}")
+          manifest = json.load(open("mcpb/manifest.json"))["version"]
+          if manifest != tag:
+              errors.append(f"mcpb/manifest.json version {manifest!r} != tag {tag!r}")
+          mcpb_deps = tomllib.load(open("mcpb/pyproject.toml", "rb"))["project"]["dependencies"]
+          pin = next((d for d in mcpb_deps if d.startswith("strata-lookml")), "")
+          if pin != f"strata-lookml=={tag}":
+              errors.append(f"mcpb shim pin {pin!r} != 'strata-lookml=={tag}'")
+          if errors:
+              print("VERSION MISMATCH — refusing to publish:")
+              for e in errors: print(f"  - {e}")
+              sys.exit(1)
+          print(f"tag v{tag} matches pyproject, manifest, and shim pin")
+          PY
+
       - name: Install hatchling
         run: pip install hatchling
 
       - name: Build wheel and sdist
         run: python -m hatchling build
 
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install mcpb CLI
+        run: npm install -g @anthropic-ai/mcpb
+
+      - name: Build MCP Bundle (.mcpb)
+        run: |
+          mcpb validate mcpb/manifest.json
+          mcpb pack mcpb strata-lookml.mcpb
+
+      - name: Upload mcpb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpb
+          path: strata-lookml.mcpb
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/strata-lookml
+    permissions:
+      id-token: write  # required for PyPI trusted publishing (OIDC) — no stored token
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # NOTE (operator prerequisite): this job authenticates via PyPI Trusted
+      # Publishing (OIDC) — no API token is stored in this repo. Before the
+      # first tag push, configure a Trusted Publisher on pypi.org for project
+      # `strata-lookml`, owner `G-Schumacher44`, repo `strata-oss`, workflow
+      # `release.yml`, environment `pypi`. Until that's configured, this job
+      # fails closed with an OIDC/"not a trusted publisher" error — that is
+      # expected, not a bug, and no secret can work around it.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    # Only after PyPI publish succeeds (see the ordering note at the top).
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcpb
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*
+            strata-lookml.mcpb
           generate_release_notes: true
 
-  sync-to-oss:
-    needs: build-and-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout private main
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Fetch public refs
-        run: |
-          git remote add public https://github.com/G-Schumacher44/strata-oss.git || true
-          git fetch public main
-          git fetch public '+refs/heads/*:refs/remotes/public/*'
-
-      - name: Sanitize release (remove private paths)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Drive sanitization from .publicignore so the denylist is the single
-          # source of truth (keeps conductor framework docs public, strips only
-          # live working state / local config). Comments and blanks are skipped.
-          PATTERNS=$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' .publicignore || true)
-          if [ -n "$PATTERNS" ]; then
-            # shellcheck disable=SC2086
-            git rm -r --quiet --ignore-unmatch $PATTERNS
-          fi
-          git commit -q -m "chore: sanitize public release [skip ci]"
-
-      - name: Run public release audit
-        run: |
-          python scripts/check_public_release.py --base public/main --target HEAD
-
-      - name: Push snapshot to OSS (fast-forward on public/main)
-        if: success()
-        env:
-          OSS_TOKEN: ${{ secrets.OSS_PUSH_TOKEN || secrets.OSS_PAT || secrets.GITHUB_TOKEN }}
-        run: |
-          # The public mirror carries its own sanitization commits, so the
-          # private-main history can never fast-forward onto it directly. Instead
-          # publish a single snapshot commit: the sanitized tree (HEAD^{tree})
-          # parented on the current public/main tip. This always fast-forwards,
-          # preserves public lineage, and adds exactly one commit per release.
-          SANITIZED_TREE=$(git rev-parse 'HEAD^{tree}')
-          SNAPSHOT=$(GIT_AUTHOR_NAME="github-actions[bot]" \
-            GIT_AUTHOR_EMAIL="github-actions[bot]@users.noreply.github.com" \
-            GIT_COMMITTER_NAME="github-actions[bot]" \
-            GIT_COMMITTER_EMAIL="github-actions[bot]@users.noreply.github.com" \
-            git commit-tree "$SANITIZED_TREE" -p public/main \
-              -m "release: sync ${GITHUB_REF_NAME}")
-          # Use x-access-token as the username for reliable PAT authentication
-          git remote set-url public "https://x-access-token:${OSS_TOKEN}@github.com/G-Schumacher44/strata-oss.git"
-          git push public "${SNAPSHOT}:main"
+  # HISTORY: a `sync-to-oss` job lived here until 2026-08-16. It was bootstrap-era
+  # private->public mirror automation that, after this repo BECAME the canonical one,
+  # SELF-TARGETED: it added this very repo as remote 'public', git-rm'd every
+  # .publicignore path (including conductor/ docs), and pushed the result onto our
+  # own main — armed on the same v*.*.* trigger as the release itself. Removed with
+  # PR #18; the mirror model was retired (private strata#50). Do not restore it.

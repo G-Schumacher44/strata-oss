@@ -11,7 +11,7 @@ Not part of the installable package — all user-facing functionality lives in `
 | `notify.py` | CI / manual | Builds Slack and Jira notification payloads from `strata outputs` artifacts. Pass `--dry-run` to print without sending. |
 | `generate_schema_facts.py` | Manual | Queries BigQuery `INFORMATION_SCHEMA.COLUMNS` for tables referenced in a LookML repo and writes `schema_facts.json`. Predecessor to `strata generate-schema` CLI. |
 | `test_mcp_live.py` | Manual | Governance investigation driver — calls all MCP tools against a playground and prints a human-readable findings report. Use to validate tool correctness against a live fixture. |
-| `check_public_release.py` | Manual / `.github/workflows/public-release-audit.yml` | Read-only audit for candidate public releases. Fails when a `public/main..HEAD` diff includes `.publicignore` paths, local machine paths, or credential markers. |
+| `check_public_release.py` | Manual only (mirror-era; its workflow was removed 2026-08-16) | Read-only audit from the retired private→public mirror model. Kept as a manual credential/path scanner; slated for removal with `.publicignore` (see repo issues). |
 
 ## Running
 
