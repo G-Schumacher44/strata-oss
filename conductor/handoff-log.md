@@ -4,7 +4,10 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-16 — feat/pypi-strata-lookml
 
-Commit: 117f9fb (last substantive commit; anchor updated one-behind by a docs-only commit)
+Commit: 117f9fb (pre-merge branch anchor — this repo squash-merges, so branch SHAs do
+  not survive the merge; post-squash, resolve the landed anchor deterministically via
+  `gh pr view 18 --json mergeCommit -q .mergeCommit.oid` and treat THAT as this block's
+  commit for any HEAD reality check)
 Conductor Mode: slice
 Context Budget: medium
 Context Loaded: AGENTS.md, conductor/AGENTS.md, conductor/CONDUCTOR_MODES.md, conductor/index.md, conductor/slice-04-pypi-packaging.md, handoff-log latest block.
