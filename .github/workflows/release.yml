@@ -24,11 +24,55 @@ jobs:
       - name: Build wheel and sdist
         run: python -m hatchling build
 
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install mcpb CLI
+        run: npm install -g @anthropic-ai/mcpb
+
+      - name: Build MCP Bundle (.mcpb)
+        run: |
+          mcpb validate mcpb/manifest.json
+          mcpb pack mcpb strata-lookml.mcpb
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*
+            strata-lookml.mcpb
           generate_release_notes: true
+
+  publish-pypi:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/strata-lookml
+    permissions:
+      id-token: write  # required for PyPI trusted publishing (OIDC) — no stored token
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # NOTE (operator prerequisite): this job authenticates via PyPI Trusted
+      # Publishing (OIDC) — no API token is stored in this repo. Before the
+      # first tag push, configure a Trusted Publisher on pypi.org for project
+      # `strata-lookml`, owner `G-Schumacher44`, repo `strata-oss`, workflow
+      # `release.yml`, environment `pypi`. Until that's configured, this job
+      # fails closed with an OIDC/"not a trusted publisher" error — that is
+      # expected, not a bug, and no secret can work around it.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
 
   sync-to-oss:
     needs: build-and-release

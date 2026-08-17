@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 dist/
 build/
+*.mcpb
 *.egg-info/
 .pytest_cache/
 .coverage

@@ -22,6 +22,11 @@ semantic-layer change is safe:
 - Which PDTs are rebuilding nightly at ~$45,000/month in estimated BQ compute to serve nobody?
 - Which BigQuery column drops will silently break LookML before users find out at query time?
 
+> The tool is called **Strata**. On PyPI it's distributed as
+> [`strata-lookml`](https://pypi.org/project/strata-lookml/) — `strata` and `strata-mcp` were
+> already taken by unrelated projects. The CLI (`strata`), MCP server (`strata-mcp`), and chart
+> renderer (`strata-chart`) command names are unaffected.
+
 ## What Strata Is
 
 Strata is a local **MCP** server and **CLI** toolkit. Point it at your **LookML** repo. Your AI client
@@ -30,6 +35,52 @@ and a pre-built graph of your resolved LookML dependency structure — enriched 
 and schema facts. Offline-first: connecting to your Looker instance is preferred but optional; no credentials are required to start.
 
 ---
+
+## Installation
+
+```bash
+# Run without installing (recommended) — the console scripts are strata,
+# strata-mcp, and strata-chart, not strata-lookml, so pass --from:
+uvx --from strata-lookml strata --help
+
+# Or install the CLI + MCP server persistently
+pipx install strata-lookml
+strata --help
+```
+
+Wire it into an MCP client — the server entry point is `strata-mcp`, resolved from the
+`strata-lookml` distribution via `uvx --from strata-lookml strata-mcp`:
+
+```json
+{
+  "mcpServers": {
+    "strata": {
+      "command": "uvx",
+      "args": ["--from", "strata-lookml", "strata-mcp"],
+      "env": { "STRATA_REPO_PATH": "/path/to/your/lookml" }
+    }
+  }
+}
+```
+
+<p>
+  <a href="cursor://anysphere.cursor-deeplink/mcp/install?name=strata&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJzdHJhdGEtbG9va21sIiwic3RyYXRhLW1jcCJdLCJlbnYiOnsiU1RSQVRBX1JFUE9fUEFUSCI6Ii9wYXRoL3RvL3lvdXIvbG9va21sIn19">
+    <img src="https://img.shields.io/badge/Cursor-Add_MCP_Server-000000?style=flat-square&logo=cursor&logoColor=white" alt="Add strata MCP server to Cursor"/>
+  </a>
+  <a href="vscode:mcp/install?%7B%22name%22%3A%22strata%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22--from%22%2C%22strata-lookml%22%2C%22strata-mcp%22%5D%2C%22env%22%3A%7B%22STRATA_REPO_PATH%22%3A%22%2Fpath%2Fto%2Fyour%2Flookml%22%7D%7D">
+    <img src="https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white" alt="Install strata MCP server in VS Code"/>
+  </a>
+</p>
+
+Both badges embed the same `uvx --from strata-lookml strata-mcp` config above; edit
+`STRATA_REPO_PATH` to your repo after installing. A prebuilt `.mcpb` bundle for one-click
+install in Claude Desktop is attached to each [GitHub Release](https://github.com/G-Schumacher44/strata-oss/releases).
+
+> **Verification note:** the deeplink formats above (`cursor://anysphere.cursor-deeplink/mcp/install`
+> and `vscode:mcp/install`) reflect Cursor's and VS Code's documented MCP install-link schemes;
+> the encoded payloads were generated deterministically from the JSON config shown above. This
+> repo's dispatch tooling could not reach the live docs to re-confirm the schemes at authoring
+> time — spot-check both badges once before relying on them.
 
 ## Quick Start
 
