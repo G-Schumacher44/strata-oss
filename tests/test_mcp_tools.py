@@ -260,7 +260,11 @@ def test_strata_find_field_truncated_flag_present_at_cap():
                 kind="field",
                 name=f"big_view.metric_{i:03d}",
                 source_file="big_view.view.lkml",
-                attrs={"field_kind": "measure", "view": "big_view", "field_name": f"metric_{i:03d}"},
+                attrs={
+                    "field_kind": "measure",
+                    "view": "big_view",
+                    "field_name": f"metric_{i:03d}",
+                },
             )
         )
 
@@ -285,7 +289,11 @@ def test_strata_find_field_truncated_flag_false_at_exactly_fifty_matches():
                 kind="field",
                 name=f"big_view.metric_{i:03d}",
                 source_file="big_view.view.lkml",
-                attrs={"field_kind": "measure", "view": "big_view", "field_name": f"metric_{i:03d}"},
+                attrs={
+                    "field_kind": "measure",
+                    "view": "big_view",
+                    "field_name": f"metric_{i:03d}",
+                },
             )
         )
 
