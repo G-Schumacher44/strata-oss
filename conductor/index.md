@@ -31,7 +31,7 @@ First slices go here. Add master-plan docs as phases span multiple slices.
 
 ## Active Slice
 
-Active slice: conductor/slice-03-decouple-conductor-ci-into-soft-gated-pr-comment.md
+Active slice: conductor/slice-04-pypi-packaging.md (status: review — PR #18)
 
 ## Phase Status
 

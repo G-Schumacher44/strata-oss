@@ -11,7 +11,11 @@ license = {text = "Apache-2.0"}
 authors = [{name = "Garrett Schumacher", email = "me@garrettschumacher.com"}]
 dependencies = [
   "networkx>=3.0",
-  "mcp>=1.0",
+  # Upper-bounded: mcp 2.0 removed/moved `mcp.server.fastmcp`, which src/strata/mcp/server.py
+  # imports — an unbounded pin made every fresh `pip install strata-lookml` pull an SDK the
+  # server cannot import (caught in the fresh-venv install check on PR #18; strata-mcp was
+  # dead-on-arrival while strata/strata-chart worked). Lift only with the 2.x migration.
+  "mcp>=1.0,<2",
   "click>=8.0",
   "pyyaml>=6.0",
   "anyio>=4.0",
