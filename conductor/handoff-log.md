@@ -68,6 +68,15 @@ Publisher at pypi.org — project `strata-lookml`, owner `G-Schumacher44`, repo 
 workflow `release.yml`, environment `pypi`. Without it `publish-pypi` fails closed with an
 OIDC error — expected, not a bug (see the comment in `release.yml`).
 
+**Also fixed on this branch (found by Apollo's required-checks blocker):** the
+`tests/lookml/gcs_analytics` submodule pinned `cd9a4deb`, a commit its upstream no longer
+has — the playground repo was recreated during the 2026-07-12 public bootstrap, orphaning
+the pin, and `strata-ci` had never once run on `main`, so every PR checkout has been failing
+at `actions/checkout` before tests could run. Repointed to the upstream head `f32aafa0`
+(the playground's actual content — its repo holds 2 commits total). Suite re-run at the new
+pin: 106 passed. Same dangling-ref shape as the pre-squash `anchor_ref` bug, third instance
+of bootstrap-era rot (README URLs, default branch, now this).
+
 **Exact Next Steps:**
 1. Operator: configure the PyPI Trusted Publisher (above), then merge PR #18.
 2. Operator (or Koa on instruction): push tag `v0.1.6` — first end-to-end proof of
