@@ -115,6 +115,27 @@ classifiers + 3 Project-URLs with absolute image URLs; fresh-venv install → al
 commands; suite 106 passed; `ruff format --check` + `ruff check` clean tree-wide;
 `release.yml` still valid YAML.
 
+**Codex round 2 (post-panel head, 4 findings, all addressed):**
+- *P1 release ordering:* the GitHub Release was created in the build job, BEFORE
+  publish-pypi ran — a failed/misconfigured publish would leave a public Release whose
+  `.mcpb` cannot start (its shim resolves `strata-lookml` from PyPI at launch).
+  `release.yml` restructured to three jobs: `build` → `publish-pypi` → `github-release`;
+  the Release now exists only after PyPI has the package. This also closes artemis's
+  earlier first-minute-race note for good.
+- *P2 shim pin:* `mcpb/pyproject.toml` pinned `strata-lookml==0.1.6` (was `>=0.1.6`,
+  which would silently execute newer code under an artifact advertising 0.1.6).
+- *P2 tag/version guard:* new fail-closed `Verify tag matches all version fields` step —
+  refuses to build/publish when the tag disagrees with pyproject.toml, mcpb/manifest.json,
+  or the shim pin. Proven both directions locally: passes at 0.1.6, refuses a wrong tag
+  (negative control).
+- *P1 Commit anchor:* the `Commit:` field below now carries a real seven-char hash
+  (maintained one-behind by construction: the anchor names the last substantive commit;
+  the anchor update itself is a docs-only commit).
+
+Release procedure consequence, now that versions are pinned in three places: a release
+bump touches pyproject.toml + mcpb/manifest.json + mcpb/pyproject.toml together, and the
+guard refuses the tag if any is missed.
+
 **Exact Next Steps:**
 1. Operator: configure the PyPI Trusted Publisher (above), then merge PR #18.
 2. Operator (or Koa on instruction): push tag `v0.1.6` — first end-to-end proof of
