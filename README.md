@@ -1,7 +1,7 @@
 # Strata — Agentic BI Toolkit for Looker and BigQuery
 
 <div align="center">
-  <img src="docs/assets/strata_banner.png" alt="Strata — Agentic BI Toolkit for Looker and BigQuery" width="100%"/>
+  <img src="https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/strata_banner.png" alt="Strata — Agentic BI Toolkit for Looker and BigQuery" width="100%"/>
 </div>
 
 <div align="center">
@@ -25,7 +25,10 @@ semantic-layer change is safe:
 > The tool is called **Strata**. On PyPI it's distributed as
 > [`strata-lookml`](https://pypi.org/project/strata-lookml/) — `strata` and `strata-mcp` were
 > already taken by unrelated projects. The CLI (`strata`), MCP server (`strata-mcp`), and chart
-> renderer (`strata-chart`) command names are unaffected.
+> renderer (`strata-chart`) command names are unaffected. One consequence: if another
+> `strata`-named tool is already installed via `pipx` (the unrelated `strata-mcp` PyPI
+> package installs a `strata` command too), `pipx` will refuse the shared binary name —
+> use the `uvx` form below, which is collision-safe.
 
 ## What Strata Is
 
@@ -76,11 +79,6 @@ Both badges embed the same `uvx --from strata-lookml strata-mcp` config above; e
 `STRATA_REPO_PATH` to your repo after installing. A prebuilt `.mcpb` bundle for one-click
 install in Claude Desktop is attached to each [GitHub Release](https://github.com/G-Schumacher44/strata-oss/releases).
 
-> **Verification note:** the deeplink formats above (`cursor://anysphere.cursor-deeplink/mcp/install`
-> and `vscode:mcp/install`) reflect Cursor's and VS Code's documented MCP install-link schemes;
-> the encoded payloads were generated deterministically from the JSON config shown above. This
-> repo's dispatch tooling could not reach the live docs to re-confirm the schemes at authoring
-> time — spot-check both badges once before relying on them.
 
 ## Quick Start
 
@@ -304,15 +302,15 @@ strata dashboard \
   --schema-fixture tests/fixtures/enterprise_schema_facts.json
 ```
 
-![Strata dashboard overview — enterprise_mono playground showing 28 active explores, 6 dead artifacts, ~$63,755 estimated PDT cost/30d, 10 schema drift records, and the full dependency graph](docs/assets/dashboard-overview.png)
+![Strata dashboard overview — enterprise_mono playground showing 28 active explores, 6 dead artifacts, ~$63,755 estimated PDT cost/30d, 10 schema drift records, and the full dependency graph](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
 
 *enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, gray = physical table.*
 
-![Dependency graph zoomed on dead_finance_v2 — QUERY COUNT: 0, backed by pdt_attribution_full_funnel (orange zombie PDT diamond)](docs/assets/graph-dead-explore.png)
+![Dependency graph zoomed on dead_finance_v2 — QUERY COUNT: 0, backed by pdt_attribution_full_funnel (orange zombie PDT diamond)](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/graph-dead-explore.png)
 
 *`dead_finance_v2` selected. The orange diamond is `pdt_attribution_full_funnel` — a zombie PDT rebuilding at ~$45,000/month (estimated) to serve this explore. Both flagged for removal.*
 
-![Dead Code Register showing 6 dead explores with dual structural and usage evidence](docs/assets/dashboard-pdt-section.png)
+![Dead Code Register showing 6 dead explores with dual structural and usage evidence](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
 
 *Dead Code Register — each item carries two evidence tags: structural (exists in resolved IR) and usage (zero queries in L1 facts). Both must be present before anything is flagged.*
 
@@ -532,12 +530,12 @@ strata chart heatmap activity.json --open
 
 <table>
 <tr>
-<td align="center"><img src="docs/assets/chart-bar.png" width="420" alt="Bar chart: Revenue by Region"/><br/><sub><b>bar</b> — categorical comparison</sub></td>
-<td align="center"><img src="docs/assets/chart-line.png" width="420" alt="Line chart: Revenue Trend"/><br/><sub><b>line</b> — trend over time</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/chart-bar.png" width="420" alt="Bar chart: Revenue by Region"/><br/><sub><b>bar</b> — categorical comparison</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/chart-line.png" width="420" alt="Line chart: Revenue Trend"/><br/><sub><b>line</b> — trend over time</sub></td>
 </tr>
 <tr>
-<td align="center"><img src="docs/assets/chart-scatter.png" width="420" alt="Scatter: Query Count vs PDT Build Time"/><br/><sub><b>scatter</b> — correlation</sub></td>
-<td align="center"><img src="docs/assets/chart-heatmap.png" width="420" alt="Heatmap: Explore Query Activity by Day"/><br/><sub><b>heatmap</b> — two-dimensional breakdown</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/chart-scatter.png" width="420" alt="Scatter: Query Count vs PDT Build Time"/><br/><sub><b>scatter</b> — correlation</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/chart-heatmap.png" width="420" alt="Heatmap: Explore Query Activity by Day"/><br/><sub><b>heatmap</b> — two-dimensional breakdown</sub></td>
 </tr>
 </table>
 
@@ -683,3 +681,7 @@ Full index: [**docs/README.md**](docs/README.md)
 ## License
 
 [Apache 2.0](LICENSE) — © 2026 Garrett Schumacher
+
+<!-- MCP registry identity — verified at publish time by the official registry -->
+
+mcp-name: io.github.g-schumacher44/strata

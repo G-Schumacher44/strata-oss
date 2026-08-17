@@ -8,6 +8,16 @@ version = "0.1.6"
 requires-python = ">=3.11"
 description = "Agentic BI toolkit for Looker and BigQuery — MCP server, LookML governance analysis, and BI engineering skills"
 license = {text = "Apache-2.0"}
+readme = "README.md"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Quality Assurance",
+]
 authors = [{name = "Garrett Schumacher", email = "me@garrettschumacher.com"}]
 dependencies = [
   "networkx>=3.0",
@@ -53,6 +63,11 @@ include = ["src/strata/skills/**", "src/strata/viz/charts/**", "src/strata/boots
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 
+[project.urls]
+Homepage = "https://github.com/G-Schumacher44/strata-oss"
+Repository = "https://github.com/G-Schumacher44/strata-oss"
+Issues = "https://github.com/G-Schumacher44/strata-oss/issues"
+
 [project.scripts]
 strata       = "strata.cli.main:strata_cli"
 strata-mcp   = "strata.mcp.server:main"
@@ -60,3 +75,8 @@ strata-chart = "strata.viz.render:main"
 
 [tool.hatch.envs.default]
 python = "3.11"
+
+[tool.hatch.build.targets.sdist]
+# Lean sdist: the default include-everything shipped 317 files / 6.8MB of test
+# playgrounds, conductor docs, and CI config (caught in the PR #18 review panel).
+include = ["/src", "/README.md", "/LICENSE", "/pyproject.toml"]

@@ -1,4 +1,4 @@
-# Conductor Index — my-looker-project
+# Conductor Index — strata-oss
 
 Date: 2026-06-07
 Status: active

@@ -74,57 +74,9 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  sync-to-oss:
-    needs: build-and-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout private main
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Fetch public refs
-        run: |
-          git remote add public https://github.com/G-Schumacher44/strata-oss.git || true
-          git fetch public main
-          git fetch public '+refs/heads/*:refs/remotes/public/*'
-
-      - name: Sanitize release (remove private paths)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Drive sanitization from .publicignore so the denylist is the single
-          # source of truth (keeps conductor framework docs public, strips only
-          # live working state / local config). Comments and blanks are skipped.
-          PATTERNS=$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' .publicignore || true)
-          if [ -n "$PATTERNS" ]; then
-            # shellcheck disable=SC2086
-            git rm -r --quiet --ignore-unmatch $PATTERNS
-          fi
-          git commit -q -m "chore: sanitize public release [skip ci]"
-
-      - name: Run public release audit
-        run: |
-          python scripts/check_public_release.py --base public/main --target HEAD
-
-      - name: Push snapshot to OSS (fast-forward on public/main)
-        if: success()
-        env:
-          OSS_TOKEN: ${{ secrets.OSS_PUSH_TOKEN || secrets.OSS_PAT || secrets.GITHUB_TOKEN }}
-        run: |
-          # The public mirror carries its own sanitization commits, so the
-          # private-main history can never fast-forward onto it directly. Instead
-          # publish a single snapshot commit: the sanitized tree (HEAD^{tree})
-          # parented on the current public/main tip. This always fast-forwards,
-          # preserves public lineage, and adds exactly one commit per release.
-          SANITIZED_TREE=$(git rev-parse 'HEAD^{tree}')
-          SNAPSHOT=$(GIT_AUTHOR_NAME="github-actions[bot]" \
-            GIT_AUTHOR_EMAIL="github-actions[bot]@users.noreply.github.com" \
-            GIT_COMMITTER_NAME="github-actions[bot]" \
-            GIT_COMMITTER_EMAIL="github-actions[bot]@users.noreply.github.com" \
-            git commit-tree "$SANITIZED_TREE" -p public/main \
-              -m "release: sync ${GITHUB_REF_NAME}")
-          # Use x-access-token as the username for reliable PAT authentication
-          git remote set-url public "https://x-access-token:${OSS_TOKEN}@github.com/G-Schumacher44/strata-oss.git"
-          git push public "${SNAPSHOT}:main"
+  # HISTORY: a `sync-to-oss` job lived here until 2026-08-16. It was bootstrap-era
+  # private->public mirror automation that, after this repo BECAME the canonical one,
+  # SELF-TARGETED: it added this very repo as remote 'public', git-rm'd every
+  # .publicignore path (including conductor/ docs), and pushed the result onto our
+  # own main — armed on the same v*.*.* trigger as the release itself. Removed with
+  # PR #18; the mirror model was retired (private strata#50). Do not restore it.

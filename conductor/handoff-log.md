@@ -77,6 +77,44 @@ at `actions/checkout` before tests could run. Repointed to the upstream head `f3
 pin: 106 passed. Same dangling-ref shape as the pre-squash `anchor_ref` bug, third instance
 of bootstrap-era rot (README URLs, default branch, now this).
 
+**Panel round (operator-ordered pre-merge review: twins + philosophers, 2026-08-16):**
+five parallel read-only reviewers. Verdicts: artemis SHIP · apollo ACCEPT · diogenes LEAN ·
+socrates GO-WITH-GUARDRAILS · plato NEEDS-FORM (1 blocker). All findings addressed in one
+batch commit:
+
+- **plato BLOCKER — the self-targeting mirror job:** `release.yml` still carried the
+  bootstrap-era `sync-to-oss` job. After this repo became canonical, that job SELF-TARGETED:
+  on the same `v*.*.*` trigger as the release, it added this very repo as remote `public`,
+  `git rm`'d every `.publicignore` path (including `conductor/handoff-log.md` and
+  `slice-04` — files this PR wrote), and pushed the result onto our own `main`, with
+  workflow-wide `contents: write` making `GITHUB_TOKEN` sufficient. The documented next
+  step (push `v0.1.6`) would have fired it. **Job deleted** (history note left in the file);
+  `docs/public-release.md` + `.github/workflows/public-release-audit.yml` (mirror-era,
+  `public-v*`-triggered) deleted; `scripts/README.md` row updated. Residue
+  (`.publicignore`, `scripts/check_public_release.py` + its tests) left for a follow-up
+  issue — inert without the workflows, and removing the tests would churn suite counts in
+  an already-long PR.
+- **socrates + artemis (independently converged) — the blank PyPI page:** `pyproject.toml`
+  had no `readme`, no `classifiers`, no `[project.urls]` — the built wheel's METADATA had
+  ZERO Description; v0.1.6's page would have published blank and immutable. All three added;
+  README's 8 relative image paths absolutized to `raw.githubusercontent.com` (PyPI does not
+  rewrite relative paths); `[tool.hatch.build.targets.sdist]` added (anchored `/`-patterns —
+  bare names glob at any depth; sdist went 317 files/6.8MB → 173 files, zero stray dirs);
+  `mcp-name: io.github.g-schumacher44/strata` marker added for the future registry listing.
+- **diogenes:** authoring-process "verification note" removed from the user-facing README
+  (already recorded here).
+- **plato should_fix:** pipx command-collision sentence added to the README naming note
+  (the unrelated `strata-mcp` package installs a `strata` command; pipx shares one bin/).
+- **notes:** `mcpb/README.md` stale step name fixed; `conductor/index.md` template-leftover
+  header ("my-looker-project") fixed; `docs/README.md` dead `security-review.md` link fixed.
+- **apollo hygiene:** `tests/test_mcp_tools.py` ruff-format (commit f331f1d) is hereby
+  claimed in this log — it was changed-but-unclaimed in the earlier bullet list.
+
+Re-verified after the batch: wheel METADATA carries Description (29.6k chars) + 7
+classifiers + 3 Project-URLs with absolute image URLs; fresh-venv install → all three
+commands; suite 106 passed; `ruff format --check` + `ruff check` clean tree-wide;
+`release.yml` still valid YAML.
+
 **Exact Next Steps:**
 1. Operator: configure the PyPI Trusted Publisher (above), then merge PR #18.
 2. Operator (or Koa on instruction): push tag `v0.1.6` — first end-to-end proof of
