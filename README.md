@@ -22,13 +22,11 @@ semantic-layer change is safe:
 - Which PDTs are rebuilding nightly at ~$45,000/month in estimated BQ compute to serve nobody?
 - Which BigQuery column drops will silently break LookML before users find out at query time?
 
-> The tool is called **Strata**. On PyPI it's distributed as
-> [`strata-lookml`](https://pypi.org/project/strata-lookml/) — `strata` and `strata-mcp` were
-> already taken by unrelated projects. The CLI (`strata`), MCP server (`strata-mcp`), and chart
-> renderer (`strata-chart`) command names are unaffected. One consequence: if another
-> `strata`-named tool is already installed via `pipx` (the unrelated `strata-mcp` PyPI
-> package installs a `strata` command too), `pipx` will refuse the shared binary name —
-> use the `uvx` form below, which is collision-safe.
+> **Naming, in short:**
+> - The tool is **Strata**. The PyPI package is [`strata-lookml`](https://pypi.org/project/strata-lookml/) — the PyPI names `strata` and `strata-mcp` belong to unrelated projects.
+> - The commands you type are unchanged: `strata`, `strata-mcp`, `strata-chart`.
+> - **`pipx` users:** one of those unrelated packages also installs a command named `strata`. If it's on your machine, `pipx install strata-lookml` will refuse the duplicate name.
+> - The `uvx` form below sidesteps this entirely — it runs in an ephemeral environment, so nothing collides.
 
 ## What Strata Is
 
