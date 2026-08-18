@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-17 — feat/mcp-2x-migration
 
-Commit: (pre-merge branch anchor — squash-merge repo; post-squash resolve via
-  `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid`; hash filled one-behind below)
+Commit: 1740642 (pre-merge branch anchor; squash-merge repo — post-squash resolve via
+  `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid`)
 Conductor Mode: slice
 Context Budget: low
 Context Loaded: AGENTS.md, conductor/CONDUCTOR_MODES.md, conductor/index.md, handoff-log latest block, src/strata/mcp/server.py, tests/test_mcp_server.py.
