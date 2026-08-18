@@ -119,6 +119,13 @@ found 12 non-confirmed findings + 2 filed issues, all ordered fixed in one PR).
 **Pre-gate ritual:** run via `koa review --branch` before push, per the dispatch's mandatory
 gate instructions — see PR body for the run's disposition (pass/findings-disclosed).
 
+**Codex round 2 (P2, addressed):** the zombie verdict's `evidence_ids` cited only the PDT
+node + build record while the verdict actually rests on every consumer's dead-code entry —
+an un-auditable verdict in a dual-evidence tool. `_pdt_ledger` now appends
+`dead:explore:<model.explore>` for each consumer on zombie records (same convention the
+dead-views records already use), and the regression test asserts the full trail per zombie
+plus a negative control (a `used` PDT must carry NO dead-explore evidence). Suite 107 passed.
+
 **Exact Next Steps:**
 1. Operator: review and merge this PR (Closes #19, closes #20).
 2. Operator (or Koa on instruction): once ready for a real release, push tag `v0.1.7` —

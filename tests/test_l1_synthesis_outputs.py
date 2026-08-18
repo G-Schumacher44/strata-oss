@@ -166,6 +166,20 @@ def test_zombie_pdt_detection_enterprise_mono():
         assert record["status"] == "zombie", f"{view} should be zombie, got {record['status']}"
         assert record["build_count"] > 0
         assert record["used_by_explores"], "zombie PDTs must still have consumers"
+        # The zombie verdict rests on the consumers' dead-code entries — the evidence
+        # trail must cite every one of them (dual-evidence contract; PR #21 Codex P2).
+        for exp in record["used_by_explores"]:
+            assert f"dead:explore:{exp}" in record["evidence_ids"], (
+                f"{view}: zombie verdict missing dead-explore evidence for {exp}"
+            )
+
+    # A non-zombie record must NOT carry dead-explore evidence entries.
+    live_records = [r for r in ledger_by_view.values() if r["status"] == "used"]
+    assert live_records, "expected at least one 'used' PDT in the fixture"
+    for r in live_records:
+        assert not any(e.startswith("dead:explore:") for e in r["evidence_ids"]), (
+            f"{r['view']}: 'used' PDT should not cite dead-explore evidence"
+        )
 
     artifacts = build_artifacts(graph)
     html = build_dashboard_html(artifacts, graph)

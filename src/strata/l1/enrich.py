@@ -149,12 +149,18 @@ def _pdt_ledger(
                 )
             )
             continue
+        evidence_ids = [pdt.id, f"pdt_build:{pdt.name}"]
         if not used_by:
             status = "unused"
         elif all(exp in dead_explore_keys for exp in used_by):
             # Zombie: real build facts, real consumers, but every consuming explore is
             # itself dead — the PDT keeps rebuilding on schedule to serve nobody.
+            # The verdict rests on those explores' dead-code register entries, so cite
+            # them (same `dead:explore:` convention the dead-views records use) — a
+            # zombie whose evidence trail omits WHY its consumers are dead would be
+            # an un-auditable verdict in a tool whose whole contract is dual evidence.
             status = "zombie"
+            evidence_ids += [f"dead:explore:{exp}" for exp in used_by]
         else:
             status = "used"
         records.append(
@@ -166,7 +172,7 @@ def _pdt_ledger(
                 estimated_cost_usd=build.estimated_cost_usd,
                 used_by_explores=used_by,
                 status=status,
-                evidence_ids=[pdt.id, f"pdt_build:{pdt.name}"],
+                evidence_ids=evidence_ids,
             )
         )
     return records
