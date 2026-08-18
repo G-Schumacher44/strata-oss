@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any, Literal
 
@@ -68,6 +70,14 @@ from strata.pipeline import build_graph
 CACHE_MAX_AGE_SECONDS = 300
 
 
+def _server_version() -> str:
+    try:
+        return pkg_version("strata-lookml")
+    except PackageNotFoundError:
+        # Editable/dev checkout without an installed distribution record.
+        return "0.0.0-dev"
+
+
 def load_configured_graph() -> IRGraph:
     repo_path = _repo_path()
     cache_path = _cache_path(repo_path)
@@ -82,6 +92,10 @@ def load_configured_graph() -> IRGraph:
 def create_server(graph: IRGraph | None = None) -> FastMCP:
     ir_graph = graph or load_configured_graph()
     server = FastMCP("strata")
+    # FastMCP 1.29 has no `version` constructor kwarg (verified against the installed SDK
+    # source) — the underlying low-level Server otherwise falls back to reporting the `mcp`
+    # SDK's own version in the initialize handshake, not ours.
+    server._mcp_server.version = _server_version()
 
     @server.tool()
     def strata_query_field(view: str, field: str) -> dict[str, Any]:

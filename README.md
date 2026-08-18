@@ -33,7 +33,7 @@ semantic-layer change is safe:
 ## What Strata Is
 
 Strata is a local **MCP** server and **CLI** toolkit. Point it at your **LookML** repo. Your AI client
-gets **18 read-only analysis tools**, and **15 domain skills** with structured investigation procedures,
+gets **18 analysis tools — 17 read-only, 1 sandboxed chart renderer**, and **15 domain skills** with structured investigation procedures,
 and a pre-built graph of your resolved LookML dependency structure — enriched with BigQuery usage
 and schema facts. Offline-first: connecting to your Looker instance is preferred but optional; no credentials are required to start.
 
@@ -214,8 +214,11 @@ no Looker instance, no BQ credentials, no flaky API calls.
 Strata builds a resolved dependency graph covering explores, views, joins, extends chains,
 fields, PDTs, and physical tables. Cross-reference against 30 days of Looker System Activity
 and content usage data, and you get exact dead code with dual evidence: the explore exists in
-the resolved IR *and* has zero queries with no dashboard references. No false positives before
-you deprecate.
+the resolved IR *and* has zero queries with no dashboard references. Dual evidence is designed to
+eliminate false positives before you deprecate — see
+[`docs/testing-findings.md`](docs/testing-findings.md) for the false-positive classes caught
+and fixed during testing (CTE names misread as physical tables, zombie views invisible to the
+orphan-only check).
 
 From the `enterprise_mono` playground:
 - **6 dead explores** across 3 legacy connection clusters
@@ -239,6 +242,12 @@ Zombie PDT cost:  ~$63,750/30d  (~$765,000/year)  [estimated]
 > at the standard on-demand rate ($5/TB). This is disk I/O — the data BQ reads from storage
 > to build the PDT — not memory or output size. Flat-rate and committed-use customers will see
 > different actual billing.
+
+> The demo dollar figures above are hand-authored values baked into the `enterprise_mono`
+> fixture (`tests/fixtures/enterprise_usage_facts.json`) for illustration — they are not
+> computed by applying the $5/TB formula to that fixture. The formula itself is real and runs
+> against live BigQuery scan bytes (`src/strata/l1/looker.py`) whenever `strata auth login` is
+> used against a real Looker/BQ instance.
 
 ### Schema Drift Detection
 
@@ -302,17 +311,17 @@ strata dashboard \
   --schema-fixture tests/fixtures/enterprise_schema_facts.json
 ```
 
-![Strata dashboard overview — enterprise_mono playground showing 28 active explores, 6 dead artifacts, ~$63,755 estimated PDT cost/30d, 10 schema drift records, and the full dependency graph](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
+![Strata dashboard overview — enterprise_mono playground: 23 active explores (11 dead), 11 dead artifacts, 14,242 queries, $63,755.94 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph with zombie PDT diamonds in purple](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
 
-*enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, gray = physical table.*
+*enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, **purple = zombie PDT**, gray = physical table.*
 
-![Dependency graph zoomed on dead_finance_v2 — QUERY COUNT: 0, backed by pdt_attribution_full_funnel (orange zombie PDT diamond)](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/graph-dead-explore.png)
+![Dependency graph zoomed on dead_finance_v2 — rendered dead-red with a DEPRECATE badge and QUERY COUNT: 0 in the node detail panel](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/graph-dead-explore.png)
 
-*`dead_finance_v2` selected. The orange diamond is `pdt_attribution_full_funnel` — a zombie PDT rebuilding at ~$45,000/month (estimated) to serve this explore. Both flagged for removal.*
+*`dead_finance_v2` selected — rendered dead-red with a **deprecate** verdict and QUERY COUNT: 0 in the node detail. Its backing PDT, `pdt_attribution_full_funnel`, is the purple zombie diamond in the full graph above, rebuilding at ~$45,000/month (estimated fixture data) to serve it.*
 
-![Dead Code Register showing 6 dead explores with dual structural and usage evidence](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
+![PDT Cost Ledger — pdt_attribution_full_funnel flagged ⚠ ZOMBIE at $45,000/mo and pdt_customer_value_score at $18,750/mo, each citing its dead consumer explore, above the Cleanup Roadmap's KILL PDT actions](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
 
-*Dead Code Register — each item carries two evidence tags: structural (exists in resolved IR) and usage (zero queries in L1 facts). Both must be present before anything is flagged.*
+*PDT Cost Ledger — both zombie PDTs flagged ⚠ with their monthly cost and the dead explores that consume them, above the Cleanup Roadmap's KILL actions. Every verdict carries evidence links; the Dead Code Register panel (visible at top) applies the same dual-evidence rule — structural and usage tags both required before anything is flagged.*
 
 <details>
 <summary>How it works — L0 → L1 → L2 pipeline</summary>
@@ -341,7 +350,7 @@ LookML repo (read-only clone)
         │
         ├── JSON artifacts   catalog / dead code / PDT ledger / drift / impact
         ├── HTML dashboard   strata dashboard
-        ├── MCP server       18 read-only tools, stdio, any MCP client
+        ├── MCP server       18 tools (17 read-only + 1 sandboxed render), stdio, any MCP client
         └── CLI              strata check / outputs / build / validate
 ```
 
@@ -376,8 +385,10 @@ dependencies that are hard to traverse programmatically. LookML's structure is w
 
 ### The MCP Layer
 
-18 read-only tools over stdio. Works with any MCP client. All tools run against the local IR cache —
-no live Looker connection required. For live usage enrichment, see [Looker OAuth](#looker-oauth-and-token-management) below.
+18 tools over stdio — 17 read-only, plus `strata_render_chart`, which writes only to
+`~/.strata/output` or `/tmp` (sandboxed, never your LookML repo). Works with any MCP client.
+All tools run against the local IR cache — no live Looker connection required. For live usage
+enrichment, see [Looker OAuth](#looker-oauth-and-token-management) below.
 
 ```
 Agent calls: strata_dead_code_register
@@ -427,8 +438,8 @@ paragraphs of explanation. Skills are lazy-loaded: `strata_skill("name")` pulls 
 demand; the rest cost nothing. L2 synthesis does use tokens, but against clean structured
 context. Composite tools keep round-trips low: `strata_navigate` returns a full ticket brief
 (views, explores, fields, `file:line` citations) in **one call** instead of an agent hand-
-orchestrating four primitives across ~30 round-trips — an ~82% smaller structured payload on an
-enterprise (39-file, 19-model, 34-explore) anchor, and far fewer context-carrying round-trips.
+orchestrating several separate lookup primitives — a single structured payload in place of
+stitching those calls together, and far fewer context-carrying round-trips.
 
 For long-running investigations, Conductor's slice-based handoffs let an agent resume from a
 single targeted file load (index + handoff-log) rather than re-deriving state from scratch —
@@ -436,7 +447,8 @@ keeping per-session context lean without measuring token counts explicitly.
 
 ### Looker OAuth and Token Management
 
-All 18 tools work fully offline against the local IR cache. Live Looker enrichment is opt-in:
+All 18 tools (17 read-only, 1 sandboxed chart renderer) work fully offline against the local
+IR cache. Live Looker enrichment is opt-in:
 
 ```bash
 strata auth login --looker-url https://your-instance.looker.com
@@ -452,7 +464,7 @@ For enterprise: ADC, OIDC for GitHub Actions, and Google Workspace IAM path in
 
 ### Skills — Structured Investigation Procedures
 
-14 domain skills bundled with the package. Zero tokens until an agent calls `strata_skill("name")`.
+15 domain skills bundled with the package. Zero tokens until an agent calls `strata_skill("name")`.
 Each skill defines trigger conditions, allowed tools, a step-by-step procedure, stop conditions,
 output format, and escalation scripts. `lookml_ticket_navigator` is the day-to-day ticket entry
 point: give it a BQ table, field, view, explore, or `.lkml` file and it returns the source-cited

@@ -59,7 +59,7 @@ def _cleanup_roadmap(l1: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     for record in l1.get("pdt_ledger", []):
-        if record.get("status") == "unused" and record.get("estimated_cost_usd", 0) > 0:
+        if record.get("status") in ("unused", "zombie") and record.get("estimated_cost_usd", 0) > 0:
             items.append(
                 {
                     "action": "review_unused_pdt_cost",

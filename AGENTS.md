@@ -1,8 +1,9 @@
 # Strata Agent Rules
 
 Strata is a deterministic, governed framework for mapping, auditing, and protecting
-a LookML monorepo. **Read-only always.** Never writes to prod, the LookML repo, or
-any live instance.
+a LookML monorepo. **Read-only always, as part of core analysis.** Never writes to prod,
+the LookML repo (`.lkml` content), or any live instance — `strata bootstrap`'s scaffolding
+write (`conductor/`, `.mcp.json`, config) is the sole carve-out.
 
 ## Collaboration Model
 

@@ -25,5 +25,4 @@
 
 | Doc | Description |
 |---|---|
-| [Security Hardening](./security-hardening.md) | Read-only enforcement, credential handling, MCP security model |
-| [Security Review](./security-hardening.md) | Full audit findings (3 HIGH, 6 MED) and resolutions |
+| [Security Hardening](./security-hardening.md) | The read-only-contract policy page — what Strata never does, credential handling, MCP security model |

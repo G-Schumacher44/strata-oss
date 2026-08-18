@@ -34,8 +34,10 @@ def enrich_graph(
         "content_references": [item.to_dict() for item in (content_references or [])],
         "pdt_builds": {item.view: item.to_dict() for item in builds},
     }
-    l1["dead_code"] = [item.to_dict() for item in _dead_code(graph, usage, content_references)]
-    l1["pdt_ledger"] = [item.to_dict() for item in _pdt_ledger(graph, builds)]
+    dead_code_records = _dead_code(graph, usage, content_references)
+    l1["dead_code"] = [item.to_dict() for item in dead_code_records]
+    dead_explore_keys = {item.name for item in dead_code_records if item.kind == "explore"}
+    l1["pdt_ledger"] = [item.to_dict() for item in _pdt_ledger(graph, builds, dead_explore_keys)]
     graph.metadata["l1"] = l1
     return graph
 
@@ -125,7 +127,9 @@ def _dead_code(
     return records
 
 
-def _pdt_ledger(graph: IRGraph, builds: list[PDTBuild]) -> list[PDTLedgerRecord]:
+def _pdt_ledger(
+    graph: IRGraph, builds: list[PDTBuild], dead_explore_keys: set[str]
+) -> list[PDTLedgerRecord]:
     builds_by_view = {item.view: item for item in builds}
     records: list[PDTLedgerRecord] = []
     for pdt in graph.nodes_by_kind("pdt"):
@@ -145,6 +149,20 @@ def _pdt_ledger(graph: IRGraph, builds: list[PDTBuild]) -> list[PDTLedgerRecord]
                 )
             )
             continue
+        evidence_ids = [pdt.id, f"pdt_build:{pdt.name}"]
+        if not used_by:
+            status = "unused"
+        elif all(exp in dead_explore_keys for exp in used_by):
+            # Zombie: real build facts, real consumers, but every consuming explore is
+            # itself dead — the PDT keeps rebuilding on schedule to serve nobody.
+            # The verdict rests on those explores' dead-code register entries, so cite
+            # them (same `dead:explore:` convention the dead-views records use) — a
+            # zombie whose evidence trail omits WHY its consumers are dead would be
+            # an un-auditable verdict in a tool whose whole contract is dual evidence.
+            status = "zombie"
+            evidence_ids += [f"dead:explore:{exp}" for exp in used_by]
+        else:
+            status = "used"
         records.append(
             PDTLedgerRecord(
                 view=pdt.name,
@@ -153,8 +171,8 @@ def _pdt_ledger(graph: IRGraph, builds: list[PDTBuild]) -> list[PDTLedgerRecord]
                 bytes_processed=build.bytes_processed,
                 estimated_cost_usd=build.estimated_cost_usd,
                 used_by_explores=used_by,
-                status="used" if used_by else "unused",
-                evidence_ids=[pdt.id, f"pdt_build:{pdt.name}"],
+                status=status,
+                evidence_ids=evidence_ids,
             )
         )
     return records

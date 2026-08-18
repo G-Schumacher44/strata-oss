@@ -31,7 +31,7 @@ First slices go here. Add master-plan docs as phases span multiple slices.
 
 ## Active Slice
 
-Active slice: conductor/slice-04-pypi-packaging.md (status: review — PR #18)
+Active slice: conductor/slice-05-audit-remediation.md (status: review)
 
 ## Phase Status
 

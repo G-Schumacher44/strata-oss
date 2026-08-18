@@ -235,7 +235,9 @@ Previously: `clv_base`, `enriched`, `scored` from `pdt_customer_value_score` wer
 
 ## Agentic Haiku Test — Schema Refresh Dry-Run
 
-Haiku given: working dir, task description, pointer to `skills/strata_schema_refresh.md`. Instructed to run dry-run only and stop.
+One-off manual benchmark (2026-06-06), not a pinned/repeatable harness — token counts and
+wall time will vary run to run. Haiku given: working dir, task description, pointer to
+`skills/strata_schema_refresh.md`. Instructed to run dry-run only and stop.
 
 | Playground | Tokens | Tool Calls | Wall Time | Result |
 |---|---|---|---|---|
@@ -250,7 +252,10 @@ When scoped to dry-run only, Haiku stays at ~13K tokens per run — on par with 
 
 ## Agentic Haiku Test
 
-Haiku (`claude-haiku-4-5`) was given only: working directory, task description, and a pointer to the runbook. No step-by-step instructions embedded in the prompt.
+One-off manual benchmark (2026-06-06), not a pinned/repeatable harness — token counts and
+wall time will vary run to run. Haiku (`claude-haiku-4-5`) was given only: working directory,
+task description, and a pointer to the runbook. No step-by-step instructions embedded in the
+prompt.
 
 | Playground | Tokens | Tool Calls | Wall Time | Result |
 |---|---|---|---|---|
@@ -299,7 +304,6 @@ If runbook read is skipped (pure CI mode), ~12K tokens per playground is achieva
 
 | Gap | Status | Mitigation |
 |---|---|---|
-| CTE false positives in schema drift | documented | SQL AST parsing needed; 3 FPs clearly labeled `missing_table` not `missing_column` |
 | Live Looker smoke | external gate pending | OAuth client registration + test instance URL required |
 | `pdt_retention_signals` — unused flag vs. dead flag | correct behavior | PDT is defined but view has no explore backer; surfaces as unused PDT + dead view independently |
 | thelook has no schema fixture | by design | thelook is a structural-only playground; L1 schema drift not exercised there |

@@ -26,8 +26,7 @@ SKILLS_DIR = REPO_ROOT / "src" / "strata" / "skills"
 
 FIXTURES = Path(__file__).parent / "fixtures"
 # Use a committed fixture, not the live repo conductor/, so the test is
-# deterministic and survives public sanitization (handoff-log.md is stripped
-# from the public mirror by .publicignore).
+# deterministic and doesn't depend on in-flight slice/handoff state.
 CONDUCTOR_DIR = FIXTURES / "conductor"
 
 
