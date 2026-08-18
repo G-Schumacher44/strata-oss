@@ -70,7 +70,10 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             shape = "ellipse"
             size = max(40, min(80, 40 + qcount // 20))
         elif node.kind == "pdt":
-            color = "#f39c12" if pdt_status.get(node.name) == "unused" else "#e67e22"
+            pdt_st = pdt_status.get(node.name)
+            color = (
+                "#9b59b6" if pdt_st == "zombie" else "#f39c12" if pdt_st == "unused" else "#e67e22"
+            )
             shape = "diamond"
             size = 36
         elif node.kind == "view":
@@ -230,6 +233,7 @@ tr.dead-row td { background: rgba(231,76,60,.04); }
 .pdt-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .chart-wrap { position: relative; height: 160px; }
 .kill-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(231,76,60,.2); color: var(--red); }
+.zombie-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(155,89,182,.2); color: var(--purple); }
 
 /* Roadmap */
 .roadmap-list { list-style: none; }
@@ -295,6 +299,7 @@ tr.dead-row td { background: rgba(231,76,60,.04); }
       <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Dead explore</div>
       <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> View</div>
       <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> PDT (unused)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> PDT (zombie)</div>
       <div class="legend-item"><div class="legend-dot" style="background:#95a5a6"></div> Orphaned view</div>
       <div class="legend-item"><div class="legend-rect" style="background:#2c3e50"></div> Physical table</div>
     </div>
@@ -383,13 +388,13 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
   const dead = (DEAD_CODE || []).length;
   const active = (s.explore_count || 0) - dead;
   const pdt_total = (PDT_LEDGER || []).reduce((a,r) => a + (r.estimated_cost_usd||0), 0);
-  const pdt_unused = (PDT_LEDGER || []).filter(r => r.status === 'unused').reduce((a,r) => a + (r.estimated_cost_usd||0), 0);
+  const pdt_unused = (PDT_LEDGER || []).filter(r => r.status === 'unused' || r.status === 'zombie').reduce((a,r) => a + (r.estimated_cost_usd||0), 0);
 
   const cards = [
     { label: 'Active Explores', value: active, sub: `${dead} dead`, cls: dead > 0 ? '' : 'ok' },
     { label: 'Dead Artifacts', value: dead, sub: 'views + explores', cls: dead > 0 ? 'warn' : 'ok' },
     { label: 'Total Queries', value: (s.total_queries||0).toLocaleString(), sub: s.period ? `last ${s.period.days} days` : 'period unknown', cls: 'info' },
-    { label: s.period ? `PDT Cost / ${s.period.days}d` : 'PDT Cost / mo', value: fmt_usd(pdt_total), sub: pdt_unused > 0 ? fmt_usd(pdt_unused) + ' unused' : 'all in use', cls: pdt_unused > 0 ? 'caution' : '' },
+    { label: s.period ? `PDT Cost / ${s.period.days}d` : 'PDT Cost / mo', value: fmt_usd(pdt_total), sub: pdt_unused > 0 ? fmt_usd(pdt_unused) + ' at risk' : 'all in use', cls: pdt_unused > 0 ? 'caution' : '' },
     { label: 'Schema Drift', value: (SCHEMA_DRIFT||[]).length, sub: 'missing tables / columns', cls: (SCHEMA_DRIFT||[]).length > 0 ? 'warn' : 'ok' },
   ];
   const row = document.getElementById('kpi-row');
@@ -447,13 +452,17 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
   pdts.forEach(r => {
     const tr = el('tr');
     const isUnused = r.status === 'unused';
-    const statusCell = isUnused
+    const isZombie = r.status === 'zombie';
+    const statusCell = isZombie
+      ? `<span class="zombie-badge">⚠ ZOMBIE — ${fmt_usd(r.estimated_cost_usd)}/mo</span>`
+      : isUnused
       ? `<span class="kill-badge">⚠ KILL — ${fmt_usd(r.estimated_cost_usd)}/mo</span>`
       : `<span class="badge badge-green">In Use</span>`;
+    const costColor = isZombie ? 'var(--purple)' : isUnused ? 'var(--red)' : 'var(--text)';
     const explores = (r.used_by_explores||[]).map(e => `<div class="file-tag">${e}</div>`).join('');
     tr.innerHTML = `
       <td style="font-family:monospace;font-weight:600">${r.view}</td>
-      <td style="font-weight:600;color:${isUnused ? 'var(--red)' : 'var(--text)'}">${fmt_usd(r.estimated_cost_usd)}</td>
+      <td style="font-weight:600;color:${costColor}">${fmt_usd(r.estimated_cost_usd)}</td>
       <td>${r.build_count}</td>
       <td>${fmt_bytes(r.bytes_processed)}</td>
       <td>${statusCell}</td>
@@ -476,7 +485,7 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
         datasets: [{
           label: 'Cost / mo (USD)',
           data: pdts.map(r => r.estimated_cost_usd),
-          backgroundColor: pdts.map(r => r.status === 'unused' ? 'rgba(231,76,60,0.7)' : 'rgba(46,204,113,0.7)'),
+          backgroundColor: pdts.map(r => r.status === 'zombie' ? 'rgba(155,89,182,0.7)' : r.status === 'unused' ? 'rgba(231,76,60,0.7)' : 'rgba(46,204,113,0.7)'),
           borderRadius: 4,
         }]
       },

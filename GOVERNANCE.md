@@ -82,8 +82,10 @@ These are hard boundaries. Never cross them.
 
 ## Design Rules
 
-- **Read-only, always.** Strata never writes to prod, the LookML repo, or any live
-  instance. This is enforced by governance, not by convention.
+- **Read-only, always — as part of core analysis.** Strata never writes to prod, the
+  LookML repo, or any live instance during analysis. `strata bootstrap` is the sole
+  carve-out: it writes scaffolding (`conductor/`, `.mcp.json`, local config) into the
+  target repo, never `.lkml` content. Enforced by governance, not by convention.
 - **Deterministic core.** L0 and L1 must be reproducible given the same inputs.
   No randomness, no model calls, no non-deterministic external state.
 - **Generic engine / private config separation.** Zero org fingerprints in the public

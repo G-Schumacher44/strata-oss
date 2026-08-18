@@ -3,8 +3,10 @@
 ## Read-Only Contract
 
 Strata never writes to the LookML repo, Looker instance, BigQuery, Slack, or Jira
-as part of core analysis. Notification delivery is payload-first and opt-in;
-the default gate is `--dry-run`.
+as part of core analysis. Notification delivery stops at payload generation:
+`scripts/notify.py` builds Slack/Jira payloads and requires `--dry-run` to print them —
+sending is not implemented and the script exits non-zero without that flag. See
+[Notifications Setup](./notifications-setup.md) for wiring actual delivery yourself.
 
 ## Credential Matrix
 

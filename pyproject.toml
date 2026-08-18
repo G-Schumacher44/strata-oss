@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "strata-lookml"
-version = "0.1.6"
+version = "0.1.7"
 requires-python = ">=3.11"
 description = "Agentic BI toolkit for Looker and BigQuery — MCP server, LookML governance analysis, and BI engineering skills"
 license = {text = "Apache-2.0"}

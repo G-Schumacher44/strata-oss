@@ -81,6 +81,9 @@ def strata_usage_summary(graph: IRGraph) -> dict[str, Any]:
         "unused_pdt_count": sum(
             1 for item in l1.get("pdt_ledger", []) if item.get("status") == "unused"
         ),
+        "zombie_pdt_count": sum(
+            1 for item in l1.get("pdt_ledger", []) if item.get("status") == "zombie"
+        ),
         "schema_drift_count": len(l1.get("schema_drift", [])),
     }
 

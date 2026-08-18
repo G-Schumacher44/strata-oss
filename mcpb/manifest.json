@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "strata",
   "display_name": "Strata",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Read-only LookML governance toolkit for Looker and BigQuery — MCP server with 18 analysis tools over a resolved LookML dependency graph.",
   "author": {
     "name": "Garrett Schumacher",

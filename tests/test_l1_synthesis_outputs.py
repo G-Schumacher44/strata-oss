@@ -10,6 +10,7 @@ from strata.l1.fixtures import load_usage_facts
 from strata.l1.types import ExploreUsage
 from strata.mcp.tools import strata_impact
 from strata.outputs import build_artifacts, write_artifacts
+from strata.outputs.dashboard import build_dashboard_html
 from strata.pipeline import build_graph
 from strata.synthesis.slices import build_explore_slice
 from strata.synthesis.verdicts import SynthesisVerdict, deterministic_verdict, validate_verdict
@@ -150,6 +151,41 @@ def test_zombie_view_detection_enterprise_mono():
         if item["kind"] == "view" and "all referencing explores" in item["usage_reason"]:
             # Zombie view must have had at least one explore reference
             assert any("dead:explore:" in eid for eid in item["evidence_ids"])
+
+
+def test_zombie_pdt_detection_enterprise_mono():
+    """A PDT with real build facts backing only dead explores is 'zombie', not 'used'."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    ledger_by_view = {r["view"]: r for r in graph.metadata["l1"]["pdt_ledger"]}
+
+    for view in ("pdt_attribution_full_funnel", "pdt_customer_value_score"):
+        record = ledger_by_view[view]
+        assert record["status"] == "zombie", f"{view} should be zombie, got {record['status']}"
+        assert record["build_count"] > 0
+        assert record["used_by_explores"], "zombie PDTs must still have consumers"
+
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+    assert "zombie-badge" in html
+    assert '"status": "zombie"' in html
+
+    # Negative control: a PDT with a live consumer must not be flagged zombie.
+    live_record = ledger_by_view["pdt_regional_kpi"]
+    assert live_record["status"] == "used"
+
+
+def test_pdt_ledger_unused_status_unaffected_by_zombie_detection():
+    """A PDT with zero consumers stays 'unused' — distinct from 'zombie' (dead consumers)."""
+    GCS = ROOT / "tests" / "lookml" / "gcs_analytics"
+    USAGE = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "gcs_schema_facts.json"
+    graph = build_graph(GCS, USAGE, SCHEMA)
+    ledger_by_view = {r["view"]: r for r in graph.metadata["l1"]["pdt_ledger"]}
+    assert ledger_by_view["pdt_retention_signals"]["status"] == "unused"
+    assert ledger_by_view["pdt_retention_signals"]["used_by_explores"] == []
 
 
 def test_strata_gate_script_and_output_cli(tmp_path):

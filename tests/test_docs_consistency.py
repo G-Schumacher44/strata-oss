@@ -35,6 +35,19 @@ def test_readme_lists_all_bundled_skills():
     assert missing == []
 
 
+def test_readme_domain_skills_count_matches_filesystem():
+    readme_text = README.read_text(encoding="utf-8")
+    skill_count = len({path.parent.name for path in SKILLS_DIR.rglob("SKILL.md")})
+
+    mentions = re.findall(r"(\d+)\s+domain skills", readme_text)
+    assert mentions, "expected at least one 'N domain skills' phrase in README"
+    stale = [n for n in mentions if int(n) != skill_count]
+    assert stale == [], (
+        f"README says {stale} domain skills but the filesystem has {skill_count} "
+        f"(src/strata/skills/**/SKILL.md)"
+    )
+
+
 def test_readme_cli_table_matches_top_level_commands():
     readme_text = README.read_text(encoding="utf-8")
     cli_section = readme_text.split("## CLI", 1)[1].split("\n---", 1)[0]
