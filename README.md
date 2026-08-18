@@ -313,15 +313,15 @@ strata dashboard \
 
 ![Strata dashboard overview — enterprise_mono playground: 23 active explores (11 dead), 11 dead artifacts, 14,242 queries, $63,755.94 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph with zombie PDT diamonds in purple](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
 
-*enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, gray = physical table.*
+*enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, **purple = zombie PDT**, gray = physical table.*
 
 ![Dependency graph zoomed on dead_finance_v2 — rendered dead-red with a DEPRECATE badge and QUERY COUNT: 0 in the node detail panel](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/graph-dead-explore.png)
 
-*`dead_finance_v2` selected. The orange diamond is `pdt_attribution_full_funnel` — a zombie PDT rebuilding at ~$45,000/month (estimated) to serve this explore. Both flagged for removal.*
+*`dead_finance_v2` selected — rendered dead-red with a **deprecate** verdict and QUERY COUNT: 0 in the node detail. Its backing PDT, `pdt_attribution_full_funnel`, is the purple zombie diamond in the full graph above, rebuilding at ~$45,000/month (estimated fixture data) to serve it.*
 
 ![PDT Cost Ledger — pdt_attribution_full_funnel flagged ⚠ ZOMBIE at $45,000/mo and pdt_customer_value_score at $18,750/mo, each citing its dead consumer explore, above the Cleanup Roadmap's KILL PDT actions](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
 
-*Dead Code Register — each item carries two evidence tags: structural (exists in resolved IR) and usage (zero queries in L1 facts). Both must be present before anything is flagged.*
+*PDT Cost Ledger — both zombie PDTs flagged ⚠ with their monthly cost and the dead explores that consume them, above the Cleanup Roadmap's KILL actions. Every verdict carries evidence links; the Dead Code Register panel (visible at top) applies the same dual-evidence rule — structural and usage tags both required before anything is flagged.*
 
 <details>
 <summary>How it works — L0 → L1 → L2 pipeline</summary>
