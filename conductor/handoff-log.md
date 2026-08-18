@@ -6,10 +6,12 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 Commit: 1740642 (pre-merge branch anchor; squash-merge repo — post-squash resolve via
   `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid`)
-Anchor check (machine-verifiable): `git merge-base --is-ancestor 1740642 HEAD` must hold,
-  and every commit after the anchor is docs-only (`git log 1740642..HEAD --name-only` touches
-  conductor/ only) — the anchor names the IMPLEMENTATION commit; the tip is anchor+N docs
-  commits by convention, since a commit cannot know its own hash.
+Anchor semantics (squash-aware — this repo squash-merges, so branch SHAs never survive
+  the merge): PRE-merge, 1740642 is the implementation commit on the PR branch. POST-squash,
+  resolve the landed anchor deterministically via
+  `gh pr view 22 --json mergeCommit -q .mergeCommit.oid` and use THAT for any HEAD check —
+  no branch-SHA ancestry check is valid after a squash by construction. Canonical convention
+  decision tracked in the repo issue "handoff anchors vs squash-merge".
 Conductor Mode: slice (governing spec: conductor/slice-06-mcp-2x-migration.md)
 Context Budget: low
 Context Loaded: AGENTS.md, conductor/CONDUCTOR_MODES.md, conductor/index.md, handoff-log latest block, src/strata/mcp/server.py, tests/test_mcp_server.py.
