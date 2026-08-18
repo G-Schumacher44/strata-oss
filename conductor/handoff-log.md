@@ -4,10 +4,12 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-17 — fix/audit-remediation-0.1.7
 
-Commit: e8152aa
-Conductor Mode: slice
+Commit: e8152aa (pre-merge branch anchor — this repo squash-merges, so branch SHAs do not
+  survive the merge; post-squash resolve the landed anchor via
+  `gh pr view 21 --json mergeCommit -q .mergeCommit.oid` and use THAT for any HEAD check)
+Conductor Mode: full (escalated per CONDUCTOR_MODES.md triggers: root governance docs edited; cross-layer L1→MCP→outputs)
 Context Budget: medium
-Context Loaded: AGENTS.md, conductor/AGENTS.md, conductor/CONDUCTOR_MODES.md, conductor/index.md, conductor/slice-05-audit-remediation.md, handoff-log latest block (pre-replacement, the slice-04/PR#18 block, now archived).
+Context Loaded: AGENTS.md (full authority order), conductor/CONDUCTOR_MODES.md, conductor/index.md, conductor/README.md, conductor/slice-05-audit-remediation.md, handoff-log latest block, docs/ files under edit, code seams (l1/enrich.py, mcp/server.py, outputs/dashboard.py). intent.md: not present in this repo's public tree (mirror-era exclusion) — noted rather than silently skipped.
 Context Skipped: handoff-archive.md older entries.
 Stage/DUOS: not used; not required.
 Ledger: not applicable.

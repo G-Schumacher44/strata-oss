@@ -6,11 +6,20 @@ Phase: post-publish hardening
 Depends: slice-04-pypi-packaging.md
 
 ```yaml
-conductor_mode: slice
+conductor_mode: full
 context_budget: medium
 handoff_required: true
 stable_tag_required: false
 ```
+
+**Mode escalation (Codex P1, PR #21):** declared `full`, not `slice` — this change
+crosses layer boundaries (L1 enrichment → MCP surface → output consumers) AND edits
+root governance docs (`GOVERNANCE.md`, `AGENTS.md`), which are two of
+`CONDUCTOR_MODES.md`'s explicit Full-Conductor escalation triggers. Layer-ownership
+decisions recorded here: the zombie status is OWNED by L1 (`enrich.py`'s ledger,
+reusing the dead-code register as the single deadness source); the dashboard and MCP
+usage summary are CONSUMERS of that status, never re-derivers; governance-doc edits
+narrow prose claims only, no policy change.
 
 ## Objective
 
