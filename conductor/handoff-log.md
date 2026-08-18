@@ -6,7 +6,11 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 Commit: 1740642 (pre-merge branch anchor; squash-merge repo — post-squash resolve via
   `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid`)
-Conductor Mode: slice
+Anchor check (machine-verifiable): `git merge-base --is-ancestor 1740642 HEAD` must hold,
+  and every commit after the anchor is docs-only (`git log 1740642..HEAD --name-only` touches
+  conductor/ only) — the anchor names the IMPLEMENTATION commit; the tip is anchor+N docs
+  commits by convention, since a commit cannot know its own hash.
+Conductor Mode: slice (governing spec: conductor/slice-06-mcp-2x-migration.md)
 Context Budget: low
 Context Loaded: AGENTS.md, conductor/CONDUCTOR_MODES.md, conductor/index.md, handoff-log latest block, src/strata/mcp/server.py, tests/test_mcp_server.py.
 Context Skipped: handoff-archive.md, docs/ (untouched).

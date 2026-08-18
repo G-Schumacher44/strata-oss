@@ -31,7 +31,7 @@ First slices go here. Add master-plan docs as phases span multiple slices.
 
 ## Active Slice
 
-Active slice: conductor/slice-05-audit-remediation.md (status: review)
+Active slice: conductor/slice-06-mcp-2x-migration.md (status: review — PR #22)
 
 ## Phase Status
 
