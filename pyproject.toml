@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "strata-lookml"
-version = "0.1.7"
+version = "0.1.8"
 requires-python = ">=3.11"
 description = "Agentic BI toolkit for Looker and BigQuery — MCP server, LookML governance analysis, and BI engineering skills"
 license = {text = "Apache-2.0"}
@@ -21,11 +21,11 @@ classifiers = [
 authors = [{name = "Garrett Schumacher", email = "me@garrettschumacher.com"}]
 dependencies = [
   "networkx>=3.0",
-  # Upper-bounded: mcp 2.0 removed/moved `mcp.server.fastmcp`, which src/strata/mcp/server.py
-  # imports — an unbounded pin made every fresh `pip install strata-lookml` pull an SDK the
-  # server cannot import (caught in the fresh-venv install check on PR #18; strata-mcp was
-  # dead-on-arrival while strata/strata-chart worked). Lift only with the 2.x migration.
-  "mcp>=1.0,<2",
+  # 2.x migration landed (server.py uses mcp.server.mcpserver.MCPServer). Upper bound stays
+  # as policy: a major-version resolver surprise is exactly what broke fresh installs once
+  # (PR #18's dead-on-arrival strata-mcp under an unbounded pin) — lift <3 only with a 3.x
+  # migration, never by widening.
+  "mcp>=2,<3",
   "click>=8.0",
   "pyyaml>=6.0",
   "anyio>=4.0",

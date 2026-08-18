@@ -1,8 +1,8 @@
 [project]
 name = "strata-mcpb-shim"
-version = "0.1.7"
+version = "0.1.8"
 description = "MCP Bundle launcher for Strata — resolves the published strata-lookml package via uv."
 requires-python = ">=3.11"
 dependencies = [
-  "strata-lookml==0.1.7",
+  "strata-lookml==0.1.8",
 ]

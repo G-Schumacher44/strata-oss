@@ -2,151 +2,41 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## 2026-08-17 — fix/audit-remediation-0.1.7
+## 2026-08-17 — feat/mcp-2x-migration
 
-Commit: e8152aa (pre-merge branch anchor — this repo squash-merges, so branch SHAs do not
-  survive the merge; post-squash resolve the landed anchor via
-  `gh pr view 21 --json mergeCommit -q .mergeCommit.oid` and use THAT for any HEAD check)
-Conductor Mode: full (escalated per CONDUCTOR_MODES.md triggers: root governance docs edited; cross-layer L1→MCP→outputs)
-Context Budget: medium
-Context Loaded: AGENTS.md (full authority order), conductor/CONDUCTOR_MODES.md, conductor/index.md, conductor/README.md, conductor/slice-05-audit-remediation.md, handoff-log latest block, docs/ files under edit, code seams (l1/enrich.py, mcp/server.py, outputs/dashboard.py). intent.md: not present in this repo's public tree (mirror-era exclusion) — noted rather than silently skipped.
-Context Skipped: handoff-archive.md older entries.
+Commit: (pre-merge branch anchor — squash-merge repo; post-squash resolve via
+  `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid`; hash filled one-behind below)
+Conductor Mode: slice
+Context Budget: low
+Context Loaded: AGENTS.md, conductor/CONDUCTOR_MODES.md, conductor/index.md, handoff-log latest block, src/strata/mcp/server.py, tests/test_mcp_server.py.
+Context Skipped: handoff-archive.md, docs/ (untouched).
 Stage/DUOS: not used; not required.
 Ledger: not applicable.
-Tag Posture: no stable tag required; no tag pushed this slice (0.1.7 version bump only, prep for a future tag).
+Tag Posture: v0.1.8 tag is the post-merge publish trigger (operator/Koa on instruction).
 
-**Governing spec:** `conductor/slice-05-audit-remediation.md` (authored this session at the
-operator's direct order — a claim-by-claim docs-vs-code audit of the just-published package
-found 12 non-confirmed findings + 2 filed issues, all ordered fixed in one PR).
+**What changed:** migrated off the removed 1.x `mcp.server.fastmcp` API to mcp 2.x
+(`mcp.server.mcpserver.MCPServer`), closing the follow-up named in the 0.1.7 handoff.
 
-**What changed:** See commit e8152aa's message for the full breakdown. Summary:
+- `src/strata/mcp/server.py`: `FastMCP("strata")` + the `_mcp_server.version` workaround →
+  `MCPServer("strata", version=_server_version())` — 2.x takes version as a first-class
+  kwarg, so the #20 workaround retires cleanly. `@server.tool()` and `run(transport="stdio")`
+  are API-compatible; no tool code changed.
+- `pyproject.toml`: `mcp>=2,<3`. The upper bound STAYS as policy — an unbounded pin is what
+  shipped a dead-on-arrival strata-mcp once (PR #18); lift `<3` only with a 3.x migration.
+- `tests/test_mcp_server.py`: asserts the public `server.version` (2.x) instead of the 1.x
+  private `_mcp_server.version`.
+- Version triple-bumped 0.1.8 (pyproject, mcpb/manifest.json, mcpb shim pin) — tag guard
+  verified consistent at 0.1.8.
 
-- **The one real code fix (audit #22, README's flagship claim):** `l1/enrich.py`'s
-  `pdt_ledger` status now computes a genuine `zombie` value — a PDT with real build facts
-  and real consumers where every consumer is itself in the dead-code register. Previously
-  status was set from usage alone and never cross-referenced deadness, so both
-  `enterprise_mono` demo zombies (`pdt_attribution_full_funnel`, `pdt_customer_value_score`)
-  rendered green "In Use" on the dashboard despite being the exact scenario the README
-  advertises. Reuses the existing dead-code register (single source of truth) — does not
-  re-derive deadness a second way. Wired through `outputs/dashboard.py` (distinct purple
-  zombie badge/color/legend, not the same visual as plain `unused`), `outputs/artifacts.py`
-  (cleanup roadmap now flags zombie cost too), and `mcp/tools.py` (additive
-  `zombie_pdt_count` in `strata_usage_summary`, `unused_pdt_count`'s existing meaning left
-  intact for backward compat).
-- **serverInfo version (Closes #20):** `mcp/server.py` resolved the `mcp` SDK's version
-  (1.29.0) in the initialize handshake because FastMCP 1.29's constructor has no `version`
-  kwarg (verified by reading the installed SDK source, not guessed) — the low-level
-  `Server.version` defaults to `None` and falls back to `importlib.metadata.version("mcp")`.
-  Fix sets `server._mcp_server.version` post-construction from
-  `importlib.metadata.version("strata-lookml")`, with a `PackageNotFoundError` fallback for
-  editable/dev checkouts without an installed distribution record.
-- **11 docs-truthfulness corrections** (README, docs/README.md, docs/security-hardening.md,
-  docs/testing-findings.md, GOVERNANCE.md, AGENTS.md) — each verified against current repo
-  state before editing, not just patched on the audit's say-so:
-  - Fixture $ figures ($45,000/$18,750/~$765,000/yr) footnoted as hand-authored
-    illustrative values, not products of the $5/TB formula shown beside them (verified: the
-    formula applied to the fixture's own `bytes_processed` doesn't reproduce those numbers).
-  - "14 domain skills" → 15 (filesystem-verified), **plus** a new generic
-    `test_readme_domain_skills_count_matches_filesystem` in `test_docs_consistency.py` that
-    regex-matches any `"N domain skills"` phrase and asserts it against the live
-    `SKILLS_DIR` count — this class of drift is now machine-caught, not just this instance.
-  - `docs/README.md`'s dead "Security Review — 3 HIGH, 6 MED" row deleted (that content was
-    removed with the mirror era); Security Hardening row redescribed as what it is.
-  - Dashboard screenshot alt text "10 schema drift records" → 14 (current reproducible
-    count; matches the doc's own body text elsewhere).
-  - `docs/testing-findings.md` Known Gaps: deleted the stale duplicate CTE row marked
-    documented/unresolved — verified the fix is real at `resolver.py`'s `_sql_upstreams()`
-    (the `✅ fixed` row was already correct).
-  - "18 read-only tools" (4 spots) → truthful "18 tools — 17 read-only, 1 sandboxed"
-    framing; `strata_render_chart` writes only to `~/.strata/output`/`/tmp`, never the
-    LookML repo.
-  - `docs/security-hardening.md` notification phrasing aligned with
-    `docs/notifications-setup.md`'s honest "stops at payload generation" — verified
-    `scripts/notify.py` literally exits 2 without `--dry-run`, no delivery code path exists
-    at all (not just "gated").
-  - `GOVERNANCE.md` + `AGENTS.md` read-only claims qualified with the same "as part of core
-    analysis" carve-out `security-hardening.md` already used — verified `strata bootstrap`
-    legitimately writes scaffolding (`conductor/`, `.mcp.json`, config), never `.lkml`.
-  - "No false positives before you deprecate" softened to "designed to eliminate" +
-    pointer to the FP classes `testing-findings.md` documents as fixed.
-  - The unbacked "~82% smaller / ~30 round-trips" figure reworded to a qualitative claim
-    (no benchmark script existed to back the precision; chose reword over fabricating one).
-  - Haiku benchmark sections in `testing-findings.md` labeled one-off/manual/non-reproducible
-    (date 2026-06-06, matching the doc's own stated verification date) instead of implying
-    a pinned harness.
-- **Mirror residue removed (Closes #19):** `.publicignore`, `scripts/check_public_release.py`,
-  its test, and the `scripts/README.md` row — inert since PR #18 deleted the `sync-to-oss`
-  workflow job that was their only consumer. Also cleaned two dangling comment references to
-  `.publicignore` in `tests/test_mcp_tools.py` and `tests/fixtures/conductor/index.md` (same
-  mirror-era rationale, now stale regardless of the file's existence).
-- **Version bump to 0.1.7:** `pyproject.toml`, `mcpb/manifest.json`, `mcpb/pyproject.toml`
-  shim pin, all together. Ran `release.yml`'s "Verify tag matches all version fields" Python
-  block locally, verbatim: passes against tag `0.1.7`, refuses (exit 1, all three mismatches
-  reported) against a wrong tag `0.1.8` — both directions proven, no tag pushed.
-
-**What was verified:**
-- Full suite: **106 → 107 passed** (removed 4 mirror-era tests with the D deletions; added
-  5: `test_zombie_pdt_detection_enterprise_mono`, negative control
-  `test_pdt_ledger_unused_status_unaffected_by_zombie_detection`, two in new
-  `tests/test_mcp_server.py` for the serverInfo fix, one docs-consistency domain-skills-count
-  test). Ran with `.venv/bin/pytest` against a fresh `uv venv` + `pip install -e ".[dev]"` —
-  no prior `.venv` existed in this checkout.
-- `ruff check src/ tests/ scripts/`: clean. `ruff format --check`: 173 files already
-  formatted, clean.
-- `mypy src/strata --ignore-missing-imports`: clean, 87 source files.
-- `release.yml` re-parses as valid YAML after the historical-comment area was left untouched.
-- Manually confirmed both `enterprise_mono` zombie PDTs report `status: "zombie"` via a
-  direct `build_graph` + `build_dashboard_html` run, and that the rendered HTML contains
-  both the `zombie-badge` CSS class and the `"status": "zombie"` JSON payload — not just
-  asserted via the test, independently eyeballed the actual artifact.
-- Confirmed `create_server(...)._mcp_server.version` reports the installed `strata-lookml`
-  version (0.1.6 in this dev checkout, will be 0.1.7 once released) and is provably
-  different from `importlib.metadata.version("mcp")` (1.29.0).
-
-**Judgment calls beyond the literal task list (disclosed, not hidden):**
-- Extended `outputs/artifacts.py`'s cleanup-roadmap condition from `status == "unused"` to
-  `status in ("unused", "zombie")` — the roadmap's whole purpose is surfacing PDT cost for
-  review, and leaving zombies out of it while fixing the ledger/dashboard would have been
-  the same undercount bug relocated one hop over. No test pinned the old narrower behavior.
-- Added `zombie_pdt_count` to `strata_usage_summary` as a new additive field rather than
-  redefining `unused_pdt_count`'s existing meaning — avoids a silent breaking change to an
-  already-published MCP tool contract for external consumers reading that field today.
-- Did not touch `src/strata/skills/governance/strata_workflow.md`'s "zombie = unused OR
-  dead-backed" framing (lines ~216-221) — it predates this fix, is now literally closer to
-  true than before, and wasn't in the audit's 12-item list; flagging here rather than
-  silently expanding scope.
-
-**Pre-gate ritual:** run via `koa review --branch` before push, per the dispatch's mandatory
-gate instructions — see PR body for the run's disposition (pass/findings-disclosed).
-
-**Codex round 2 (P2, addressed):** the zombie verdict's `evidence_ids` cited only the PDT
-node + build record while the verdict actually rests on every consumer's dead-code entry —
-an un-auditable verdict in a dual-evidence tool. `_pdt_ledger` now appends
-`dead:explore:<model.explore>` for each consumer on zombie records (same convention the
-dead-views records already use), and the regression test asserts the full trail per zombie
-plus a negative control (a `used` PDT must carry NO dead-explore evidence). Suite 107 passed.
-
-**Codex round 3 (P2, addressed the thorough way):** correcting the alt text to "14" while
-the PNG still visibly rendered "SCHEMA DRIFT 10" made the accessibility description lie about
-the image. Rather than revert the text, the three dashboard screenshots were REGENERATED from
-this branch's code (headless Chrome over CDP, enterprise_mono fixtures, original dimensions)
-— and doing so surfaced one more real bug: the dead-code register names explores
-MODEL-QUALIFIED while graph labels are bare, so `_build_graph_data`'s bare-name lookup missed
-every dead explore — they rendered green/KEEP with QUERY COUNT 0 visible. Fixed at the single
-source (qualified lookup in `_build_graph_data`; the tap handler now reads the node's own
-`dead` flag instead of re-deriving), pinned by `test_graph_marks_dead_explores_dead` with a
-live-explore negative control (verified: all 13 dead/zombie nodes flag). New screenshots show
-the truthful state — dead_finance_v2 red with DEPRECATE, both zombie PDTs purple-badged with
-their $-figures and dead consumers — and all three alt texts now describe exactly what the
-images render. Suite 108 passed.
+**What was verified (fresh venv on mcp 2.x, resolver picked 2.0.0):**
+- Full suite **108 passed**; ruff format+check clean.
+- Live stdio handshake: `serverInfo {'name':'strata','version':'0.1.8'}`.
+- Full MCP sequence (initialize → initialized → tools/list): **all 18 tools register**.
+- API grounded by introspecting the installed 2.0.0 SDK (module layout, MCPServer init
+  signature, tool/run signatures) — not from memory or docs.
 
 **Exact Next Steps:**
-1. Operator: review and merge this PR (Closes #19, closes #20).
-2. Operator (or Koa on instruction): once ready for a real release, push tag `v0.1.7` —
-   this is the first tag since 0.1.6's publish; watch `publish-pypi` + `.mcpb` attach.
-3. Post-merge: resolve this block's `Commit:` anchor to the squashed merge commit via
-   `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid` (this repo squash-merges,
-   branch SHAs don't survive) — update in the next docs-only commit, per convention.
-4. Optional follow-up (not blocking, noted above): decide whether
-   `strata_workflow.md`'s zombie-definition framing should be tightened now that the code
-   emits a real `zombie` status distinct from `unused`.
+1. Twin gate + Codex on the PR; operator/Koa merges on clean per standing order.
+2. Tag `v0.1.8` post-merge; watch the release run (publish + .mcpb).
+3. Post-publish: fresh-index smoke (install ==0.1.8, handshake reports 0.1.8, mcp
+   resolves 2.x).

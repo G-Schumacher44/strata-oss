@@ -2,8 +2,8 @@
   "manifest_version": "0.4",
   "name": "strata",
   "display_name": "Strata",
-  "version": "0.1.7",
-  "description": "Read-only LookML governance toolkit for Looker and BigQuery — MCP server with 18 analysis tools over a resolved LookML dependency graph.",
+  "version": "0.1.8",
+  "description": "Read-only LookML governance toolkit for Looker and BigQuery \u2014 MCP server with 18 analysis tools over a resolved LookML dependency graph.",
   "author": {
     "name": "Garrett Schumacher",
     "email": "me@garrettschumacher.com",
@@ -20,7 +20,12 @@
     "entry_point": "src/server.py",
     "mcp_config": {
       "command": "uv",
-      "args": ["run", "--directory", "${__dirname}", "src/server.py"],
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "src/server.py"
+      ],
       "env": {
         "STRATA_REPO_PATH": "${user_config.repo_path}"
       }
@@ -35,10 +40,21 @@
     }
   },
   "compatibility": {
-    "platforms": ["darwin", "linux", "win32"],
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
     "runtimes": {
       "python": ">=3.11"
     }
   },
-  "keywords": ["lookml", "looker", "bigquery", "governance", "bi", "semantic-layer"]
+  "keywords": [
+    "lookml",
+    "looker",
+    "bigquery",
+    "governance",
+    "bi",
+    "semantic-layer"
+  ]
 }

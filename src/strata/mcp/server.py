@@ -8,7 +8,7 @@ from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any, Literal
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from strata.config import load_repo_path
 from strata.ir.store import cache_age_seconds, load_ir, save_ir
@@ -89,13 +89,11 @@ def load_configured_graph() -> IRGraph:
     return graph
 
 
-def create_server(graph: IRGraph | None = None) -> FastMCP:
+def create_server(graph: IRGraph | None = None) -> MCPServer:
     ir_graph = graph or load_configured_graph()
-    server = FastMCP("strata")
-    # FastMCP 1.29 has no `version` constructor kwarg (verified against the installed SDK
-    # source) — the underlying low-level Server otherwise falls back to reporting the `mcp`
-    # SDK's own version in the initialize handshake, not ours.
-    server._mcp_server.version = _server_version()
+    # mcp 2.x: MCPServer replaced FastMCP (removed in 2.0) and takes `version` as a
+    # first-class kwarg — retiring the 1.x `_mcp_server.version` workaround from #20.
+    server = MCPServer("strata", version=_server_version())
 
     @server.tool()
     def strata_query_field(view: str, field: str) -> dict[str, Any]:

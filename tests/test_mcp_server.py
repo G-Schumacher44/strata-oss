@@ -18,5 +18,7 @@ def test_server_reports_package_version_not_sdk_version():
     installed = pkg_version("strata-lookml")
     sdk_version = pkg_version("mcp")
 
-    assert server._mcp_server.version == installed
-    assert server._mcp_server.version != sdk_version
+    # mcp 2.x exposes the version publicly (it's a first-class MCPServer kwarg) —
+    # no more reaching into the 1.x private _mcp_server.
+    assert server.version == installed
+    assert server.version != sdk_version
