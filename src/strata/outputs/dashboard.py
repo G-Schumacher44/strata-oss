@@ -60,8 +60,16 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
     for node in graph.nodes.values():
         if node.kind not in {"explore", "view", "physical_table", "pdt"}:
             continue
-        is_dead = node.name in dead_ids
         model = node.attrs.get("model", "")
+        # Dead-code register names EXPLORES model-qualified ("em_legacy_v2.dead_finance_v2")
+        # but views bare — a bare-name lookup silently missed every dead explore, so they
+        # rendered green/KEEP in the graph (caught regenerating the README screenshots on
+        # PR #21: dead_finance_v2 showed QUERY COUNT 0 with a KEEP badge).
+        is_dead = (
+            (f"{model}.{node.name}" in dead_ids)
+            if node.kind == "explore"
+            else (node.name in dead_ids)
+        )
         qcount = usage_map.get(f"{model}.{node.name}", 0) if node.kind == "explore" else 0
         orphan = node.attrs.get("orphan", False) or is_dead
 
@@ -656,11 +664,11 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
   const panel = document.getElementById('detail-content');
   cy.on('tap', 'node', function(evt) {
     const d = evt.target.data();
-    const verdictMap = {};
-    (DEAD_CODE||[]).forEach(r => { verdictMap[r.name] = 'deprecate'; });
-
+    // Verdict reads the node's own `dead` flag — the ONE derivation done Python-side in
+    // _build_graph_data. Re-deriving here from DEAD_CODE by label was the bug: register
+    // names explores model-qualified, labels are bare, so dead explores showed KEEP.
     const verdict = d.kind === 'explore'
-      ? (verdictMap[d.label] ? '<span class="badge badge-red">deprecate</span>' : '<span class="badge badge-green">keep</span>')
+      ? (d.dead ? '<span class="badge badge-red">deprecate</span>' : '<span class="badge badge-green">keep</span>')
       : '';
 
     const qrow = d.kind === 'explore'

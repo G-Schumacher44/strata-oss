@@ -311,15 +311,15 @@ strata dashboard \
   --schema-fixture tests/fixtures/enterprise_schema_facts.json
 ```
 
-![Strata dashboard overview — enterprise_mono playground showing 28 active explores, 6 dead artifacts, ~$63,755 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
+![Strata dashboard overview — enterprise_mono playground: 23 active explores (11 dead), 11 dead artifacts, 14,242 queries, $63,755.94 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph with zombie PDT diamonds in purple](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
 
 *enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, gray = physical table.*
 
-![Dependency graph zoomed on dead_finance_v2 — QUERY COUNT: 0, backed by pdt_attribution_full_funnel (orange zombie PDT diamond)](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/graph-dead-explore.png)
+![Dependency graph zoomed on dead_finance_v2 — rendered dead-red with a DEPRECATE badge and QUERY COUNT: 0 in the node detail panel](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/graph-dead-explore.png)
 
 *`dead_finance_v2` selected. The orange diamond is `pdt_attribution_full_funnel` — a zombie PDT rebuilding at ~$45,000/month (estimated) to serve this explore. Both flagged for removal.*
 
-![Dead Code Register showing 6 dead explores with dual structural and usage evidence](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
+![PDT Cost Ledger — pdt_attribution_full_funnel flagged ⚠ ZOMBIE at $45,000/mo and pdt_customer_value_score at $18,750/mo, each citing its dead consumer explore, above the Cleanup Roadmap's KILL PDT actions](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
 
 *Dead Code Register — each item carries two evidence tags: structural (exists in resolved IR) and usage (zero queries in L1 facts). Both must be present before anything is flagged.*
 

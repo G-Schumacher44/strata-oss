@@ -126,6 +126,20 @@ an un-auditable verdict in a dual-evidence tool. `_pdt_ledger` now appends
 dead-views records already use), and the regression test asserts the full trail per zombie
 plus a negative control (a `used` PDT must carry NO dead-explore evidence). Suite 107 passed.
 
+**Codex round 3 (P2, addressed the thorough way):** correcting the alt text to "14" while
+the PNG still visibly rendered "SCHEMA DRIFT 10" made the accessibility description lie about
+the image. Rather than revert the text, the three dashboard screenshots were REGENERATED from
+this branch's code (headless Chrome over CDP, enterprise_mono fixtures, original dimensions)
+— and doing so surfaced one more real bug: the dead-code register names explores
+MODEL-QUALIFIED while graph labels are bare, so `_build_graph_data`'s bare-name lookup missed
+every dead explore — they rendered green/KEEP with QUERY COUNT 0 visible. Fixed at the single
+source (qualified lookup in `_build_graph_data`; the tap handler now reads the node's own
+`dead` flag instead of re-deriving), pinned by `test_graph_marks_dead_explores_dead` with a
+live-explore negative control (verified: all 13 dead/zombie nodes flag). New screenshots show
+the truthful state — dead_finance_v2 red with DEPRECATE, both zombie PDTs purple-badged with
+their $-figures and dead consumers — and all three alt texts now describe exactly what the
+images render. Suite 108 passed.
+
 **Exact Next Steps:**
 1. Operator: review and merge this PR (Closes #19, closes #20).
 2. Operator (or Koa on instruction): once ready for a real release, push tag `v0.1.7` —

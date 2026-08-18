@@ -153,6 +153,28 @@ def test_zombie_view_detection_enterprise_mono():
             assert any("dead:explore:" in eid for eid in item["evidence_ids"])
 
 
+def test_graph_marks_dead_explores_dead():
+    """Dead-code register names explores MODEL-QUALIFIED; graph labels are bare. A bare-name
+    lookup silently missed every dead explore (rendered green/KEEP — caught regenerating the
+    README screenshots, PR #21). Pin the qualified lookup, plus a live-explore negative control."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    dead = by_id["explore:em_legacy_v2:dead_finance_v2"]
+    assert dead["dead"] is True, "model-qualified dead explore must carry dead=True"
+    assert dead["color"] == "#e74c3c", "dead explore must render dead-red, not active-green"
+
+    live = by_id["explore:em_finance_base:revenue_trends"]
+    assert live["dead"] is False
+    assert live["color"] == "#2ecc71"
+
+
 def test_zombie_pdt_detection_enterprise_mono():
     """A PDT with real build facts backing only dead explores is 'zombie', not 'used'."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
