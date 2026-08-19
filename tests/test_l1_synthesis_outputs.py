@@ -224,6 +224,138 @@ def test_pdt_ledger_unused_status_unaffected_by_zombie_detection():
     assert ledger_by_view["pdt_retention_signals"]["used_by_explores"] == []
 
 
+def test_graph_node_detail_carries_pdt_ledger_fields():
+    """Node-detail panel data (dashboard PR #23) — PDT nodes must carry the full ledger
+    record, not just name/kind/source, so the graph click isn't an anticlimax. Both
+    fixture zombies + a negative-control 'used' PDT, since the color/status mapping
+    branches on status."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    for pdt_id, view in (
+        ("pdt:pdt_attribution_full_funnel", "pdt_attribution_full_funnel"),
+        ("pdt:pdt_customer_value_score", "pdt_customer_value_score"),
+    ):
+        d = by_id[pdt_id]
+        assert d["status"] == "zombie"
+        assert d["color"] == "#9b59b6"
+        assert d["estimated_cost_usd"] > 0
+        assert d["build_count"] > 0
+        assert d["bytes_processed"] > 0
+        assert d["used_by_explores"], f"{view}: zombie PDT must list its consumers"
+        assert all(c["dead"] for c in d["used_by_explores"])
+
+    # Negative control: a real 'used' PDT must not be flagged zombie/unused, and its
+    # consumers must not be mismarked dead.
+    live = by_id["pdt:pdt_regional_kpi"]
+    assert live["status"] == "used"
+    assert live["color"] == "#2ecc71"
+    assert live["used_by_explores"]
+    assert not any(c["dead"] for c in live["used_by_explores"])
+
+
+def test_graph_node_detail_status_vocabulary_per_kind():
+    """Status vocabulary (dashboard PR #23) — PDT/explore/view nodes carry the honest
+    three-way zombie vocabulary instead of a flattened DEAD/ORPHAN flag, with colors
+    matching the legend."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    # PDT: zombie / used already covered above; explore verdict vocabulary here.
+    dead_explore = by_id["explore:em_legacy_v2:dead_finance_v2"]
+    assert dead_explore["dead"] is True
+    live_explore = by_id["explore:em_finance_base:revenue_trends"]
+    assert live_explore["dead"] is False
+
+    # View: zombie view (real edges, all-dead consumers) vs. active — distinct from a
+    # true orphan (no explore reference at all) even though both are flagged `dead`.
+    zombie_view = by_id["view:legacy_order_detail"]
+    assert zombie_view["status"] == "zombie_view"
+    assert zombie_view["color"] == "#9b59b6"
+    assert zombie_view["referencing_explores"], (
+        "zombie view must be referenced, not structurally orphaned"
+    )
+    assert all(c["dead"] for c in zombie_view["referencing_explores"])
+
+    active_view = by_id["view:fct_cart_abandonment"]
+    assert active_view["status"] == "active"
+    assert active_view["color"] == "#3498db"
+
+    # True orphan (no explore reference at all) is a distinct third state — pull from
+    # the smaller FIXTURES set, which has a genuine orphan.
+    fixtures_graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    fixtures_data = _build_graph_data(fixtures_graph)
+    fixtures_by_id = {n["data"]["id"]: n["data"] for n in fixtures_data["nodes"]}
+    orphan_view = fixtures_by_id["view:orphan_view"]
+    assert orphan_view["status"] == "orphaned"
+    assert orphan_view["color"] == "#95a5a6"
+    assert orphan_view["referencing_explores"] == []
+
+
+def test_graph_node_pdt_dependencies_and_table_references():
+    """Explore -> PDT dependency and physical-table -> referencing-view data (dashboard
+    PR #23), derived from the graph edges rather than invented."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    dead_finance = by_id["explore:em_legacy_v2:dead_finance_v2"]
+    assert "pdt_attribution_full_funnel" in dead_finance["pdt_dependencies"]
+
+    table = by_id["physical_table:acme-analytics.gold_marts.fct_cart_abandonment"]
+    assert table["referencing_views"] == ["fct_cart_abandonment"]
+
+
+def test_schema_drift_rows_differ_by_field_not_true_duplicates():
+    """Schema Drift dedup arithmetic (dashboard PR #23) — rows that look byte-identical
+    on kind/table/column/source_file/reason actually differ by `field` (the LookML field
+    whose SQL references the drifted column). Pin that assumption: it's why the dashboard
+    surfaces the Field column instead of collapsing genuinely distinct issues under a
+    fake ×N dedup."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    drift = artifacts["schema_drift"]
+    assert len(drift) > 0
+
+    visible_keys = {
+        (r["kind"], r["table"], r.get("column"), r["source_file"], r["reason"]) for r in drift
+    }
+    full_keys = {
+        (r["kind"], r["table"], r.get("column"), r.get("field"), r["source_file"], r["reason"])
+        for r in drift
+    }
+    assert len(visible_keys) < len(drift), (
+        "fixture must reproduce the apparent-duplicate rows this fix addresses"
+    )
+    assert len(full_keys) == len(drift), (
+        "rows differ by `field` — every row is a genuinely distinct issue once field is shown"
+    )
+
+    html = build_dashboard_html(artifacts, graph)
+    assert "<th>Field</th>" in html
+    assert "legacy_order_detail.total_unit_cost" in html
+
+
 def test_strata_gate_script_and_output_cli(tmp_path):
     gate = subprocess.run(
         [
