@@ -523,6 +523,33 @@ def test_l1_facts_covers_explores_without_usage_rows():
     assert "no_usage_row" not in facts["usage"][with_row]
 
 
+def test_copy_link_fragment_round_trips_percent_escapes():
+    """Codex PR #28 r11 — the copy-link wrote the raw row id while openHashTarget() reads it
+    back through decodeURIComponent(). An id holding a literal percent-escape (a quoted
+    physical table like 'foo%20bar') decoded to 'foo bar' on open and matched nothing. The
+    writer now encodes; the reader decodes first and falls back to the raw hash so links
+    copied from an older build still resolve."""
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    assert "encodeURIComponent(id)" in html, "the fragment writer must encode"
+    assert "decodeURIComponent(raw)" in html, "the fragment reader must decode"
+    assert "getElementById(raw)" in html, (
+        "reader must fall back to the raw hash so pre-fix copied links still resolve"
+    )
+
+    # The property itself, on an id shaped like the one that broke.
+    from urllib.parse import quote, unquote
+
+    hostile = "schema:missing_column:foo%20bar.unit_cost:legacy.col"
+    assert unquote(quote(hostile, safe="")) == hostile
+
+
 def test_fact_lookups_are_prototype_safe():
     """Codex PR #28 r9 — JSON.parse yields prototyped objects, so a bare key like
     'constructor' or 'toString' would resolve to an inherited member and report a missing

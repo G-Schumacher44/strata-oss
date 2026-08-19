@@ -766,7 +766,10 @@ function openHashTarget() {
   if (!raw) return;
   let id = raw;
   try { id = decodeURIComponent(raw); } catch (e) { id = raw; }
-  const row = document.getElementById(id);
+  // Decoded first (the encoded form this build writes), raw second — so a link copied
+  // from an older build, where the fragment was written unencoded, still resolves.
+  let row = document.getElementById(id);
+  if (!row && id !== raw) row = document.getElementById(raw);
   if (!row) return;
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   // Plain string equality on dataset — no selector-escaping regex. The escaped-regex
@@ -816,7 +819,11 @@ document.addEventListener('click', function(evt) {
     // location.origin is the literal string "null" under file:// — and opening
     // dashboard.html directly is a supported posture for this self-contained file.
     // href minus any existing hash is scheme-agnostic (Codex P1, PR #28).
-    const url = location.href.split('#')[0] + '#' + id;
+    // encodeURIComponent, because openHashTarget() decodes what it reads. Without the
+    // encode the pair is asymmetric: an id holding a literal percent-escape (a quoted
+    // physical table like 'foo%20bar') decodes to 'foo bar' on open and matches nothing.
+    // Encode-on-write + decode-on-read round-trips every accepted name (Codex, PR #28).
+    const url = location.href.split('#')[0] + '#' + encodeURIComponent(id);
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(() => {
         const prev = copyBtn.textContent;
