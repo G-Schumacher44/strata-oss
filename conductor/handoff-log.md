@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: f94e811 (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: 071fdf1 (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -222,6 +222,15 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   per-explore usage evidence (row-backed and `no_usage_row` backfill alike) now comes
   entirely from `l1.enrich.evidence_facts()` as `explore_usage_evidence`; the dashboard
   reshape is verbatim (test-pinned at both the seam and the reshape; 128 total).
+
+- **Round 8 (Koa head, commit 071fdf1)** — Apollo blocker, correct: CI runs BOTH `ruff check`
+  and `ruff format --check`; my r5/r6 inline rounds only ran the former, so two files
+  landed unformatted. Formatting applied; the full gate set (check + format --check +
+  pytest 128 + mypy) is now green together. Lesson recorded here rather than as a new
+  memory shape: run the gate set CI runs, not the subset you remember.
+  (Artemis's companion finding — PDT window wording "still unaddressed" — is stale: the
+  wording landed in 3987015 and reads `estimated over ${periodPhrase()}` at
+  dashboard.py:626. Disputed with evidence on the PR, not silently ignored.)
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
