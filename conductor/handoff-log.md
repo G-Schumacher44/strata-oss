@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: 54d01ad (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: 5cc13b9 (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -265,6 +265,14 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   now stated as implemented, with the ORIGINAL text preserved alongside — the expansions were
   review-driven, not drift, and a future session should be able to see which is which. Evidence
   ids remain verbatim; only DOM anchors got a namespace.
+
+- **Round 14 (Koa head, commit 5cc13b9) — found by internal sweep, not review.** Escaping was
+  applied per-FIELD rather than per-SOURCE: `source_file` was escaped in the Schema Drift row
+  and raw in the Dead Code Register row three functions away, plus `kind`, `static_reason`,
+  `usage_reason`, `physical_table`, and the KPI card's label/value/sub. Now uniform — every
+  record field routes through `escapeHtml()`, numerics included, because exempting them by
+  name rebuilds the enumerate-the-bad-cases shape. Test asserts the property structurally, not
+  a field list; mutation-verified, and it caught two sites the sweep itself missed (132 tests).
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
