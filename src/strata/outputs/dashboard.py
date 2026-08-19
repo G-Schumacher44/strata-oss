@@ -77,6 +77,16 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             table_views.setdefault(edge.target.removeprefix("physical_table:"), []).append(
                 edge.source.removeprefix("view:")
             )
+        elif edge.relation == "pdt→upstream" and edge.target.startswith("physical_table:"):
+            # Derived-table SQL references count too: the resolver records them as
+            # pdt→upstream, and strata_impact() maps the PDT back to its view
+            # (mcp/tools.py) — the panel mirrors that mapping or it undercounts exactly
+            # the references a deletion would break (Codex r5, PR #25).
+            pdt_node = graph.nodes.get(edge.source)
+            if pdt_node is not None:
+                table_views.setdefault(edge.target.removeprefix("physical_table:"), []).append(
+                    pdt_node.name
+                )
     # Consumers come from L1's ancestry-aware single source — the dashboard must never
     # re-derive them (PR #25 Codex round 2: a local propagation here could disagree with
     # the register/ledger, which use the same map via _explores_using_view).

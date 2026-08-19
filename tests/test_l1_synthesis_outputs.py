@@ -197,6 +197,32 @@ def test_view_status_credits_inherited_consumers():
     assert orphan is not None and orphan.get("status") == "orphaned"
 
 
+def test_physical_table_panel_counts_pdt_upstream_references():
+    """Codex r5 (PR #25): derived-table SQL references (pdt→upstream) must appear in the
+    physical-table panel's referencing list, mirroring strata_impact()'s mapping — the
+    panel must never undercount the references a deletion would break."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    # ground truth: which tables have pdt→upstream edges in the fixture graph
+    upstream = {}
+    for e in graph.edges:
+        if e.relation == "pdt→upstream" and e.target.startswith("physical_table:"):
+            n = graph.nodes.get(e.source)
+            if n:
+                upstream.setdefault(e.target.removeprefix("physical_table:"), set()).add(n.name)
+    assert upstream, "fixtures must exercise at least one pdt→upstream edge"
+
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+    for table, expected in upstream.items():
+        node = by_id.get(f"physical_table:{table}")
+        assert node is not None
+        got = {c["key"] if isinstance(c, dict) else c for c in node.get("referencing_views", [])}
+        missing = expected - got
+        assert not missing, f"{table}: panel missing pdt-upstream refs {missing} (has {got})"
+
+
 def test_pdt_consumers_are_direct_not_inherited():
     """Codex round 4 (PR #25): reachability and PDT-consumption are different questions.
     An explore targeting a CHILD view keeps the parent ALIVE (ancestry map) but does NOT
