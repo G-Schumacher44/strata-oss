@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from strata.ir.types import IRGraph
+from strata.l1.enrich import view_consumer_map
 
 
 def _read_js(filename: str) -> str:
@@ -59,7 +60,6 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
     # One edge pass builds every cross-kind lookup the node-detail panel needs — computed
     # once here so the panel never re-derives a fact JS-side that L1 already established
     # (the model-qualified-dead-explore bug from PR #21 was exactly that kind of drift).
-    view_explores: dict[str, list[str]] = {}
     explore_views: dict[str, list[str]] = {}
     view_pdt: dict[str, str] = {}
     table_views: dict[str, list[str]] = {}
@@ -70,8 +70,6 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             explore_node = graph.nodes.get(edge.source)
             view_name = edge.target.removeprefix("view:")
             if explore_node and explore_node.kind == "explore":
-                key = f"{explore_node.attrs.get('model', '')}.{explore_node.name}"
-                view_explores.setdefault(view_name, []).append(key)
                 explore_views.setdefault(explore_node.id, []).append(view_name)
         elif edge.relation == "view→pdt" and edge.target.startswith("pdt:"):
             view_pdt[edge.source.removeprefix("view:")] = edge.target.removeprefix("pdt:")
@@ -79,22 +77,10 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             table_views.setdefault(edge.target.removeprefix("physical_table:"), []).append(
                 edge.source.removeprefix("view:")
             )
-    # Inheritance: an explore targeting a child view is a consumer of every ancestor in
-    # that view's resolution_chain — the resolver's _mark_orphans already treats ancestors
-    # as used, so the panel must agree or a base view shows "orphaned" while the canonical
-    # orphan flag says otherwise (Codex P1, PR #25). Same single-source rule: the chain
-    # comes from the resolver's own attrs, never re-derived here.
-    for node in graph.nodes.values():
-        if node.kind != "view":
-            continue
-        direct = view_explores.get(node.name)
-        if not direct:
-            continue
-        for anc in node.attrs.get("resolution_chain", []):
-            anc = anc.lstrip("+")
-            if anc and anc != node.name:
-                view_explores.setdefault(anc, []).extend(direct)
-    view_explores = {name: sorted(set(keys)) for name, keys in view_explores.items()}
+    # Consumers come from L1's ancestry-aware single source — the dashboard must never
+    # re-derive them (PR #25 Codex round 2: a local propagation here could disagree with
+    # the register/ledger, which use the same map via _explores_using_view).
+    view_explores = view_consumer_map(graph)
     table_views = {name: sorted(set(views)) for name, views in table_views.items()}
 
     def consumers(keys: list[str]) -> list[dict[str, Any]]:
