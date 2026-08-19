@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: 7f49274 (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: 54d01ad (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -257,6 +257,14 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   deleted. First occurrence keeps the bare id so already-shared links stay valid. Also
   rewrote the drift/roadmap id test: it pinned literal source lines, so a correct refactor
   failed it while the property still held — it now asserts the property (131 tests).
+
+- **Round 13 (Koa head, commit 54d01ad)** — Codex P1: the governing slice document had gone stale
+  against twelve rounds of review-driven scope change (still said dashboard.py-only + read-only
+  `enrich.py`, still prohibited any new id scheme). Reconciled: the L1 write, the
+  provider/looker/pipeline reach for the live usage window, and the DOM-anchor namespace are
+  now stated as implemented, with the ORIGINAL text preserved alongside — the expansions were
+  review-driven, not drift, and a future session should be able to see which is which. Evidence
+  ids remain verbatim; only DOM anchors got a namespace.
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
