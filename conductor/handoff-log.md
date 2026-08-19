@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: 05ccac8 (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: 7f49274 (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -249,6 +249,14 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   NOTE: the post-reboot scratchpad venv was gone, so the first gate attempt silently ran
   against a STALE generated artifact — rebuilt the venv and re-ran everything against the
   real regenerated file. Same greens-by-construction shape as r8, different instrument.
+
+- **Round 12 (Koa head, commit 7f49274)** — Codex: duplicate DOM ids on schema-drift rows (two
+  views in different files can share one SchemaDriftRecord id). SECOND appearance of this
+  class after r3's roadmap collision, so fixed as one shared `uniqueAnchor()` helper both
+  row classes route through, rather than a third bespoke rule; roadmap's private counter
+  deleted. First occurrence keeps the bare id so already-shared links stay valid. Also
+  rewrote the drift/roadmap id test: it pinned literal source lines, so a correct refactor
+  failed it while the property still held — it now asserts the property (131 tests).
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
