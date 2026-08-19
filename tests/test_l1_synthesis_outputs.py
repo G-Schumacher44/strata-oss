@@ -197,6 +197,25 @@ def test_view_status_credits_inherited_consumers():
     assert orphan is not None and orphan.get("status") == "orphaned"
 
 
+def test_pdt_consumers_are_direct_not_inherited():
+    """Codex round 4 (PR #25): reachability and PDT-consumption are different questions.
+    An explore targeting a CHILD view keeps the parent ALIVE (ancestry map) but does NOT
+    consume the parent's own PDT materialization (direct map). Pin both maps' answers for
+    the fixture chain (test_model.customer -> customer_extended extends base_customer)."""
+    from strata.l1.enrich import direct_view_consumers, view_consumer_map
+
+    graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    ancestry = view_consumer_map(graph)
+    direct = direct_view_consumers(graph)
+
+    # Ancestry: the parent inherits the child's consumer (reachability).
+    assert "test_model.customer" in ancestry.get("base_customer", [])
+    # Direct: the parent has NO direct consumer — its own materialization would be unused.
+    assert "test_model.customer" not in direct.get("base_customer", [])
+    # The child is a direct consumer target in both maps.
+    assert "test_model.customer" in direct.get("customer_extended", [])
+
+
 def test_zombie_pdt_detection_enterprise_mono():
     """A PDT with real build facts backing only dead explores is 'zombie', not 'used'."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"

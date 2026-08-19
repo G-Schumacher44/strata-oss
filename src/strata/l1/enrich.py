@@ -132,7 +132,9 @@ def _pdt_ledger(
     graph: IRGraph, builds: list[PDTBuild], dead_explore_keys: set[str]
 ) -> list[PDTLedgerRecord]:
     builds_by_view = {item.view: item for item in builds}
-    consumers_by_view = view_consumer_map(graph)  # built once, not per pdt
+    # DIRECT consumers only: a PDT is per-view materialization — an explore targeting a
+    # child view queries the child's own pdt:<view> node, never the parent's (round 4).
+    consumers_by_view = direct_view_consumers(graph)  # built once, not per pdt
     records: list[PDTLedgerRecord] = []
     for pdt in graph.nodes_by_kind("pdt"):
         build = builds_by_view.get(pdt.name)
@@ -180,16 +182,16 @@ def _pdt_ledger(
     return records
 
 
-def view_consumer_map(graph: IRGraph) -> dict[str, list[str]]:
-    """THE single source for "which explores consume this view", ancestry-aware.
+def direct_view_consumers(graph: IRGraph) -> dict[str, list[str]]:
+    """Explores that DIRECTLY target each view (base or join edges only).
 
-    An explore targeting a child view is a consumer of every ancestor in that child's
-    `resolution_chain` — the resolver's `_mark_orphans` already treats ancestors as used,
-    so every downstream consumer (dead-code register, PDT ledger, the dashboard's node
-    panel) must share ONE derivation or they drift apart (PR #25 Codex: the dashboard
-    propagated inheritance while this module counted only direct edges, so a panel could
-    say ZOMBIE VIEW for an ancestor absent from the register). Keys are bare view names;
-    values are sorted, model-qualified explore keys.
+    This is the right question for anything tied to a specific view's own
+    materialization — above all the PDT ledger: the resolver emits a separate
+    `pdt:<view>` node per PDT-bearing view, so an explore targeting a CHILD view
+    queries the child's own materialization, never the parent's. Crediting inherited
+    consumers to a parent's PDT would hide a genuinely unused/zombie parent PDT behind
+    a live child (PR #25 Codex round 4). Keys are bare view names; values sorted,
+    model-qualified explore keys.
     """
     direct: dict[str, list[str]] = {}
     for edge in graph.edges:
@@ -202,8 +204,20 @@ def view_consumer_map(graph: IRGraph) -> dict[str, list[str]]:
             direct.setdefault(edge.target.removeprefix("view:"), []).append(
                 f"{node.attrs.get('model')}.{node.name}"
             )
-    # Propagate each view's direct consumers up its own resolution chain — the chain comes
-    # from the resolver's attrs, never re-derived here.
+    return {name: sorted(set(keys)) for name, keys in direct.items()}
+
+
+def view_consumer_map(graph: IRGraph) -> dict[str, list[str]]:
+    """Ancestry-aware reachability: which explores keep this view ALIVE.
+
+    An explore targeting a child view reaches every ancestor in the child's
+    `resolution_chain` — the resolver's `_mark_orphans` treats ancestors as used, so
+    orphan/zombie-VIEW verdicts and the dashboard's view panel share this derivation
+    (PR #25 rounds 1–2). NOT for PDT consumer questions — those are per-materialization
+    and use `direct_view_consumers` (round 4). Two questions, two maps, one shared
+    direct core.
+    """
+    direct = direct_view_consumers(graph)
     result: dict[str, list[str]] = {k: list(v) for k, v in direct.items()}
     for node in graph.nodes.values():
         if node.kind != "view":

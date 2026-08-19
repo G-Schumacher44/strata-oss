@@ -38,8 +38,11 @@ single source now feeding the dead-code register, the PDT ledger, and the dashbo
 alike. The original "local edge derivation in the dashboard" wording is superseded: a
 dashboard-local derivation could disagree with the register (panel says ZOMBIE VIEW,
 register silent), which is exactly the two-sources drift this repo's rules forbid.
-`_explores_using_view` remains as the thin per-view API; both enrich call sites hoist the
-map once.
+`_explores_using_view` remains as the thin per-view API; both enrich call sites hoist their
+map once. **Round-4 refinement:** the map SPLIT along the real seam — `direct_view_consumers`
+(per-materialization: the PDT ledger, since a child view's PDT is its own `pdt:<view>` node)
+vs `view_consumer_map` (ancestry-aware reachability: orphan/zombie-view verdicts + the
+panel). One shared direct core, two questions answered honestly.
 
 ## Implementation Order
 
