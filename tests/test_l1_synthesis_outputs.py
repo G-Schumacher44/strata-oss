@@ -605,6 +605,47 @@ def test_fact_lookups_are_prototype_safe():
         assert raw not in html, f"raw prototype-exposed lookup survived: {raw}"
 
 
+def test_data_derived_fields_are_escaped_in_innerhtml_templates():
+    """Found by an internal sweep, not by review: escaping was applied per-field rather than
+    per-source, so `source_file` was escaped in the Schema Drift row and NOT in the Dead Code
+    Register row three functions away. Any record field reaching an innerHTML template must
+    route through escapeHtml(); markup this file builds itself (badges, pills, computed cells)
+    is exempt because it is not data.
+
+    Asserted structurally rather than by naming today's fields — a new unescaped field is the
+    regression this is here to catch, and a fixed list would not see it."""
+    import re
+
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    # Every `${r.<field>}` / `${c.<field>}` interpolation inside an innerHTML template must be
+    # wrapped. `r`/`c` are the record loop variables; locals built in this file are not matched.
+    offenders = []
+    in_tpl = False
+    for line in html.split("\n"):
+        if re.search(r"\.innerHTML\s*=\s*`", line):
+            in_tpl = True
+        if in_tpl:
+            for m in re.finditer(r"\$\{\s*([rc]\.[A-Za-z_]+[^}]*)\}", line):
+                expr = m.group(1)
+                if "escapeHtml" in expr or "fmt_" in expr or "length" in expr:
+                    continue
+                offenders.append(expr.strip()[:60])
+            if "`;" in line:
+                in_tpl = False
+
+    assert not offenders, (
+        "record fields interpolated into an innerHTML template without escapeHtml(): "
+        + ", ".join(offenders)
+    )
+
+
 def test_embedded_json_cannot_break_out_of_script_block():
     """Codex PR #28 r6 — json.dumps leaves `<` intact, so a data value containing
     `</script>` would terminate the inline script element and hand the rest of the

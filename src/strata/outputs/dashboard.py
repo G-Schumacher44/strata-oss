@@ -865,7 +865,7 @@ window.addEventListener('load', openHashTarget);
   const row = document.getElementById('kpi-row');
   cards.forEach(c => {
     const card = el('div', 'kpi-card ' + (c.cls||''));
-    card.innerHTML = `<div class="label">${c.label}</div><div class="value">${c.value}</div><div class="sub">${c.sub}</div>`;
+    card.innerHTML = `<div class="label">${escapeHtml(c.label)}</div><div class="value">${escapeHtml(c.value)}</div><div class="sub">${escapeHtml(c.sub)}</div>`;
     row.appendChild(card);
   });
 })();
@@ -886,10 +886,10 @@ window.addEventListener('load', openHashTarget);
     const kindBadge = r.kind === 'explore' ? 'badge-red' : 'badge-orange';
     const pills = evidenceListHtml(r.evidence_ids);
     tr.innerHTML = `
-      <td><span class="badge ${kindBadge}">${r.kind}</span></td>
+      <td><span class="badge ${kindBadge}">${escapeHtml(r.kind)}</span></td>
       <td style="font-family:monospace;font-weight:600">${primaryChipHtml(r.id, r.name)}</td>
-      <td class="file-tag">${r.source_file||''}</td>
-      <td>${r.static_reason||''}<div class="reason-text">${r.usage_reason||''}</div></td>
+      <td class="file-tag">${escapeHtml(r.source_file||'')}</td>
+      <td>${escapeHtml(r.static_reason||'')}<div class="reason-text">${escapeHtml(r.usage_reason||'')}</div></td>
       <td>${pills}</td>`;
     tbody.appendChild(tr);
   });
@@ -931,7 +931,7 @@ window.addEventListener('load', openHashTarget);
     tr.innerHTML = `
       <td style="font-family:monospace;font-weight:600">${primaryChipHtml(primaryId, r.view)}</td>
       <td style="font-weight:600;color:${costColor}">${fmt_usd(r.estimated_cost_usd)}</td>
-      <td>${r.build_count}</td>
+      <td>${escapeHtml(r.build_count)}</td>
       <td>${fmt_bytes(r.bytes_processed)}</td>
       <td>${statusCell}</td>
       <td>${explores || '<span style="color:var(--muted)">none</span>'}</td>`;
@@ -1058,7 +1058,7 @@ window.addEventListener('load', openHashTarget);
       <td class="file-tag">${escapeHtml(r.field||'')}</td>
       <td class="file-tag">${escapeHtml(r.source_file||'')}</td>
       <td class="reason-text">${escapeHtml(r.reason||'')}</td>
-      <td>${r.count > 1 ? '×' + r.count : ''}</td>`;
+      <td>${escapeHtml(r.count > 1 ? '\u00d7' + r.count : '')}</td>`;
     tbody.appendChild(tr);
   });
   tbl.appendChild(tbody);
@@ -1073,7 +1073,7 @@ window.addEventListener('load', openHashTarget);
   items.forEach(r => {
     const item = el('div', 'accordion-item');
     const trigger = el('button', 'accordion-trigger');
-    trigger.innerHTML = `<span class="arrow">▶</span><span style="font-family:monospace">${r.physical_table}</span><span style="margin-left:auto;font-size:12px;color:var(--muted)">${(r.explores||[]).length} explore${(r.explores||[]).length!==1?'s':''} affected</span>`;
+    trigger.innerHTML = `<span class="arrow">▶</span><span style="font-family:monospace">${escapeHtml(r.physical_table)}</span><span style="margin-left:auto;font-size:12px;color:var(--muted)">${(r.explores||[]).length} explore${(r.explores||[]).length!==1?'s':''} affected</span>`;
     trigger.onclick = () => {
       const open = trigger.classList.toggle('open');
       content.classList.toggle('open', open);
