@@ -557,7 +557,9 @@ function escapeHtml(s) {
 // Resolves an evidence id to a graph node id when one exists, so Dead Code Register
 // pills and Roadmap evidence links can jump into the graph instead of sitting inert.
 const GRAPH_NODE_IDS = new Set((GRAPH_DATA && GRAPH_DATA.nodes || []).map(n => n.data.id));
-const NODE_BY_ID = {};
+// Prototype-free: a node or table literally named 'constructor'/'toString'/'__proto__' must
+// not resolve to an inherited member, and must not poison the map on assignment either.
+const NODE_BY_ID = Object.create(null);
 (GRAPH_DATA && GRAPH_DATA.nodes || []).forEach(n => { NODE_BY_ID[n.data.id] = n.data; });
 
 function exploreNodeIdFromKey(key) {
@@ -585,6 +587,12 @@ function resolveEvidenceNodeId(evId) {
 // ── Evidence sentences ──────────────────────────────────────────────────────
 // Renders the raw L1_FACTS/GRAPH_DATA a chip's evidence id names in analyst language —
 // every fact here is a Python-computed number formatted for display, never re-derived.
+// JSON.parse produces objects that inherit from Object.prototype, so a bare key like
+// 'constructor' or 'toString' would resolve to an inherited member and make a missing
+// table read as present. Every L1 fact lookup goes through here.
+function ownFact(map, key) {
+  return (map && Object.prototype.hasOwnProperty.call(map, key)) ? map[key] : undefined;
+}
 function periodPhrase() {
   const p = L1_FACTS.period || {};
   if (!p.start || !p.end) return 'an unknown window';
@@ -592,7 +600,7 @@ function periodPhrase() {
   return `the last ${days}window (${p.start} \u2192 ${p.end})`;
 }
 function exploreUsageSentence(modelDotName, sourceFile) {
-  const fact = L1_FACTS.usage['explore:' + modelDotName];
+  const fact = ownFact(L1_FACTS.usage, 'explore:' + modelDotName);
   let s;
   if (fact && fact.no_usage_row) {
     const c = fact.content_reference_count || 0;
@@ -675,7 +683,7 @@ function evidenceSentence(evId) {
     }
     case 'pdt_build': {
       const view = evId.slice('pdt_build:'.length);
-      const fact = L1_FACTS.pdt_build[view];
+      const fact = ownFact(L1_FACTS.pdt_build, view);
       if (!fact) return `No PDT build facts were provided for '${view}'.`;
       const node = NODE_BY_ID['pdt:' + view];
       return pdtCostSentence(
@@ -685,7 +693,7 @@ function evidenceSentence(evId) {
     }
     case 'schema_table': {
       const table = evId.slice('schema_table:'.length);
-      const fact = L1_FACTS.schema_table[table];
+      const fact = ownFact(L1_FACTS.schema_table, table);
       if (!fact) {
         return `table '${table}' was not found in the provided schema facts \u2014 the resolved IR references it, but no warehouse metadata confirms it exists.`;
       }
@@ -695,7 +703,7 @@ function evidenceSentence(evId) {
     }
     case 'physical_table': {
       const table = evId.slice('physical_table:'.length);
-      const fact = L1_FACTS.schema_table[table];
+      const fact = ownFact(L1_FACTS.schema_table, table);
       const scanned = Object.keys(L1_FACTS.schema_table).length;
       if (!fact) {
         return `physical table '${table}' is not present in the provided schema facts (scanned ${scanned} table${scanned !== 1 ? 's' : ''}).`;

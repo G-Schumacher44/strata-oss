@@ -523,6 +523,26 @@ def test_l1_facts_covers_explores_without_usage_rows():
     assert "no_usage_row" not in facts["usage"][with_row]
 
 
+def test_fact_lookups_are_prototype_safe():
+    """Codex PR #28 r9 — JSON.parse yields prototyped objects, so a bare key like
+    'constructor' or 'toString' would resolve to an inherited member and report a missing
+    table as PRESENT, contradicting the drift verdict. Every L1 fact lookup routes through
+    ownFact(); NODE_BY_ID is prototype-free so it also can't be poisoned on assignment."""
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    assert "function ownFact(" in html, "the own-property lookup helper must ship"
+    assert "Object.create(null)" in html, "NODE_BY_ID must be prototype-free"
+    # No raw bracket lookup into a JSON-parsed fact map may remain.
+    for raw in ("L1_FACTS.usage[", "L1_FACTS.pdt_build[", "L1_FACTS.schema_table["):
+        assert raw not in html, f"raw prototype-exposed lookup survived: {raw}"
+
+
 def test_embedded_json_cannot_break_out_of_script_block():
     """Codex PR #28 r6 — json.dumps leaves `<` intact, so a data value containing
     `</script>` would terminate the inline script element and hand the rest of the
