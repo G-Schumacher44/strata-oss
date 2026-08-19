@@ -33,6 +33,15 @@ def _read_js(filename: str) -> str:
     return (js_dir / filename).read_text(encoding="utf-8")
 
 
+def _embed_json(obj: Any) -> str:
+    """json.dumps for embedding inside an inline <script> block. json.dumps leaves `<`
+    intact, so a data value containing `</script>` would terminate the surrounding script
+    element and hand the rest of the payload to the HTML parser as markup (Codex PR #28
+    r6 — the classic script-breakout). `\\u003c` is identical to `<` after JS string
+    parsing, so this is a pure serialization change, invisible to every consumer."""
+    return json.dumps(obj).replace("<", "\\u003c")
+
+
 def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
     """Serializes the raw L1 facts the evidence-sentence panel needs, keyed to match the
     `usage:`/`pdt_build:`/`schema_table:` evidence-id suffixes so the JS looks numbers up
@@ -89,15 +98,15 @@ def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
 
 def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
     graph_data = _build_graph_data(graph)
-    catalog = json.dumps(artifacts.get("catalog", []))
-    dead_code = json.dumps(artifacts.get("dead_code_register", []))
-    pdt_ledger = json.dumps(artifacts.get("pdt_ledger", []))
-    roadmap = json.dumps(artifacts.get("cleanup_roadmap", []))
-    schema_drift = json.dumps(artifacts.get("schema_drift", []))
-    usage_summary = json.dumps(artifacts.get("usage_summary") or {})
-    migration = json.dumps(artifacts.get("migration_impact", []))
-    graph_json = json.dumps(graph_data)
-    l1_facts = json.dumps(_build_l1_facts(graph))
+    catalog = _embed_json(artifacts.get("catalog", []))
+    dead_code = _embed_json(artifacts.get("dead_code_register", []))
+    pdt_ledger = _embed_json(artifacts.get("pdt_ledger", []))
+    roadmap = _embed_json(artifacts.get("cleanup_roadmap", []))
+    schema_drift = _embed_json(artifacts.get("schema_drift", []))
+    usage_summary = _embed_json(artifacts.get("usage_summary") or {})
+    migration = _embed_json(artifacts.get("migration_impact", []))
+    graph_json = _embed_json(graph_data)
+    l1_facts = _embed_json(_build_l1_facts(graph))
     data_block = (
         f"const CATALOG       = {catalog};\n"
         f"const DEAD_CODE     = {dead_code};\n"

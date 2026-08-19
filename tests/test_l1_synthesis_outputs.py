@@ -516,6 +516,33 @@ def test_l1_facts_covers_explores_without_usage_rows():
     assert "no_usage_row" not in facts["usage"][with_row]
 
 
+def test_embedded_json_cannot_break_out_of_script_block():
+    """Codex PR #28 r6 — json.dumps leaves `<` intact, so a data value containing
+    `</script>` would terminate the inline script element and hand the rest of the
+    payload to the HTML parser as live markup. Every JSON embed goes through
+    `_embed_json`, which encodes `<` as `\\u003c` (identical after JS string parsing)."""
+    from strata.outputs.dashboard import _embed_json, build_dashboard_html  # noqa: F401
+
+    hostile = {"period": {"start": "</script><b>x</b>"}, "col": "a<b"}
+    embedded = _embed_json(hostile)
+    assert "</script>" not in embedded
+    assert "<" not in embedded
+    import json as _json
+    assert _json.loads(embedded) == hostile  # pure serialization change
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    # Poison a value that lands in the L1_FACTS script literal; the generated page must
+    # not contain the sequence raw anywhere inside its scripts.
+    graph.metadata["l1"]["period"] = {"start": "</script><i>pwn</i>", "end": "x", "days": 30}
+    html = build_dashboard_html(build_artifacts(graph), graph)
+    import re
+    for m in re.finditer(r"<script>([\s\S]*?)</script>", html):
+        assert "<i>pwn</i>" not in m.group(1)
+
+
 def test_evidence_namespaces_all_have_sentence_handling():
     """Hard constraint (slice-08): every evidence-id namespace present in the shipped
     artifacts must resolve to a rendered sentence or a named, deliberate fallback — a
