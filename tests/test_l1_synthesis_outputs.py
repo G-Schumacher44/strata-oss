@@ -535,6 +535,7 @@ def test_embedded_json_cannot_break_out_of_script_block():
     assert "</script>" not in embedded
     assert "<" not in embedded
     import json as _json
+
     assert _json.loads(embedded) == hostile  # pure serialization change
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
@@ -546,6 +547,7 @@ def test_embedded_json_cannot_break_out_of_script_block():
     graph.metadata["l1"]["period"] = {"start": "</script><i>pwn</i>", "end": "x", "days": 30}
     html = build_dashboard_html(build_artifacts(graph), graph)
     import re
+
     for m in re.finditer(r"<script>([\s\S]*?)</script>", html):
         assert "<i>pwn</i>" not in m.group(1)
 

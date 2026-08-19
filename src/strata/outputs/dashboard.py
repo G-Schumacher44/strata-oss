@@ -52,9 +52,7 @@ def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
     l1 = graph.metadata.get("l1", {})
     facts = evidence_facts(graph)
 
-    usage = {
-        f"explore:{key}": dict(rec) for key, rec in facts["explore_usage_evidence"].items()
-    }
+    usage = {f"explore:{key}": dict(rec) for key, rec in facts["explore_usage_evidence"].items()}
 
     pdt_build = {
         view: {
