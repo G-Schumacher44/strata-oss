@@ -72,8 +72,13 @@ importing a private cross-module function).
 
 **Review rounds (PR #25):** r1 — inherited consumers (fixture: base_customer under
 customer_extended) + ACTIVE badge to legend blue; r2 — the r1 propagation promoted from a
-dashboard-local loop into L1's `view_consumer_map()` so panel/register/ledger share one
-ancestry-aware source (fix-the-shape applied to the fix itself); r3 — this doc alignment.
+dashboard-local loop into L1 (fix-the-shape applied to the fix itself); r3 — doc alignment;
+r4 — the unification split along the REAL seam: `view_consumer_map()` (ancestry-aware
+reachability: orphan/zombie-view verdicts + the panel) vs `direct_view_consumers()` (the
+PDT ledger — a child view's PDT is its own materialization, so inherited consumers must
+never credit a parent's PDT), one shared direct core; r5 — physical-table panel counts
+pdt→upstream references, mirroring strata_impact(); r6 — this record corrected to the
+final architecture.
 mypy caught a str→tuple rebind in CI (venv suites don't run mypy — CI does).
 
 **Exact Next Steps:**
