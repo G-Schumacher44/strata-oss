@@ -9,10 +9,60 @@ from typing import Any
 from strata.ir.types import IRGraph
 from strata.l1.enrich import view_consumer_map
 
+# Evidence-id namespaces the embedded JS's evidenceSentence() dispatcher must handle —
+# one case per entry, or a named deliberate fallback. Mirrored by hand in the JS switch
+# (search this file for "case '"); tests/test_l1_synthesis_outputs.py pins the real
+# enterprise_mono artifacts against this set so a future namespace can't silently no-op.
+KNOWN_EVIDENCE_NAMESPACES = frozenset(
+    {"dead", "explore", "view", "pdt", "field", "usage", "pdt_build", "schema_table"}
+)
+
 
 def _read_js(filename: str) -> str:
     js_dir = Path(__file__).resolve().parent.parent / "assets" / "js"
     return (js_dir / filename).read_text(encoding="utf-8")
+
+
+def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
+    """Raw L1 facts inlined for the evidence-sentence panel — one Python-side source,
+    keyed to match the `usage:`/`pdt_build:`/`schema_table:` evidence-id suffixes so the
+    JS looks numbers up rather than re-deriving them (the panel-vs-canonical-source drift
+    PR #25's review rounds kept catching)."""
+    l1 = graph.metadata.get("l1", {})
+
+    content_ref_counts: dict[str, int] = {}
+    for ref in l1.get("content_references", []):
+        key = f"{ref['model']}.{ref['explore']}"
+        content_ref_counts[key] = content_ref_counts.get(key, 0) + 1
+
+    usage = {
+        f"explore:{key}": {
+            "query_count": rec["query_count"],
+            "content_reference_count": content_ref_counts.get(key, 0),
+        }
+        for key, rec in l1.get("explore_usage", {}).items()
+    }
+
+    pdt_build = {
+        view: {
+            "build_count": rec["build_count"],
+            "bytes_processed": rec["bytes_processed"],
+            "estimated_cost_usd": rec["estimated_cost_usd"],
+        }
+        for view, rec in l1.get("pdt_builds", {}).items()
+    }
+
+    schema_table = {
+        name: {"column_count": len(rec.get("columns", []))}
+        for name, rec in l1.get("schema_tables", {}).items()
+    }
+
+    return {
+        "period": l1.get("period") or {},
+        "usage": usage,
+        "pdt_build": pdt_build,
+        "schema_table": schema_table,
+    }
 
 
 def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
@@ -25,6 +75,7 @@ def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
     usage_summary = json.dumps(artifacts.get("usage_summary") or {})
     migration = json.dumps(artifacts.get("migration_impact", []))
     graph_json = json.dumps(graph_data)
+    l1_facts = json.dumps(_build_l1_facts(graph))
     data_block = (
         f"const CATALOG       = {catalog};\n"
         f"const DEAD_CODE     = {dead_code};\n"
@@ -34,6 +85,7 @@ def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
         f"const USAGE_SUMMARY = {usage_summary};\n"
         f"const MIGRATION     = {migration};\n"
         f"const GRAPH_DATA    = {graph_json};\n"
+        f"const L1_FACTS      = {l1_facts};\n"
     )
     scripts = "\n".join(
         [
@@ -317,9 +369,14 @@ tr.dead-row td { background: rgba(231,76,60,.04); }
 .file-tag { font-size: 11px; color: var(--muted); font-family: monospace; }
 .reason-text { color: var(--muted); font-size: 12px; margin-top: 3px; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin: 2px 2px 0 0; background: rgba(136,146,164,.1); color: var(--muted); font-family: monospace; }
-a.pill-link { cursor: pointer; border: 1px solid transparent; }
+a.ev-chip { cursor: pointer; border: 1px solid transparent; text-decoration: none; }
 a.pill-link:hover { background: rgba(52,152,219,.2); color: var(--blue); border-color: var(--blue); }
-.evidence-plain { display: inline-block; font-size: 11px; color: var(--muted); font-family: monospace; margin: 2px 8px 0 0; }
+a.pill-info:hover { background: rgba(136,146,164,.25); color: var(--text); border-color: var(--muted); }
+a.row-primary-link { display: inline-block; padding: 0; border: none; background: none; color: inherit; font: inherit; margin: 0; }
+a.row-primary-link:hover { color: var(--blue); background: none; }
+.copy-link-btn { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 11px; margin-left: 6px; padding: 0; vertical-align: middle; }
+.copy-link-btn:hover { color: var(--blue); }
+.evidence-sentence { display: block; font-size: 12px; color: var(--text); background: rgba(52,152,219,.08); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 4px 0 8px; max-width: 520px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .evidence-details summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .evidence-details summary:hover { color: var(--blue); }
 .evidence-list { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 2px; }
@@ -494,29 +551,191 @@ function escapeHtml(s) {
 // Resolves an evidence id to a graph node id when one exists, so Dead Code Register
 // pills and Roadmap evidence links can jump into the graph instead of sitting inert.
 const GRAPH_NODE_IDS = new Set((GRAPH_DATA && GRAPH_DATA.nodes || []).map(n => n.data.id));
+const NODE_BY_ID = {};
+(GRAPH_DATA && GRAPH_DATA.nodes || []).forEach(n => { NODE_BY_ID[n.data.id] = n.data; });
+
+function exploreNodeIdFromKey(key) {
+  // "MODEL.NAME" (dead-code/usage-fact key convention) -> "explore:MODEL:NAME" (graph
+  // node id convention) — same identity, different separator.
+  const dot = key.indexOf('.');
+  return dot > -1 ? `explore:${key.slice(0, dot)}:${key.slice(dot + 1)}` : null;
+}
 function resolveEvidenceNodeId(evId) {
   if (!evId) return null;
   if (GRAPH_NODE_IDS.has(evId)) return evId;
-  // dead:explore:MODEL.NAME -> explore:MODEL:NAME (dead-code register keys explores
-  // model.name-qualified; graph node ids key them model:name — same identity, different separator).
-  const m = /^dead:explore:(.+)$/.exec(evId);
-  if (m) {
-    const dot = m[1].indexOf('.');
-    if (dot > -1) {
-      const candidate = `explore:${m[1].slice(0, dot)}:${m[1].slice(dot + 1)}`;
-      if (GRAPH_NODE_IDS.has(candidate)) return candidate;
-    }
+  const mExplore = /^dead:explore:(.+)$/.exec(evId);
+  if (mExplore) {
+    const candidate = exploreNodeIdFromKey(mExplore[1]);
+    if (candidate && GRAPH_NODE_IDS.has(candidate)) return candidate;
+  }
+  const mView = /^dead:view:(.+)$/.exec(evId);
+  if (mView) {
+    const candidate = `view:${mView[1]}`;
+    if (GRAPH_NODE_IDS.has(candidate)) return candidate;
   }
   return null;
 }
+
+// ── Evidence sentences ──────────────────────────────────────────────────────
+// Renders the raw L1_FACTS/GRAPH_DATA a chip's evidence id names in analyst language —
+// every fact here is a Python-computed number formatted for display, never re-derived.
+function periodPhrase() {
+  const p = L1_FACTS.period || {};
+  if (!p.start || !p.end) return 'an unknown window';
+  const days = p.days != null ? `${p.days}-day ` : '';
+  return `the last ${days}window (${p.start} \u2192 ${p.end})`;
+}
+function exploreUsageSentence(modelDotName, sourceFile) {
+  const fact = L1_FACTS.usage['explore:' + modelDotName];
+  let s;
+  if (fact) {
+    const q = fact.query_count || 0;
+    const c = fact.content_reference_count || 0;
+    s = `queried ${q} time${q !== 1 ? 's' : ''} in ${periodPhrase()} \u00b7 ${c} content reference${c !== 1 ? 's' : ''} in the window`;
+  } else {
+    s = `no usage row was provided for '${escapeHtml(modelDotName)}' in the L1 facts`;
+  }
+  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${escapeHtml(sourceFile)}'`;
+  return s + '.';
+}
+function viewSentence(node) {
+  const refs = node.referencing_explores || [];
+  let s;
+  if (node.status === 'orphaned') {
+    s = 'no explore references this view (structural orphan)';
+  } else if (node.status === 'zombie_view') {
+    s = `referenced by ${refs.length} explore${refs.length !== 1 ? 's' : ''}, all currently dead`;
+  } else {
+    s = `referenced by ${refs.length} explore${refs.length !== 1 ? 's' : ''}`;
+  }
+  if (node.source_file) s += ` \u00b7 exists in resolved IR at '${escapeHtml(node.source_file)}'`;
+  return s + '.';
+}
+function pdtCostSentence(buildCount, bytesProcessed, costUsd, usedBy, sourceFile) {
+  let s = `built ${buildCount || 0} time${buildCount !== 1 ? 's' : ''}, processing ${fmt_bytes(bytesProcessed || 0)} (${fmt_usd(costUsd || 0)}/mo)`;
+  if (usedBy && usedBy.length) {
+    const deadCount = usedBy.filter(c => c.dead).length;
+    s += ` \u00b7 used by ${usedBy.length} explore${usedBy.length !== 1 ? 's' : ''}`;
+    if (deadCount) s += ` (${deadCount} dead)`;
+  } else {
+    s += ' \u00b7 no consumers recorded';
+  }
+  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${escapeHtml(sourceFile)}'`;
+  return s + '.';
+}
+function evidenceSentence(evId) {
+  if (!evId) return 'No evidence id provided.';
+  const namespace = evId.split(':')[0];
+  switch (namespace) {
+    case 'dead': {
+      const nodeId = resolveEvidenceNodeId(evId);
+      const node = nodeId ? NODE_BY_ID[nodeId] : null;
+      if (node && node.kind === 'explore') return exploreUsageSentence(`${node.model}.${node.label}`, node.source_file);
+      if (node && node.kind === 'view') return viewSentence(node);
+      return `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+    }
+    case 'explore': {
+      const node = NODE_BY_ID[evId];
+      return node
+        ? exploreUsageSentence(`${node.model}.${node.label}`, node.source_file)
+        : `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+    }
+    case 'view': {
+      const node = NODE_BY_ID[evId];
+      return node ? viewSentence(node) : `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+    }
+    case 'pdt': {
+      const node = NODE_BY_ID[evId];
+      if (!node) return `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+      if (node.status === 'missing_build_facts') {
+        return `no PDT build facts were provided for '${escapeHtml(node.label)}' — cost and build count are unknown` +
+          (node.source_file ? ` · exists in resolved IR at '${escapeHtml(node.source_file)}'` : '') + '.';
+      }
+      return pdtCostSentence(node.build_count, node.bytes_processed, node.estimated_cost_usd, node.used_by_explores, node.source_file);
+    }
+    case 'usage': {
+      const rest = evId.slice('usage:'.length); // "explore:MODEL.NAME" or "view:NAME"
+      if (rest.startsWith('explore:')) {
+        const key = rest.slice('explore:'.length);
+        const nodeId = exploreNodeIdFromKey(key);
+        const node = nodeId ? NODE_BY_ID[nodeId] : null;
+        return exploreUsageSentence(key, node ? node.source_file : null);
+      }
+      return 'no usage is tracked at the view level \u2014 view aliveness is derived structurally' +
+        ' from whether any explore still reaches it, not from a query-count fact.';
+    }
+    case 'pdt_build': {
+      const view = evId.slice('pdt_build:'.length);
+      const fact = L1_FACTS.pdt_build[view];
+      if (!fact) return `No PDT build facts were provided for '${escapeHtml(view)}'.`;
+      const node = NODE_BY_ID['pdt:' + view];
+      return pdtCostSentence(
+        fact.build_count, fact.bytes_processed, fact.estimated_cost_usd,
+        node ? node.used_by_explores : null, node ? node.source_file : null
+      );
+    }
+    case 'schema_table': {
+      const table = evId.slice('schema_table:'.length);
+      const fact = L1_FACTS.schema_table[table];
+      return fact
+        ? `table '${escapeHtml(table)}' is present in the provided schema facts with ${fact.column_count} known column${fact.column_count !== 1 ? 's' : ''}.`
+        : `table '${escapeHtml(table)}' was not found in the provided schema facts \u2014 the resolved IR references it, but no warehouse metadata confirms it exists.`;
+    }
+    case 'field':
+      return `no field-level L1 fact is tracked for '${escapeHtml(evId.slice('field:'.length))}'` +
+        ' \u2014 see the table/view evidence alongside this field for usage and schema context.';
+    default:
+      return `No evidence sentence is defined for the '${escapeHtml(namespace)}' namespace yet.`;
+  }
+}
+
 function evidenceHtml(evId) {
   const nodeId = resolveEvidenceNodeId(evId);
   const label = escapeHtml(evId);
-  return nodeId
-    ? `<a href="#" class="pill pill-link" data-node-id="${escapeHtml(nodeId)}">${label}</a>`
-    : `<span class="evidence-plain">${label}</span>`;
+  const cls = nodeId ? 'pill ev-chip pill-link' : 'pill ev-chip pill-info';
+  const nodeAttr = nodeId ? ` data-node-id="${escapeHtml(nodeId)}"` : '';
+  return `<a href="#" class="${cls}" data-ev-id="${label}"${nodeAttr}>${label}</a>`;
 }
 function evidenceListHtml(ids) { return (ids || []).map(evidenceHtml).join(''); }
+// A row's own artifact id (not one of its evidence_ids) — used as the deep-link/copy-link
+// target and as the chip that opens the row's headline sentence (dead-explore usage,
+// PDT cost/builds) on click.
+function primaryChipHtml(id, label) {
+  const nodeId = resolveEvidenceNodeId(id);
+  const cls = nodeId ? 'ev-chip pill-link row-primary-link' : 'ev-chip pill-info row-primary-link';
+  const nodeAttr = nodeId ? ` data-node-id="${escapeHtml(nodeId)}"` : '';
+  return `<a href="#" class="${cls}" data-ev-id="${escapeHtml(id)}"${nodeAttr}>${escapeHtml(label)}</a>` +
+    `<button type="button" class="copy-link-btn" data-copy-hash="${escapeHtml(id)}" title="Copy link to this row">🔗</button>`;
+}
+
+function attrEscape(s) { return String(s).replace(/["\\]/g, c => '\\' + c); }
+function toggleEvidencePanel(chip) {
+  // A primary chip (row Name/View cell) has a copy-link <button> immediately after it —
+  // anchor the sentence panel after THAT, not the chip, or the sibling check below never
+  // finds it and re-clicking stacks duplicate panels instead of toggling.
+  const afterChip = chip.nextElementSibling;
+  const anchor = (afterChip && afterChip.classList && afterChip.classList.contains('copy-link-btn'))
+    ? afterChip : chip;
+  const evId = chip.dataset.evId;
+  const next = anchor.nextElementSibling;
+  if (next && next.classList && next.classList.contains('evidence-sentence')) {
+    next.remove();
+    return;
+  }
+  const panel = el('div', 'evidence-sentence', escapeHtml(evId) + ': ' + evidenceSentence(evId));
+  anchor.insertAdjacentElement('afterend', panel);
+}
+function openHashTarget() {
+  const raw = location.hash.slice(1);
+  if (!raw) return;
+  let id = raw;
+  try { id = decodeURIComponent(raw); } catch (e) { id = raw; }
+  const row = document.getElementById(id);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const chip = row.querySelector(`.ev-chip[data-ev-id="${attrEscape(id)}"]`) || row.querySelector('.ev-chip');
+  if (chip) toggleEvidencePanel(chip);
+}
 
 let CY = null;
 function focusGraphNode(nodeId) {
@@ -531,11 +750,29 @@ function focusGraphNode(nodeId) {
   ele.emit('tap');
 }
 document.addEventListener('click', function(evt) {
-  const target = evt.target.closest('.pill-link');
-  if (!target) return;
-  evt.preventDefault();
-  focusGraphNode(target.dataset.nodeId);
+  const chip = evt.target.closest('.ev-chip');
+  if (chip) {
+    evt.preventDefault();
+    toggleEvidencePanel(chip);
+    if (chip.dataset.nodeId) focusGraphNode(chip.dataset.nodeId);
+    return;
+  }
+  const copyBtn = evt.target.closest('.copy-link-btn');
+  if (copyBtn) {
+    evt.preventDefault();
+    const id = copyBtn.dataset.copyHash;
+    const url = location.origin + location.pathname + location.search + '#' + id;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        const prev = copyBtn.textContent;
+        copyBtn.textContent = '✓';
+        setTimeout(() => { copyBtn.textContent = prev; }, 1200);
+      }).catch(() => {});
+    }
+  }
 });
+window.addEventListener('hashchange', openHashTarget);
+window.addEventListener('load', openHashTarget);
 
 // ── KPI Row ───────────────────────────────────────────────────────────────────
 (function() {
@@ -572,11 +809,12 @@ document.addEventListener('click', function(evt) {
   const tbody = el('tbody');
   items.forEach(r => {
     const tr = el('tr', 'dead-row');
+    tr.id = r.id;
     const kindBadge = r.kind === 'explore' ? 'badge-red' : 'badge-orange';
     const pills = evidenceListHtml(r.evidence_ids);
     tr.innerHTML = `
       <td><span class="badge ${kindBadge}">${r.kind}</span></td>
-      <td style="font-family:monospace;font-weight:600">${r.name}</td>
+      <td style="font-family:monospace;font-weight:600">${primaryChipHtml(r.id, r.name)}</td>
       <td class="file-tag">${r.source_file||''}</td>
       <td>${r.static_reason||''}<div class="reason-text">${r.usage_reason||''}</div></td>
       <td>${pills}</td>`;
@@ -606,6 +844,8 @@ document.addEventListener('click', function(evt) {
   const tbody = el('tbody');
   pdts.forEach(r => {
     const tr = el('tr');
+    const primaryId = 'pdt:' + r.view;
+    tr.id = primaryId;
     const isUnused = r.status === 'unused';
     const isZombie = r.status === 'zombie';
     const statusCell = isZombie
@@ -616,7 +856,7 @@ document.addEventListener('click', function(evt) {
     const costColor = isZombie ? 'var(--purple)' : isUnused ? 'var(--red)' : 'var(--text)';
     const explores = (r.used_by_explores||[]).map(e => `<div class="file-tag">${e}</div>`).join('');
     tr.innerHTML = `
-      <td style="font-family:monospace;font-weight:600">${r.view}</td>
+      <td style="font-family:monospace;font-weight:600">${primaryChipHtml(primaryId, r.view)}</td>
       <td style="font-weight:600;color:${costColor}">${fmt_usd(r.estimated_cost_usd)}</td>
       <td>${r.build_count}</td>
       <td>${fmt_bytes(r.bytes_processed)}</td>

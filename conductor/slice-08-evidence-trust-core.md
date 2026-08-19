@@ -1,7 +1,7 @@
 # Slice 08: Evidence trust core — L1 facts inlined, evidence sentences, deep links
 
 Date: 2026-08-19
-Status: queued
+Status: review
 Phase: dashboard
 Depends: slice-07 (dashboard UX fixes)
 
@@ -54,9 +54,12 @@ first; a test pins the enumeration.
 
 ## Acceptance Criteria
 
-- [ ] Every evidence-id namespace in enterprise_mono's artifacts resolves (test-pinned)
-- [ ] Zombie chip click renders the cost/builds sentence; dead-explore chip renders the
+- [x] Every evidence-id namespace in enterprise_mono's artifacts resolves (test-pinned)
+- [x] Zombie chip click renders the cost/builds sentence; dead-explore chip renders the
       usage sentence with the real period dates
-- [ ] Deep link to both fixture zombies works from a fresh page load (hash → view → row →
-      panel), copy-link buttons present
-- [ ] HTML remains fully self-contained; suite green; ruff clean
+- [x] Deep link to both fixture zombies works from a fresh page load (hash → view → row →
+      panel), copy-link buttons present — implemented + logic verified with Node against
+      the real generated data block (see handoff); an actual browser click-through is the
+      one item still needing a human eyeball (this dispatch is headless, same gap slice-07
+      flagged — no browser-use permission available here)
+- [x] HTML remains fully self-contained; suite green; ruff clean

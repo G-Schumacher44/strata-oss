@@ -423,6 +423,102 @@ def test_schema_drift_rows_differ_by_field_not_true_duplicates():
     assert "legacy_order_detail.total_unit_cost" in html
 
 
+def test_l1_facts_inlines_usage_pdt_build_and_schema_table_facts():
+    """Slice 08 — the raw L1 facts (explore_usage, pdt_builds, schema_tables) must reach
+    the dashboard data block Python-side, keyed to match the evidence-id suffixes the JS
+    looks them up by, so evidence sentences never re-derive a number the L1 layer already
+    computed."""
+    from strata.outputs.dashboard import _build_l1_facts
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    facts = _build_l1_facts(graph)
+
+    assert facts["period"] == {"start": "2026-05-07", "end": "2026-06-06", "days": 30}
+
+    dead_finance = facts["usage"]["explore:em_legacy_v2.dead_finance_v2"]
+    assert dead_finance["query_count"] == 0
+    assert dead_finance["content_reference_count"] == 0
+
+    live_explore_key = next(
+        key for key, rec in graph.metadata["l1"]["explore_usage"].items() if rec["query_count"] > 0
+    )
+    assert facts["usage"][f"explore:{live_explore_key}"]["query_count"] > 0
+
+    zombie_build = facts["pdt_build"]["pdt_attribution_full_funnel"]
+    assert zombie_build["build_count"] == 180
+    assert zombie_build["estimated_cost_usd"] == 45000.0
+    assert zombie_build["bytes_processed"] == 7200000000000000
+
+    schema_table = facts["schema_table"]["acme-analytics.silver.int_attributed_purchases"]
+    assert schema_table["column_count"] > 0
+
+
+def test_evidence_namespaces_all_have_sentence_handling():
+    """Hard constraint (slice-08): every evidence-id namespace present in the shipped
+    artifacts must resolve to a rendered sentence or a named, deliberate fallback — a
+    namespace the dashboard's evidenceSentence() dispatcher doesn't handle silently
+    no-ops for the user. Enumerate the REAL enterprise_mono artifacts (not a synthetic
+    list) and pin them against dashboard.py's documented namespace set, then confirm the
+    generated JS actually carries a case for each one."""
+    from strata.outputs.dashboard import KNOWN_EVIDENCE_NAMESPACES, build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+
+    found: set[str] = set()
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == "evidence_ids" and isinstance(value, list):
+                    for eid in value:
+                        found.add(str(eid).split(":", 1)[0])
+                else:
+                    walk(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+
+    walk(artifacts)
+
+    assert found, "fixture must exercise at least one evidence namespace"
+    assert found <= KNOWN_EVIDENCE_NAMESPACES, (
+        f"artifact evidence ids use namespace(s) {found - KNOWN_EVIDENCE_NAMESPACES} not "
+        "declared in dashboard.py's KNOWN_EVIDENCE_NAMESPACES — add a case to "
+        "evidenceSentence() and the constant before shipping"
+    )
+
+    html = build_dashboard_html(artifacts, graph)
+    for namespace in found:
+        assert f"case '{namespace}'" in html, (
+            f"generated dashboard JS has no evidenceSentence() case for '{namespace}'"
+        )
+
+
+def test_evidence_chips_and_deep_links_present_in_generated_html():
+    """Both fixture zombies must be reachable via a literal #dead:explore:.../#pdt:...
+    hash target with a copy-link affordance — the deep-link contract slice-08 adds."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    assert '"dead:explore:em_legacy_v2.dead_finance_v2"' in html
+    assert '"pdt:pdt_attribution_full_funnel"' in html
+    assert '"pdt:pdt_customer_value_score"' in html
+    assert "copy-link-btn" in html
+    assert "openHashTarget" in html
+    assert "evidence-sentence" in html
+
+
 def test_strata_gate_script_and_output_cli(tmp_path):
     gate = subprocess.run(
         [

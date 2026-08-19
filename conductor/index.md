@@ -31,7 +31,7 @@ First slices go here. Add master-plan docs as phases span multiple slices.
 
 ## Active Slice
 
-Active slice: conductor/slice-08-evidence-trust-core.md (queued — dispatch after this docs PR merges; design source: conductor/dashboard-north-star.md)
+Active slice: conductor/slice-08-evidence-trust-core.md (review — PR open; design source: conductor/dashboard-north-star.md)
 
 ## Phase Status
 
