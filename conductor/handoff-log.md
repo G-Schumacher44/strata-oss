@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: 071fdf1 (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: f8fa376 (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -231,6 +231,15 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   (Artemis's companion finding — PDT window wording "still unaddressed" — is stale: the
   wording landed in 3987015 and reads `estimated over ${periodPhrase()}` at
   dashboard.py:626. Disputed with evidence on the PR, not silently ignored.)
+
+- **Round 9 (Koa head, commit f8fa376)** — Codex: prototype-chain lookups. A table named
+  `constructor`/`toString` resolved to an inherited Object.prototype member, so a MISSING
+  table rendered as present with an undefined column count — evidence contradicting its own
+  verdict. Fixed as a CLASS: Codex named two sites; all four L1 fact lookups now route
+  through `ownFact()`, and `NODE_BY_ID` uses `Object.create(null)` so a `__proto__` key
+  can't poison it on assignment either. Regression test asserts no raw bracket lookup into
+  a JSON-parsed fact map survives (129 tests). Full gate set run this time — check, format,
+  pytest, mypy, Node parse — per the r8 lesson.
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
