@@ -112,19 +112,24 @@ new fact is a value they already compute (`explore_usage`, `pdt_builds`,
   namespaces (preserving slice-07's pill/plain boundary), and the hash id round-trip
   (`decodeURIComponent` is a no-op on unencoded colons/dots, and also correctly reverses
   `encodeURIComponent` for a defensively-percent-encoded paste).
-- **Not verified**: an actual browser click-through (chip click → panel appears in the
-  DOM at the right position; hash-on-load scroll-and-open). This dispatch runs headless
-  with no `browser-use` permission available — same gap slice-07 flagged. The Node-level
-  logic verification above substitutes for the pure-function correctness; DOM
-  wiring/visual layout is the one item still needing a human eyeball.
+- **Browser click-through DONE (Koa head session, real Chrome, 2026-08-18)** — and it
+  caught a page-fatal bug the Python suite structurally cannot see: the generated
+  `attrEscape` helper shipped `/["\]/g` (a non-raw Python string collapsed one backslash
+  layer, so the regex character class never closed) → `SyntaxError: Invalid regular
+  expression` at page load, killing EVERY script on the page. All 118 Python tests were
+  green the whole time — they never execute the JS. Fix: eliminated the regex entirely;
+  the hash-open path now finds its chip by plain `dataset.evId` string equality (zero
+  backslash surface). Added a pre-push guard for this class: extract each generated
+  `<script>` block and `new Function(src)` it in Node (all 5 parse clean).
+  Verified live in Chrome after the fix, zero console errors:
+  chip click → sentence panel in the right row; fresh load with
+  `#pdt:pdt_attribution_full_funnel` scrolls the TR to viewport top and opens its panel
+  (analyst sentence matches the north star); copy-link builds the correct file://-safe
+  URL from `data-copy-hash`; jump to a second deep link then Back → the first panel
+  STAYS open (the r1 `openEvidencePanel` idempotency fix, confirmed in-browser).
 
 **Exact Next Steps:**
-1. Operator (or a session with browser-tool permission) opens the regenerated
-   enterprise_mono dashboard.html in a real browser and confirms: clicking a dead-explore
-   chip and a zombie-PDT chip opens the sentence panel in the right place; pasting
-   `#dead:explore:em_legacy_v2.dead_finance_v2` or `#pdt:pdt_attribution_full_funnel`
-   into the URL on a fresh load scrolls to and opens that row; copy-link buttons put a
-   working URL on the clipboard.
+1. ~~Browser click-through~~ DONE (see above — caught + fixed the attrEscape fatal).
 2. Twin gate (Artemis/Apollo, this session's pre-PR ritual) + Codex on the PR; merge on
    clean per standing order (dispatched agents never merge).
 3. No version bump / tag needed — generator-only addition, not a release artifact

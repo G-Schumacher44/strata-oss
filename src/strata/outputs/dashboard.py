@@ -708,7 +708,6 @@ function primaryChipHtml(id, label) {
     `<button type="button" class="copy-link-btn" data-copy-hash="${escapeHtml(id)}" title="Copy link to this row">🔗</button>`;
 }
 
-function attrEscape(s) { return String(s).replace(/["\\]/g, c => '\\' + c); }
 function toggleEvidencePanel(chip) {
   // A primary chip (row Name/View cell) has a copy-link <button> immediately after it —
   // anchor the sentence panel after THAT, not the chip, or the sibling check below never
@@ -733,7 +732,12 @@ function openHashTarget() {
   const row = document.getElementById(id);
   if (!row) return;
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  const chip = row.querySelector(`.ev-chip[data-ev-id="${attrEscape(id)}"]`) || row.querySelector('.ev-chip');
+  // Plain string equality on dataset — no selector-escaping regex. The escaped-regex
+  // version died at parse time in the GENERATED page (non-raw Python string collapsed a
+  // backslash layer: /["\]/g → unterminated class), killing every script on the page.
+  // Caught only by the live browser pass — Python tests never execute the JS.
+  const chips = Array.from(row.querySelectorAll('.ev-chip'));
+  const chip = chips.find(c => c.dataset.evId === id) || chips[0] || null;
   // Idempotent by contract: hash navigation (including Back to an already-open target)
   // must leave the panel OPEN — a toggle here closed it on revisit (Codex P2, PR #28).
   if (chip) openEvidencePanel(chip);
