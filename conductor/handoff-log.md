@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: f8fa376 (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: 05ccac8 (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -240,6 +240,15 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   can't poison it on assignment either. Regression test asserts no raw bracket lookup into
   a JSON-parsed fact map survives (129 tests). Full gate set run this time — check, format,
   pytest, mypy, Node parse — per the r8 lesson.
+
+- **Round 11 (Koa head, commit 05ccac8)** — Codex: copy-link/hash asymmetry. The writer emitted
+  the raw row id; the reader applied `decodeURIComponent`, so an id containing a literal
+  percent-escape (quoted physical table `foo%20bar`) decoded to `foo bar` and matched
+  nothing. Writer now encodes; reader decodes then falls back to the raw hash so links
+  copied from an earlier build still resolve. Regression test pins both directions (130).
+  NOTE: the post-reboot scratchpad venv was gone, so the first gate attempt silently ran
+  against a STALE generated artifact — rebuilt the venv and re-ran everything against the
+  real regenerated file. Same greens-by-construction shape as r8, different instrument.
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
