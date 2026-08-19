@@ -201,10 +201,10 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             "view→pdt",
         }:
             continue
-        key = (edge.source, edge.target, edge.relation)
-        if key in seen:
+        edge_key = (edge.source, edge.target, edge.relation)
+        if edge_key in seen:
             continue
-        seen.add(key)
+        seen.add(edge_key)
         if edge.source not in graph.nodes or edge.target not in graph.nodes:
             continue
         src = graph.nodes[edge.source]
