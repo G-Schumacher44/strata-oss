@@ -616,7 +616,7 @@ function viewSentence(node) {
   return s + '.';
 }
 function pdtCostSentence(buildCount, bytesProcessed, costUsd, usedBy, sourceFile) {
-  let s = `built ${buildCount || 0} time${buildCount !== 1 ? 's' : ''}, processing ${fmt_bytes(bytesProcessed || 0)} (${fmt_usd(costUsd || 0)}/mo)`;
+  let s = `built ${buildCount || 0} time${buildCount !== 1 ? 's' : ''}, processing ${fmt_bytes(bytesProcessed || 0)} \u00b7 ${fmt_usd(costUsd || 0)} estimated over ${periodPhrase()}`;
   if (usedBy && usedBy.length) {
     const deadCount = usedBy.filter(c => c.dead).length;
     s += ` \u00b7 used by ${usedBy.length} explore${usedBy.length !== 1 ? 's' : ''}`;

@@ -36,6 +36,7 @@ def build_graph_with_provider(repo_path: str | Path, provider: UsageProvider) ->
         explore_usage=mapping.get("explore_usage"),
         content_references=mapping.get("content_references"),
         pdt_builds=mapping.get("pdt_builds"),
+        period=mapping.get("period"),
     )
 
 

@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,8 @@ from strata.l1.looker import (
     load_token,
     save_token,
 )
+from strata.outputs import build_artifacts
+from strata.outputs.dashboard import build_dashboard_html
 from strata.pipeline import build_graph_with_provider
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -76,6 +79,35 @@ def test_build_graph_with_looker_provider_contract():
 
     assert graph.metadata["l1"]["explore_usage"]["test_model.customer"]["query_count"] == 5
     assert graph.metadata["l1"]["pdt_ledger"][0]["view"] == "pdt_orders"
+
+
+def test_looker_provider_period_propagates_actual_query_window():
+    """Codex PR #28: `strata dashboard --looker-url --days N` queries a real N-day
+    window, but UsageFacts.to_mapping() dropped `period` entirely, so
+    build_graph_with_provider()'s live usage sentences claimed an unknown window. Use a
+    non-30 days value so a hardcoded default couldn't fake this passing."""
+    days = 45
+    provider = LookerSystemActivityProvider(FakeRunner(), days=days)
+
+    graph = build_graph_with_provider(FIXTURES, provider)
+
+    period = graph.metadata["l1"]["period"]
+    assert period["days"] == days
+    start, end = date.fromisoformat(period["start"]), date.fromisoformat(period["end"])
+    assert (end - start).days == days
+
+
+def test_pdt_cost_sentence_states_real_window_not_fabricated_monthly():
+    """Codex PR #28: pdt_builds() sums bytes over `self.days` with no monthly
+    normalization, but the evidence sentence said `$X/mo` — a fabricated figure.
+    The sentence must state the cost over its real (non-30-day) window instead,
+    reusing periodPhrase()'s same honest 'an unknown window' fallback."""
+    graph = build_graph_with_provider(FIXTURES, LookerSystemActivityProvider(FakeRunner(), days=45))
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    assert "${fmt_usd(costUsd || 0)} estimated over ${periodPhrase()}" in html
+    assert "${fmt_usd(costUsd || 0)}/mo)" not in html
 
 
 def test_missing_token_fails_fast(tmp_path):
