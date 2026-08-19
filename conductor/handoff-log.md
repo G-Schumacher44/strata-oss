@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: cd109fc (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: fc6936c (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -206,6 +206,15 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   retained); the sentence states the absence as the zero-usage fact. Pinned by
   `test_l1_facts_covers_explores_without_usage_rows` (127 total). Done inline: a bounded
   single-file fix mid-verification, cheaper than a fifth dispatch round-trip.
+
+- **Round 6 (Koa head, inline, commit fc6936c)** — Codex: `json.dumps` leaves `<` intact, so
+  a fixture value containing `</script>` would terminate the inline script element and
+  hand the rest of the payload to the HTML parser as live markup (reaches the page via
+  the raw `L1_FACTS` literal, upstream of the textContent panel hardening). Fix:
+  `_embed_json` wraps every one of the 9 JSON embed sites, encoding `<` as `\u003c` —
+  byte-identical after JS string parsing, a pure serialization change. Pinned by
+  `test_embedded_json_cannot_break_out_of_script_block` (poisons `period.start` with a
+  breakout payload and asserts no script block carries it raw; 128 total).
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
