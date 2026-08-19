@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: 3987015 (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: cd109fc (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -197,6 +197,15 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   requests.
 - Live-browser click-through was NOT re-run this session (no browser-use permission
   available here — same recurring headless-session gap prior rounds flagged).
+
+- **Round 5 (Koa head, inline, commit cd109fc)** — Codex caught that a live never-queried
+  explore emits NO System Activity row, so the usage-keyed comprehension dropped exactly
+  the explores whose dead verdicts most need evidence (chips fell to the "no usage row"
+  fallback, substantiating neither verdict condition). `_build_l1_facts` now backfills
+  every explore node with a `no_usage_row: true` zero-usage entry (content-ref count
+  retained); the sentence states the absence as the zero-usage fact. Pinned by
+  `test_l1_facts_covers_explores_without_usage_rows` (127 total). Done inline: a bounded
+  single-file fix mid-verification, cheaper than a fifth dispatch round-trip.
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
