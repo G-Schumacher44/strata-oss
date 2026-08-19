@@ -32,6 +32,15 @@ edge pass as the single place that computes cross-kind lookups, instead of dupli
 `validation.py`'s independent copy of the same helper — is a small local copy per
 module, not a cross-module import of a private function).
 
+**Scope amendment (review round 2, Codex):** consumer resolution moved OUT of
+`dashboard.py` into `src/strata/l1/enrich.py` as `view_consumer_map()` — the ancestry-aware
+single source now feeding the dead-code register, the PDT ledger, and the dashboard panel
+alike. The original "local edge derivation in the dashboard" wording is superseded: a
+dashboard-local derivation could disagree with the register (panel says ZOMBIE VIEW,
+register silent), which is exactly the two-sources drift this repo's rules forbid.
+`_explores_using_view` remains as the thin per-view API; both enrich call sites hoist the
+map once.
+
 ## Implementation Order
 
 1. `_build_graph_data`: one edge pass builds `view_explores`, `explore_views`,

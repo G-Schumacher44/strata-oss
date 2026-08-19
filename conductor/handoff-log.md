@@ -70,6 +70,12 @@ importing a private cross-module function).
   tests substitute. Flagged explicitly in the PR body as the one item still needing a
   human eyeball before this is fully closed out.
 
+**Review rounds (PR #25):** r1 — inherited consumers (fixture: base_customer under
+customer_extended) + ACTIVE badge to legend blue; r2 — the r1 propagation promoted from a
+dashboard-local loop into L1's `view_consumer_map()` so panel/register/ledger share one
+ancestry-aware source (fix-the-shape applied to the fix itself); r3 — this doc alignment.
+mypy caught a str→tuple rebind in CI (venv suites don't run mypy — CI does).
+
 **Exact Next Steps:**
 1. Operator (or a session with browser-tool permission) opens the regenerated
    enterprise_mono dashboard.html in a real browser and confirms: node-detail panel
