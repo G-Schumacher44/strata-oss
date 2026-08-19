@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: (set on final commit — pre-merge branch anchor; squash-merge repo — post-squash
-  resolve via `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid`)
+Commit: 391675e (pre-merge branch anchor — implementation commit; squash-merge repo,
+  post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
   landed anchor deterministically via `gh pr view <PR#> --json mergeCommit -q

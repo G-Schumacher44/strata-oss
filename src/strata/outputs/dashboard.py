@@ -734,7 +734,18 @@ function openHashTarget() {
   if (!row) return;
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const chip = row.querySelector(`.ev-chip[data-ev-id="${attrEscape(id)}"]`) || row.querySelector('.ev-chip');
-  if (chip) toggleEvidencePanel(chip);
+  // Idempotent by contract: hash navigation (including Back to an already-open target)
+  // must leave the panel OPEN — a toggle here closed it on revisit (Codex P2, PR #28).
+  if (chip) openEvidencePanel(chip);
+}
+
+function openEvidencePanel(chip) {
+  const afterChip = chip.nextElementSibling;
+  const anchor = (afterChip && afterChip.classList && afterChip.classList.contains('copy-link-btn'))
+    ? afterChip : chip;
+  const next = anchor.nextElementSibling;
+  if (next && next.classList && next.classList.contains('evidence-sentence')) return; // already open
+  toggleEvidencePanel(chip);
 }
 
 let CY = null;
@@ -761,7 +772,10 @@ document.addEventListener('click', function(evt) {
   if (copyBtn) {
     evt.preventDefault();
     const id = copyBtn.dataset.copyHash;
-    const url = location.origin + location.pathname + location.search + '#' + id;
+    // location.origin is the literal string "null" under file:// — and opening
+    // dashboard.html directly is a supported posture for this self-contained file.
+    // href minus any existing hash is scheme-agnostic (Codex P1, PR #28).
+    const url = location.href.split('#')[0] + '#' + id;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(() => {
         const prev = copyBtn.textContent;
