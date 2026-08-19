@@ -105,10 +105,11 @@ def _dead_code(
     # connected but functionally unreachable because every explore backing them is dead.
     if dead_explore_keys:
         already_dead = {r.name for r in records if r.kind == "view"}
+        consumers_by_view = view_consumer_map(graph)  # built once, not per view
         for node in graph.nodes_by_kind("view"):
             if node.name in already_dead:
                 continue
-            explores = _explores_using_view(graph, node.name)
+            explores = consumers_by_view.get(node.name, [])
             if not explores:
                 continue  # orphan — handled above
             if all(exp in dead_explore_keys for exp in explores):
@@ -131,10 +132,13 @@ def _pdt_ledger(
     graph: IRGraph, builds: list[PDTBuild], dead_explore_keys: set[str]
 ) -> list[PDTLedgerRecord]:
     builds_by_view = {item.view: item for item in builds}
+    # DIRECT consumers only: a PDT is per-view materialization — an explore targeting a
+    # child view queries the child's own pdt:<view> node, never the parent's (round 4).
+    consumers_by_view = direct_view_consumers(graph)  # built once, not per pdt
     records: list[PDTLedgerRecord] = []
     for pdt in graph.nodes_by_kind("pdt"):
         build = builds_by_view.get(pdt.name)
-        used_by = _explores_using_view(graph, pdt.name)
+        used_by = consumers_by_view.get(pdt.name, [])
         if build is None:
             records.append(
                 PDTLedgerRecord(
@@ -178,16 +182,55 @@ def _pdt_ledger(
     return records
 
 
-def _explores_using_view(graph: IRGraph, view: str) -> list[str]:
-    result: list[str] = []
-    target = f"view:{view}"
+def direct_view_consumers(graph: IRGraph) -> dict[str, list[str]]:
+    """Explores that DIRECTLY target each view (base or join edges only).
+
+    This is the right question for anything tied to a specific view's own
+    materialization — above all the PDT ledger: the resolver emits a separate
+    `pdt:<view>` node per PDT-bearing view, so an explore targeting a CHILD view
+    queries the child's own materialization, never the parent's. Crediting inherited
+    consumers to a parent's PDT would hide a genuinely unused/zombie parent PDT behind
+    a live child (PR #25 Codex round 4). Keys are bare view names; values sorted,
+    model-qualified explore keys.
+    """
+    direct: dict[str, list[str]] = {}
     for edge in graph.edges:
-        if edge.target != target or edge.relation not in {
-            "explore→base_view",
-            "explore→joined_view",
-        }:
+        if edge.relation not in {"explore→base_view", "explore→joined_view"}:
+            continue
+        if not edge.target.startswith("view:"):
             continue
         node = graph.get_node(edge.source)
         if node and node.kind == "explore":
-            result.append(f"{node.attrs.get('model')}.{node.name}")
-    return sorted(result)
+            direct.setdefault(edge.target.removeprefix("view:"), []).append(
+                f"{node.attrs.get('model')}.{node.name}"
+            )
+    return {name: sorted(set(keys)) for name, keys in direct.items()}
+
+
+def view_consumer_map(graph: IRGraph) -> dict[str, list[str]]:
+    """Ancestry-aware reachability: which explores keep this view ALIVE.
+
+    An explore targeting a child view reaches every ancestor in the child's
+    `resolution_chain` — the resolver's `_mark_orphans` treats ancestors as used, so
+    orphan/zombie-VIEW verdicts and the dashboard's view panel share this derivation
+    (PR #25 rounds 1–2). NOT for PDT consumer questions — those are per-materialization
+    and use `direct_view_consumers` (round 4). Two questions, two maps, one shared
+    direct core.
+    """
+    direct = direct_view_consumers(graph)
+    result: dict[str, list[str]] = {k: list(v) for k, v in direct.items()}
+    for node in graph.nodes.values():
+        if node.kind != "view":
+            continue
+        mine = direct.get(node.name)
+        if not mine:
+            continue
+        for anc in node.attrs.get("resolution_chain", []):
+            anc = anc.lstrip("+")
+            if anc and anc != node.name:
+                result.setdefault(anc, []).extend(mine)
+    return {name: sorted(set(keys)) for name, keys in result.items()}
+
+
+def _explores_using_view(graph: IRGraph, view: str) -> list[str]:
+    return view_consumer_map(graph).get(view, [])

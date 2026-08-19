@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from strata.ir.types import IRGraph
+from strata.l1.enrich import view_consumer_map
 
 
 def _read_js(filename: str) -> str:
@@ -54,7 +55,46 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
         if isinstance(_eu, dict)
         else {f"{r['model']}.{r['explore']}": r["query_count"] for r in _eu if isinstance(r, dict)}
     )
-    pdt_status = {r["view"]: r["status"] for r in l1.get("pdt_ledger", [])}
+    pdt_records = {r["view"]: r for r in l1.get("pdt_ledger", [])}
+
+    # One edge pass builds every cross-kind lookup the node-detail panel needs — computed
+    # once here so the panel never re-derives a fact JS-side that L1 already established
+    # (the model-qualified-dead-explore bug from PR #21 was exactly that kind of drift).
+    explore_views: dict[str, list[str]] = {}
+    view_pdt: dict[str, str] = {}
+    table_views: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        if edge.relation in {"explore→base_view", "explore→joined_view"} and edge.target.startswith(
+            "view:"
+        ):
+            explore_node = graph.nodes.get(edge.source)
+            view_name = edge.target.removeprefix("view:")
+            if explore_node and explore_node.kind == "explore":
+                explore_views.setdefault(explore_node.id, []).append(view_name)
+        elif edge.relation == "view→pdt" and edge.target.startswith("pdt:"):
+            view_pdt[edge.source.removeprefix("view:")] = edge.target.removeprefix("pdt:")
+        elif edge.relation == "view→physical_table" and edge.target.startswith("physical_table:"):
+            table_views.setdefault(edge.target.removeprefix("physical_table:"), []).append(
+                edge.source.removeprefix("view:")
+            )
+        elif edge.relation == "pdt→upstream" and edge.target.startswith("physical_table:"):
+            # Derived-table SQL references count too: the resolver records them as
+            # pdt→upstream, and strata_impact() maps the PDT back to its view
+            # (mcp/tools.py) — the panel mirrors that mapping or it undercounts exactly
+            # the references a deletion would break (Codex r5, PR #25).
+            pdt_node = graph.nodes.get(edge.source)
+            if pdt_node is not None:
+                table_views.setdefault(edge.target.removeprefix("physical_table:"), []).append(
+                    pdt_node.name
+                )
+    # Consumers come from L1's ancestry-aware single source — the dashboard must never
+    # re-derive them (PR #25 Codex round 2: a local propagation here could disagree with
+    # the register/ledger, which use the same map via _explores_using_view).
+    view_explores = view_consumer_map(graph)
+    table_views = {name: sorted(set(views)) for name, views in table_views.items()}
+
+    def consumers(keys: list[str]) -> list[dict[str, Any]]:
+        return [{"key": k, "dead": k in dead_ids} for k in keys]
 
     nodes = []
     for node in graph.nodes.values():
@@ -71,24 +111,59 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             else (node.name in dead_ids)
         )
         qcount = usage_map.get(f"{model}.{node.name}", 0) if node.kind == "explore" else 0
-        orphan = node.attrs.get("orphan", False) or is_dead
+        is_orphan_struct = bool(node.attrs.get("orphan", False))
+        orphan = is_orphan_struct or is_dead
 
+        extra: dict[str, Any] = {}
         if node.kind == "explore":
+            views_for_explore = explore_views.get(node.id, [])
+            extra["pdt_dependencies"] = sorted(
+                {view_pdt[v] for v in views_for_explore if v in view_pdt}
+            )
             color = "#e74c3c" if is_dead else "#2ecc71"
             shape = "ellipse"
             size = max(40, min(80, 40 + qcount // 20))
         elif node.kind == "pdt":
-            pdt_st = pdt_status.get(node.name)
+            record = pdt_records.get(node.name)
+            status = record["status"] if record else "missing_build_facts"
+            extra.update(
+                status=status,
+                estimated_cost_usd=record["estimated_cost_usd"] if record else 0.0,
+                build_count=record["build_count"] if record else 0,
+                bytes_processed=record["bytes_processed"] if record else 0,
+                used_by_explores=consumers(record["used_by_explores"] if record else []),
+            )
+            # Zombie (real infra, dead demand) is purple; unused is orange; in-use is
+            # green — the three-way vocabulary the legend teaches (see #2 in the slice).
             color = (
-                "#9b59b6" if pdt_st == "zombie" else "#f39c12" if pdt_st == "unused" else "#e67e22"
+                "#9b59b6"
+                if status == "zombie"
+                else "#f39c12"
+                if status == "unused"
+                else "#2ecc71"
+                if status == "used"
+                else "#8892a4"  # missing_build_facts — no cost data to render a verdict from
             )
             shape = "diamond"
             size = 36
         elif node.kind == "view":
-            color = "#95a5a6" if orphan else "#3498db"
+            referencing = view_explores.get(node.name, [])
+            # Zombie view: structurally referenced (unlike a true orphan) but every
+            # referencing explore is itself dead — alive wiring, dead demand.
+            is_zombie_view = (
+                not is_orphan_struct
+                and bool(referencing)
+                and all(k in dead_ids for k in referencing)
+            )
+            view_status = (
+                "orphaned" if is_orphan_struct else "zombie_view" if is_zombie_view else "active"
+            )
+            extra.update(status=view_status, referencing_explores=consumers(referencing))
+            color = "#95a5a6" if is_orphan_struct else "#9b59b6" if is_zombie_view else "#3498db"
             shape = "ellipse"
             size = 28
         else:  # physical_table
+            extra["referencing_views"] = table_views.get(node.name, [])
             color = "#2c3e50"
             shape = "rectangle"
             size = 20
@@ -107,6 +182,7 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
                     "color": color,
                     "size": size,
                     "shape": shape,
+                    **extra,
                 }
             }
         )
@@ -121,10 +197,10 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             "view→pdt",
         }:
             continue
-        key = (edge.source, edge.target, edge.relation)
-        if key in seen:
+        edge_key = (edge.source, edge.target, edge.relation)
+        if edge_key in seen:
             continue
-        seen.add(key)
+        seen.add(edge_key)
         if edge.source not in graph.nodes or edge.target not in graph.nodes:
             continue
         src = graph.nodes[edge.source]
@@ -215,13 +291,18 @@ header .subtitle { color: var(--muted); font-size: 13px; }
 
 /* Graph */
 #cy-container { display: flex; gap: 16px; }
-#cy { flex: 1; height: 500px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); }
-#detail-panel { width: 280px; background: var(--surface2); border-radius: 8px; border: 1px solid var(--border); padding: 16px; overflow-y: auto; max-height: 500px; }
+.cy-wrap { position: relative; flex: 1; }
+#cy { width: 100%; height: 640px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); }
+.cy-controls { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 5; }
+.cy-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border); background: rgba(30,33,48,.85); color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
+.cy-btn:hover { background: var(--surface2); border-color: var(--blue); color: var(--blue); }
+#detail-panel { width: 300px; background: var(--surface2); border-radius: 8px; border: 1px solid var(--border); padding: 16px; overflow-y: auto; max-height: 640px; }
 #detail-panel h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .detail-row { margin-bottom: 10px; }
 .detail-row .key { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
 .detail-row .val { font-size: 13px; word-break: break-all; }
 .detail-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0; }
+.consumer-row { font-size: 12px; font-family: monospace; margin-bottom: 2px; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 12px 0 0; }
 .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
@@ -236,6 +317,12 @@ tr.dead-row td { background: rgba(231,76,60,.04); }
 .file-tag { font-size: 11px; color: var(--muted); font-family: monospace; }
 .reason-text { color: var(--muted); font-size: 12px; margin-top: 3px; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin: 2px 2px 0 0; background: rgba(136,146,164,.1); color: var(--muted); font-family: monospace; }
+a.pill-link { cursor: pointer; border: 1px solid transparent; }
+a.pill-link:hover { background: rgba(52,152,219,.2); color: var(--blue); border-color: var(--blue); }
+.evidence-plain { display: inline-block; font-size: 11px; color: var(--muted); font-family: monospace; margin: 2px 8px 0 0; }
+.evidence-details summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.evidence-details summary:hover { color: var(--blue); }
+.evidence-list { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 2px; }
 
 /* PDT section */
 .pdt-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -296,7 +383,14 @@ tr.dead-row td { background: rgba(231,76,60,.04); }
   </div>
   <div class="section-body">
     <div id="cy-container">
-      <div id="cy"></div>
+      <div class="cy-wrap">
+        <div id="cy"></div>
+        <div class="cy-controls">
+          <button type="button" class="cy-btn" id="cy-zoom-in" title="Zoom in">+</button>
+          <button type="button" class="cy-btn" id="cy-zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" class="cy-btn" id="cy-fit" title="Fit to view">&#10530;</button>
+        </div>
+      </div>
       <div id="detail-panel">
         <h3>Node Detail</h3>
         <div id="detail-content" class="detail-empty">Click a node to see details</div>
@@ -306,9 +400,10 @@ tr.dead-row td { background: rgba(231,76,60,.04); }
       <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Active explore</div>
       <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Dead explore</div>
       <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> View</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> PDT (unused)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> PDT (zombie)</div>
       <div class="legend-item"><div class="legend-dot" style="background:#95a5a6"></div> Orphaned view</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> Zombie view / Zombie PDT</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> PDT (unused)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> PDT (in use)</div>
       <div class="legend-item"><div class="legend-rect" style="background:#2c3e50"></div> Physical table</div>
     </div>
   </div>
@@ -389,6 +484,58 @@ function fmt_bytes(b) {
   return b + ' B';
 }
 function fmt_usd(v) { return '$' + v.toFixed(2); }
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+// ── Evidence linking ────────────────────────────────────────────────────────
+// Resolves an evidence id to a graph node id when one exists, so Dead Code Register
+// pills and Roadmap evidence links can jump into the graph instead of sitting inert.
+const GRAPH_NODE_IDS = new Set((GRAPH_DATA && GRAPH_DATA.nodes || []).map(n => n.data.id));
+function resolveEvidenceNodeId(evId) {
+  if (!evId) return null;
+  if (GRAPH_NODE_IDS.has(evId)) return evId;
+  // dead:explore:MODEL.NAME -> explore:MODEL:NAME (dead-code register keys explores
+  // model.name-qualified; graph node ids key them model:name — same identity, different separator).
+  const m = /^dead:explore:(.+)$/.exec(evId);
+  if (m) {
+    const dot = m[1].indexOf('.');
+    if (dot > -1) {
+      const candidate = `explore:${m[1].slice(0, dot)}:${m[1].slice(dot + 1)}`;
+      if (GRAPH_NODE_IDS.has(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+function evidenceHtml(evId) {
+  const nodeId = resolveEvidenceNodeId(evId);
+  const label = escapeHtml(evId);
+  return nodeId
+    ? `<a href="#" class="pill pill-link" data-node-id="${escapeHtml(nodeId)}">${label}</a>`
+    : `<span class="evidence-plain">${label}</span>`;
+}
+function evidenceListHtml(ids) { return (ids || []).map(evidenceHtml).join(''); }
+
+let CY = null;
+function focusGraphNode(nodeId) {
+  if (!CY) return;
+  const ele = CY.getElementById(nodeId);
+  if (!ele || ele.empty()) return;
+  const cyEl = document.getElementById('cy');
+  if (cyEl) cyEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  CY.elements(':selected').unselect();
+  ele.select();
+  CY.animate({ fit: { eles: ele, padding: 120 } }, { duration: 300 });
+  ele.emit('tap');
+}
+document.addEventListener('click', function(evt) {
+  const target = evt.target.closest('.pill-link');
+  if (!target) return;
+  evt.preventDefault();
+  focusGraphNode(target.dataset.nodeId);
+});
 
 // ── KPI Row ───────────────────────────────────────────────────────────────────
 (function() {
@@ -426,7 +573,7 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
   items.forEach(r => {
     const tr = el('tr', 'dead-row');
     const kindBadge = r.kind === 'explore' ? 'badge-red' : 'badge-orange';
-    const pills = (r.evidence_ids||[]).map(id => `<span class="pill">${id}</span>`).join('');
+    const pills = evidenceListHtml(r.evidence_ids);
     tr.innerHTML = `
       <td><span class="badge ${kindBadge}">${r.kind}</span></td>
       <td style="font-family:monospace;font-weight:600">${r.name}</td>
@@ -527,13 +674,17 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
   items.forEach((r, i) => {
     const [cls, label] = actionStyle[r.action] || ['badge-gray', r.action];
     const cost = r.estimated_cost_usd ? ` · saves ${fmt_usd(r.estimated_cost_usd)}/mo` : '';
+    const evCount = (r.evidence_ids||[]).length;
     const li = el('li', 'roadmap-item');
     li.innerHTML = `
       <div class="roadmap-num">${i+1}</div>
       <div class="roadmap-body">
         <span class="badge ${cls}">${label}</span>
-        &nbsp;<span class="roadmap-target">${r.target}</span>
-        <div class="roadmap-meta">${r.kind}${cost} · ${(r.evidence_ids||[]).length} evidence link${(r.evidence_ids||[]).length!==1?'s':''}</div>
+        &nbsp;<span class="roadmap-target">${escapeHtml(r.target)}</span>
+        <div class="roadmap-meta">${escapeHtml(r.kind)}${cost}</div>
+        <details class="evidence-details"><summary>${evCount} evidence link${evCount!==1?'s':''}</summary>
+          <div class="evidence-list">${evidenceListHtml(r.evidence_ids)}</div>
+        </details>
       </div>`;
     ul.appendChild(li);
   });
@@ -545,18 +696,40 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
   const body = document.getElementById('drift-body');
   const count = document.getElementById('drift-count');
   const items = SCHEMA_DRIFT || [];
-  count.textContent = items.length + ' issue' + (items.length !== 1 ? 's' : '');
-  if (!items.length) { body.innerHTML = '<div class="empty"><div class="icon">✓</div>No schema drift detected</div>'; return; }
-  const tbl = el('table');
-  tbl.innerHTML = '<thead><tr><th>Kind</th><th>Table / Column</th><th>Source File</th><th>Reason</th></tr></thead>';
-  const tbody = el('tbody');
+  if (!items.length) {
+    count.textContent = '0 issues';
+    body.innerHTML = '<div class="empty"><div class="icon">✓</div>No schema drift detected</div>';
+    return;
+  }
+
+  // Rows that look byte-identical on the visible columns often differ by `field` — the
+  // specific LookML field whose SQL references the drifted column. Group on the FULL
+  // fact (field included) and only collapse with a ×N count when rows are truly
+  // duplicates even including it; never hide a real distinct field behind a fake dedup.
+  const groups = [];
+  const byKey = new Map();
   items.forEach(r => {
+    const key = [r.kind, r.table, r.column || '', r.field || '', r.source_file, r.reason].join('');
+    let g = byKey.get(key);
+    if (!g) { g = Object.assign({}, r, { count: 0 }); byKey.set(key, g); groups.push(g); }
+    g.count += 1;
+  });
+  count.textContent = groups.length === items.length
+    ? items.length + ' issue' + (items.length !== 1 ? 's' : '')
+    : items.length + ' raw hit' + (items.length !== 1 ? 's' : '') + ' · ' + groups.length + ' unique';
+
+  const tbl = el('table');
+  tbl.innerHTML = '<thead><tr><th>Kind</th><th>Table / Column</th><th>Field</th><th>Source File</th><th>Reason</th><th>Count</th></tr></thead>';
+  const tbody = el('tbody');
+  groups.forEach(r => {
     const tr = el('tr', 'dead-row');
     tr.innerHTML = `
-      <td><span class="badge badge-red">${r.kind}</span></td>
-      <td style="font-family:monospace">${r.table||''}${r.column ? ' · ' + r.column : ''}</td>
-      <td class="file-tag">${r.source_file||''}</td>
-      <td class="reason-text">${r.reason||''}</td>`;
+      <td><span class="badge badge-red">${escapeHtml(r.kind)}</span></td>
+      <td style="font-family:monospace">${escapeHtml(r.table||'')}${r.column ? ' · ' + escapeHtml(r.column) : ''}</td>
+      <td class="file-tag">${escapeHtml(r.field||'')}</td>
+      <td class="file-tag">${escapeHtml(r.source_file||'')}</td>
+      <td class="reason-text">${escapeHtml(r.reason||'')}</td>
+      <td>${r.count > 1 ? '×' + r.count : ''}</td>`;
     tbody.appendChild(tr);
   });
   tbl.appendChild(tbody);
@@ -613,7 +786,8 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
           'background-color': 'data(color)',
           'label': 'data(label)',
           'color': '#e2e8f0',
-          'font-size': '11px',
+          'font-size': '12px',
+          'min-zoomed-font-size': 7,
           'text-valign': 'bottom',
           'text-margin-y': '4px',
           'text-outline-width': '2px',
@@ -653,35 +827,86 @@ function fmt_usd(v) { return '$' + v.toFixed(2); }
     layout: {
       name: 'dagre',
       rankDir: 'TB',
-      nodeSep: 40,
-      rankSep: 70,
-      padding: 20,
+      nodeSep: 55,
+      rankSep: 150,
+      padding: 40,
+      fit: true,
     },
     wheelSensitivity: 0.3,
   });
+  CY = cy;
 
-  // Detail panel on click
+  const zoomIn = document.getElementById('cy-zoom-in');
+  const zoomOut = document.getElementById('cy-zoom-out');
+  const fitBtn = document.getElementById('cy-fit');
+  const zoomAt = factor => cy.zoom({
+    level: cy.zoom() * factor,
+    renderedPosition: { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 },
+  });
+  if (zoomIn) zoomIn.addEventListener('click', () => zoomAt(1.25));
+  if (zoomOut) zoomOut.addEventListener('click', () => zoomAt(1 / 1.25));
+  if (fitBtn) fitBtn.addEventListener('click', () => cy.animate({ fit: { eles: cy.elements(), padding: 40 } }, { duration: 200 }));
+
+  // Detail panel on click — every field below is sourced Python-side in
+  // _build_graph_data (one source per fact); this only formats what the node already
+  // carries, it never re-derives a verdict from raw artifacts.
   const panel = document.getElementById('detail-content');
+  function detailRow(key, valHtml) {
+    return `<div class="detail-row"><div class="key">${escapeHtml(key)}</div><div class="val">${valHtml}</div></div>`;
+  }
+  function consumerListHtml(list) {
+    if (!list || !list.length) return '<span style="color:var(--muted)">none</span>';
+    return list.map(c => `<div class="consumer-row">${escapeHtml(c.key)}${c.dead ? ' <span style="color:var(--red)">(dead)</span>' : ''}</div>`).join('');
+  }
+  function statusBadge(d) {
+    if (d.kind === 'explore') {
+      return d.dead ? '<span class="badge badge-red">DEPRECATE</span>' : '<span class="badge badge-green">KEEP</span>';
+    }
+    if (d.kind === 'pdt') {
+      if (d.status === 'zombie') return '<span class="zombie-badge">⚠ ZOMBIE</span>';
+      if (d.status === 'unused') return '<span class="badge badge-orange">⚠ UNUSED</span>';
+      if (d.status === 'used') return '<span class="badge badge-green">IN USE</span>';
+      return '<span class="badge badge-gray">NO BUILD DATA</span>';
+    }
+    if (d.kind === 'view') {
+      if (d.status === 'orphaned') return '<span class="badge badge-gray">ORPHANED</span>';
+      if (d.status === 'zombie_view') return '<span class="zombie-badge">⚠ ZOMBIE VIEW</span>';
+      // Blue, not green: the legend renders views blue; green is already claimed by
+      // active explores and in-use PDTs (Codex P2, PR #25 — status colors must match the legend).
+      return '<span class="badge badge-blue">ACTIVE</span>';
+    }
+    return '';
+  }
   cy.on('tap', 'node', function(evt) {
     const d = evt.target.data();
-    // Verdict reads the node's own `dead` flag — the ONE derivation done Python-side in
-    // _build_graph_data. Re-deriving here from DEAD_CODE by label was the bug: register
-    // names explores model-qualified, labels are bare, so dead explores showed KEEP.
-    const verdict = d.kind === 'explore'
-      ? (d.dead ? '<span class="badge badge-red">deprecate</span>' : '<span class="badge badge-green">keep</span>')
-      : '';
+    const rows = [];
+    rows.push(detailRow('Name', `<span style="font-family:monospace;font-weight:600">${escapeHtml(d.label)}</span>`));
+    rows.push(detailRow('Kind', `<span class="badge badge-blue">${escapeHtml(d.kind)}</span>`));
+    rows.push(detailRow('Status', statusBadge(d)));
+    if (d.model) rows.push(detailRow('Model', escapeHtml(d.model)));
 
-    const qrow = d.kind === 'explore'
-      ? `<div class="detail-row"><div class="key">Query Count</div><div class="val">${d.query_count.toLocaleString()}</div></div>` : '';
+    if (d.kind === 'explore') {
+      rows.push(detailRow('Query Count', (d.query_count||0).toLocaleString()));
+      if ((d.pdt_dependencies||[]).length) {
+        rows.push(detailRow('PDT Dependencies', d.pdt_dependencies.map(p => `<span class="pill">${escapeHtml(p)}</span>`).join('')));
+      }
+    } else if (d.kind === 'pdt') {
+      rows.push(detailRow('Cost / mo', fmt_usd(d.estimated_cost_usd||0)));
+      rows.push(detailRow('Build Count', (d.build_count||0).toLocaleString()));
+      rows.push(detailRow('Data Scanned', fmt_bytes(d.bytes_processed||0)));
+      rows.push(detailRow('Used By', consumerListHtml(d.used_by_explores)));
+    } else if (d.kind === 'view') {
+      rows.push(detailRow('Referencing Explores', consumerListHtml(d.referencing_explores)));
+    } else if (d.kind === 'physical_table') {
+      const views = d.referencing_views || [];
+      rows.push(detailRow('Referencing Views', `${views.length} view${views.length!==1?'s':''}`));
+      if (views.length) {
+        rows.push(detailRow('Views', views.map(v => `<span class="pill">${escapeHtml(v)}</span>`).join('')));
+      }
+    }
 
-    panel.innerHTML = `
-      <div class="detail-row"><div class="key">Name</div><div class="val" style="font-family:monospace;font-weight:600">${d.label}</div></div>
-      <div class="detail-row"><div class="key">Kind</div><div class="val"><span class="badge badge-blue">${d.kind}</span> ${verdict}</div></div>
-      ${d.model ? `<div class="detail-row"><div class="key">Model</div><div class="val">${d.model}</div></div>` : ''}
-      ${qrow}
-      <div class="detail-row"><div class="key">Source File</div><div class="val file-tag">${d.source_file}</div></div>
-      <div class="detail-row"><div class="key">Dead / Orphan</div><div class="val">${d.dead ? '<span style="color:var(--red)">Yes</span>' : 'No'}</div></div>
-    `;
+    rows.push(detailRow('Source File', `<span class="file-tag">${escapeHtml(d.source_file||'')}</span>`));
+    panel.innerHTML = rows.join('');
   });
 
   cy.on('tap', function(evt) {

@@ -175,6 +175,73 @@ def test_graph_marks_dead_explores_dead():
     assert live["color"] == "#2ecc71"
 
 
+def test_view_status_credits_inherited_consumers():
+    """Codex P1 (PR #25): an explore targeting a CHILD view is a consumer of every ancestor
+    in the child's resolution_chain — the panel's view status must agree with the resolver's
+    own _mark_orphans ancestry walk. In the fixtures, test_model.customer targets
+    customer_extended, which extends base_customer: base_customer must show the inherited
+    consumer and must NOT read as orphaned."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    base = by_id["view:base_customer"]
+    keys = [c["key"] for c in base.get("referencing_explores", [])]
+    assert "test_model.customer" in keys, f"inherited consumer missing: {keys}"
+    assert base.get("status") != "orphaned", "ancestor of a targeted view must not be orphaned"
+
+    # Negative control: a genuinely orphaned view stays orphaned.
+    orphan = by_id.get("view:orphan_view")
+    assert orphan is not None and orphan.get("status") == "orphaned"
+
+
+def test_physical_table_panel_counts_pdt_upstream_references():
+    """Codex r5 (PR #25): derived-table SQL references (pdt→upstream) must appear in the
+    physical-table panel's referencing list, mirroring strata_impact()'s mapping — the
+    panel must never undercount the references a deletion would break."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    # ground truth: which tables have pdt→upstream edges in the fixture graph
+    upstream = {}
+    for e in graph.edges:
+        if e.relation == "pdt→upstream" and e.target.startswith("physical_table:"):
+            n = graph.nodes.get(e.source)
+            if n:
+                upstream.setdefault(e.target.removeprefix("physical_table:"), set()).add(n.name)
+    assert upstream, "fixtures must exercise at least one pdt→upstream edge"
+
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+    for table, expected in upstream.items():
+        node = by_id.get(f"physical_table:{table}")
+        assert node is not None
+        got = {c["key"] if isinstance(c, dict) else c for c in node.get("referencing_views", [])}
+        missing = expected - got
+        assert not missing, f"{table}: panel missing pdt-upstream refs {missing} (has {got})"
+
+
+def test_pdt_consumers_are_direct_not_inherited():
+    """Codex round 4 (PR #25): reachability and PDT-consumption are different questions.
+    An explore targeting a CHILD view keeps the parent ALIVE (ancestry map) but does NOT
+    consume the parent's own PDT materialization (direct map). Pin both maps' answers for
+    the fixture chain (test_model.customer -> customer_extended extends base_customer)."""
+    from strata.l1.enrich import direct_view_consumers, view_consumer_map
+
+    graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    ancestry = view_consumer_map(graph)
+    direct = direct_view_consumers(graph)
+
+    # Ancestry: the parent inherits the child's consumer (reachability).
+    assert "test_model.customer" in ancestry.get("base_customer", [])
+    # Direct: the parent has NO direct consumer — its own materialization would be unused.
+    assert "test_model.customer" not in direct.get("base_customer", [])
+    # The child is a direct consumer target in both maps.
+    assert "test_model.customer" in direct.get("customer_extended", [])
+
+
 def test_zombie_pdt_detection_enterprise_mono():
     """A PDT with real build facts backing only dead explores is 'zombie', not 'used'."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
@@ -222,6 +289,138 @@ def test_pdt_ledger_unused_status_unaffected_by_zombie_detection():
     ledger_by_view = {r["view"]: r for r in graph.metadata["l1"]["pdt_ledger"]}
     assert ledger_by_view["pdt_retention_signals"]["status"] == "unused"
     assert ledger_by_view["pdt_retention_signals"]["used_by_explores"] == []
+
+
+def test_graph_node_detail_carries_pdt_ledger_fields():
+    """Node-detail panel data (dashboard PR #23) — PDT nodes must carry the full ledger
+    record, not just name/kind/source, so the graph click isn't an anticlimax. Both
+    fixture zombies + a negative-control 'used' PDT, since the color/status mapping
+    branches on status."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    for pdt_id, view in (
+        ("pdt:pdt_attribution_full_funnel", "pdt_attribution_full_funnel"),
+        ("pdt:pdt_customer_value_score", "pdt_customer_value_score"),
+    ):
+        d = by_id[pdt_id]
+        assert d["status"] == "zombie"
+        assert d["color"] == "#9b59b6"
+        assert d["estimated_cost_usd"] > 0
+        assert d["build_count"] > 0
+        assert d["bytes_processed"] > 0
+        assert d["used_by_explores"], f"{view}: zombie PDT must list its consumers"
+        assert all(c["dead"] for c in d["used_by_explores"])
+
+    # Negative control: a real 'used' PDT must not be flagged zombie/unused, and its
+    # consumers must not be mismarked dead.
+    live = by_id["pdt:pdt_regional_kpi"]
+    assert live["status"] == "used"
+    assert live["color"] == "#2ecc71"
+    assert live["used_by_explores"]
+    assert not any(c["dead"] for c in live["used_by_explores"])
+
+
+def test_graph_node_detail_status_vocabulary_per_kind():
+    """Status vocabulary (dashboard PR #23) — PDT/explore/view nodes carry the honest
+    three-way zombie vocabulary instead of a flattened DEAD/ORPHAN flag, with colors
+    matching the legend."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    # PDT: zombie / used already covered above; explore verdict vocabulary here.
+    dead_explore = by_id["explore:em_legacy_v2:dead_finance_v2"]
+    assert dead_explore["dead"] is True
+    live_explore = by_id["explore:em_finance_base:revenue_trends"]
+    assert live_explore["dead"] is False
+
+    # View: zombie view (real edges, all-dead consumers) vs. active — distinct from a
+    # true orphan (no explore reference at all) even though both are flagged `dead`.
+    zombie_view = by_id["view:legacy_order_detail"]
+    assert zombie_view["status"] == "zombie_view"
+    assert zombie_view["color"] == "#9b59b6"
+    assert zombie_view["referencing_explores"], (
+        "zombie view must be referenced, not structurally orphaned"
+    )
+    assert all(c["dead"] for c in zombie_view["referencing_explores"])
+
+    active_view = by_id["view:fct_cart_abandonment"]
+    assert active_view["status"] == "active"
+    assert active_view["color"] == "#3498db"
+
+    # True orphan (no explore reference at all) is a distinct third state — pull from
+    # the smaller FIXTURES set, which has a genuine orphan.
+    fixtures_graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    fixtures_data = _build_graph_data(fixtures_graph)
+    fixtures_by_id = {n["data"]["id"]: n["data"] for n in fixtures_data["nodes"]}
+    orphan_view = fixtures_by_id["view:orphan_view"]
+    assert orphan_view["status"] == "orphaned"
+    assert orphan_view["color"] == "#95a5a6"
+    assert orphan_view["referencing_explores"] == []
+
+
+def test_graph_node_pdt_dependencies_and_table_references():
+    """Explore -> PDT dependency and physical-table -> referencing-view data (dashboard
+    PR #23), derived from the graph edges rather than invented."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    dead_finance = by_id["explore:em_legacy_v2:dead_finance_v2"]
+    assert "pdt_attribution_full_funnel" in dead_finance["pdt_dependencies"]
+
+    table = by_id["physical_table:acme-analytics.gold_marts.fct_cart_abandonment"]
+    assert table["referencing_views"] == ["fct_cart_abandonment"]
+
+
+def test_schema_drift_rows_differ_by_field_not_true_duplicates():
+    """Schema Drift dedup arithmetic (dashboard PR #23) — rows that look byte-identical
+    on kind/table/column/source_file/reason actually differ by `field` (the LookML field
+    whose SQL references the drifted column). Pin that assumption: it's why the dashboard
+    surfaces the Field column instead of collapsing genuinely distinct issues under a
+    fake ×N dedup."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    drift = artifacts["schema_drift"]
+    assert len(drift) > 0
+
+    visible_keys = {
+        (r["kind"], r["table"], r.get("column"), r["source_file"], r["reason"]) for r in drift
+    }
+    full_keys = {
+        (r["kind"], r["table"], r.get("column"), r.get("field"), r["source_file"], r["reason"])
+        for r in drift
+    }
+    assert len(visible_keys) < len(drift), (
+        "fixture must reproduce the apparent-duplicate rows this fix addresses"
+    )
+    assert len(full_keys) == len(drift), (
+        "rows differ by `field` — every row is a genuinely distinct issue once field is shown"
+    )
+
+    html = build_dashboard_html(artifacts, graph)
+    assert "<th>Field</th>" in html
+    assert "legacy_order_detail.total_unit_cost" in html
 
 
 def test_strata_gate_script_and_output_cli(tmp_path):
