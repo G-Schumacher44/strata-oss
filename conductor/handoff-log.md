@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: fc6936c (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: f94e811 (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -215,6 +215,13 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   byte-identical after JS string parsing, a pure serialization change. Pinned by
   `test_embedded_json_cannot_break_out_of_script_block` (poisons `period.start` with a
   breakout payload and asserts no script block carries it raw; 128 total).
+
+- **Round 7 (Koa head, inline, commit f94e811)** — Codex (P1, correctly): the r5 backfill
+  lived in `_build_l1_facts()`, re-deriving facts in the outputs layer — the exact drift
+  the `evidence_facts()` seam exists to prevent, reintroduced by my own inline fix. The
+  per-explore usage evidence (row-backed and `no_usage_row` backfill alike) now comes
+  entirely from `l1.enrich.evidence_facts()` as `explore_usage_evidence`; the dashboard
+  reshape is verbatim (test-pinned at both the seam and the reshape; 128 total).
 
 **Exact Next Steps:**
 1. Push branch; let Codex re-review round 4's fixes.
