@@ -8,6 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -226,6 +227,15 @@ class LookerSystemActivityProvider:
                 "--looker-url is required and token file has no looker_url"
             )
         return cls(LookerQueryRunner(url, token.access_token), days=days)
+
+    def period(self) -> dict[str, Any]:
+        """The actual window `self.days` queries — same `{start, end, days}` shape the
+        fixture path reads off its usage-facts JSON (`l1/fixtures.py`'s `load_usage_facts`).
+        `run_inline_query`'s `f"{self.days} days"` filter is relative to now, so the window
+        end is "now", not the last event date — this mirrors that."""
+        end = datetime.now(UTC)
+        start = end - timedelta(days=self.days)
+        return {"start": start.date().isoformat(), "end": end.date().isoformat(), "days": self.days}
 
     def explore_usage(self) -> list[ExploreUsage]:
         rows = self.runner.run_inline_query(

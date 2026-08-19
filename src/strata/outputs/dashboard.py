@@ -7,7 +7,25 @@ from pathlib import Path
 from typing import Any
 
 from strata.ir.types import IRGraph
-from strata.l1.enrich import view_consumer_map
+from strata.l1.enrich import evidence_facts, view_consumer_map
+
+# Evidence-id namespaces the embedded JS's evidenceSentence() dispatcher must handle —
+# one case per entry, or a named deliberate fallback. Mirrored by hand in the JS switch
+# (search this file for "case '"); tests/test_l1_synthesis_outputs.py pins the real
+# enterprise_mono artifacts against this set so a future namespace can't silently no-op.
+KNOWN_EVIDENCE_NAMESPACES = frozenset(
+    {
+        "dead",
+        "explore",
+        "view",
+        "pdt",
+        "field",
+        "usage",
+        "pdt_build",
+        "schema_table",
+        "physical_table",
+    }
+)
 
 
 def _read_js(filename: str) -> str:
@@ -15,16 +33,55 @@ def _read_js(filename: str) -> str:
     return (js_dir / filename).read_text(encoding="utf-8")
 
 
+def _embed_json(obj: Any) -> str:
+    """json.dumps for embedding inside an inline <script> block. json.dumps leaves `<`
+    intact, so a data value containing `</script>` would terminate the surrounding script
+    element and hand the rest of the payload to the HTML parser as markup (Codex PR #28
+    r6 — the classic script-breakout). `\\u003c` is identical to `<` after JS string
+    parsing, so this is a pure serialization change, invisible to every consumer."""
+    return json.dumps(obj).replace("<", "\\u003c")
+
+
+def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
+    """Serializes the raw L1 facts the evidence-sentence panel needs, keyed to match the
+    `usage:`/`pdt_build:`/`schema_table:` evidence-id suffixes so the JS looks numbers up
+    rather than re-deriving them (the panel-vs-canonical-source drift PR #25's review
+    rounds kept catching). Aggregation (content-ref counts, column-count derivation) lives
+    in `l1.enrich.evidence_facts()` — this function only reshapes what L1 already computed
+    (per outputs/AGENTS.md: outputs serialize, they do not derive)."""
+    l1 = graph.metadata.get("l1", {})
+    facts = evidence_facts(graph)
+
+    usage = {f"explore:{key}": dict(rec) for key, rec in facts["explore_usage_evidence"].items()}
+
+    pdt_build = {
+        view: {
+            "build_count": rec["build_count"],
+            "bytes_processed": rec["bytes_processed"],
+            "estimated_cost_usd": rec["estimated_cost_usd"],
+        }
+        for view, rec in l1.get("pdt_builds", {}).items()
+    }
+
+    return {
+        "period": l1.get("period") or {},
+        "usage": usage,
+        "pdt_build": pdt_build,
+        "schema_table": facts["schema_table_facts"],
+    }
+
+
 def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
     graph_data = _build_graph_data(graph)
-    catalog = json.dumps(artifacts.get("catalog", []))
-    dead_code = json.dumps(artifacts.get("dead_code_register", []))
-    pdt_ledger = json.dumps(artifacts.get("pdt_ledger", []))
-    roadmap = json.dumps(artifacts.get("cleanup_roadmap", []))
-    schema_drift = json.dumps(artifacts.get("schema_drift", []))
-    usage_summary = json.dumps(artifacts.get("usage_summary") or {})
-    migration = json.dumps(artifacts.get("migration_impact", []))
-    graph_json = json.dumps(graph_data)
+    catalog = _embed_json(artifacts.get("catalog", []))
+    dead_code = _embed_json(artifacts.get("dead_code_register", []))
+    pdt_ledger = _embed_json(artifacts.get("pdt_ledger", []))
+    roadmap = _embed_json(artifacts.get("cleanup_roadmap", []))
+    schema_drift = _embed_json(artifacts.get("schema_drift", []))
+    usage_summary = _embed_json(artifacts.get("usage_summary") or {})
+    migration = _embed_json(artifacts.get("migration_impact", []))
+    graph_json = _embed_json(graph_data)
+    l1_facts = _embed_json(_build_l1_facts(graph))
     data_block = (
         f"const CATALOG       = {catalog};\n"
         f"const DEAD_CODE     = {dead_code};\n"
@@ -34,6 +91,7 @@ def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
         f"const USAGE_SUMMARY = {usage_summary};\n"
         f"const MIGRATION     = {migration};\n"
         f"const GRAPH_DATA    = {graph_json};\n"
+        f"const L1_FACTS      = {l1_facts};\n"
     )
     scripts = "\n".join(
         [
@@ -317,9 +375,14 @@ tr.dead-row td { background: rgba(231,76,60,.04); }
 .file-tag { font-size: 11px; color: var(--muted); font-family: monospace; }
 .reason-text { color: var(--muted); font-size: 12px; margin-top: 3px; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin: 2px 2px 0 0; background: rgba(136,146,164,.1); color: var(--muted); font-family: monospace; }
-a.pill-link { cursor: pointer; border: 1px solid transparent; }
+a.ev-chip { cursor: pointer; border: 1px solid transparent; text-decoration: none; }
 a.pill-link:hover { background: rgba(52,152,219,.2); color: var(--blue); border-color: var(--blue); }
-.evidence-plain { display: inline-block; font-size: 11px; color: var(--muted); font-family: monospace; margin: 2px 8px 0 0; }
+a.pill-info:hover { background: rgba(136,146,164,.25); color: var(--text); border-color: var(--muted); }
+a.row-primary-link { display: inline-block; padding: 0; border: none; background: none; color: inherit; font: inherit; margin: 0; }
+a.row-primary-link:hover { color: var(--blue); background: none; }
+.copy-link-btn { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 11px; margin-left: 6px; padding: 0; vertical-align: middle; }
+.copy-link-btn:hover { color: var(--blue); }
+.evidence-sentence { display: block; font-size: 12px; color: var(--text); background: rgba(52,152,219,.08); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 4px 0 8px; max-width: 520px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .evidence-details summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .evidence-details summary:hover { color: var(--blue); }
 .evidence-list { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 2px; }
@@ -494,29 +557,251 @@ function escapeHtml(s) {
 // Resolves an evidence id to a graph node id when one exists, so Dead Code Register
 // pills and Roadmap evidence links can jump into the graph instead of sitting inert.
 const GRAPH_NODE_IDS = new Set((GRAPH_DATA && GRAPH_DATA.nodes || []).map(n => n.data.id));
+// Prototype-free: a node or table literally named 'constructor'/'toString'/'__proto__' must
+// not resolve to an inherited member, and must not poison the map on assignment either.
+const NODE_BY_ID = Object.create(null);
+(GRAPH_DATA && GRAPH_DATA.nodes || []).forEach(n => { NODE_BY_ID[n.data.id] = n.data; });
+
+function exploreNodeIdFromKey(key) {
+  // "MODEL.NAME" (dead-code/usage-fact key convention) -> "explore:MODEL:NAME" (graph
+  // node id convention) — same identity, different separator.
+  const dot = key.indexOf('.');
+  return dot > -1 ? `explore:${key.slice(0, dot)}:${key.slice(dot + 1)}` : null;
+}
 function resolveEvidenceNodeId(evId) {
   if (!evId) return null;
   if (GRAPH_NODE_IDS.has(evId)) return evId;
-  // dead:explore:MODEL.NAME -> explore:MODEL:NAME (dead-code register keys explores
-  // model.name-qualified; graph node ids key them model:name — same identity, different separator).
-  const m = /^dead:explore:(.+)$/.exec(evId);
-  if (m) {
-    const dot = m[1].indexOf('.');
-    if (dot > -1) {
-      const candidate = `explore:${m[1].slice(0, dot)}:${m[1].slice(dot + 1)}`;
-      if (GRAPH_NODE_IDS.has(candidate)) return candidate;
-    }
+  const mExplore = /^dead:explore:(.+)$/.exec(evId);
+  if (mExplore) {
+    const candidate = exploreNodeIdFromKey(mExplore[1]);
+    if (candidate && GRAPH_NODE_IDS.has(candidate)) return candidate;
+  }
+  const mView = /^dead:view:(.+)$/.exec(evId);
+  if (mView) {
+    const candidate = `view:${mView[1]}`;
+    if (GRAPH_NODE_IDS.has(candidate)) return candidate;
   }
   return null;
 }
+
+// ── Evidence sentences ──────────────────────────────────────────────────────
+// Renders the raw L1_FACTS/GRAPH_DATA a chip's evidence id names in analyst language —
+// every fact here is a Python-computed number formatted for display, never re-derived.
+// JSON.parse produces objects that inherit from Object.prototype, so a bare key like
+// 'constructor' or 'toString' would resolve to an inherited member and make a missing
+// table read as present. Every L1 fact lookup goes through here.
+function ownFact(map, key) {
+  return (map && Object.prototype.hasOwnProperty.call(map, key)) ? map[key] : undefined;
+}
+// Deterministic unique DOM anchor. Data-derived ids are NOT guaranteed unique: a roadmap
+// can act twice on one artifact, and two views in different files can produce the same
+// SchemaDriftRecord id (same table+column+field). A duplicate id makes every copy-link past
+// the first resolve to the wrong row, silently. First occurrence keeps the bare id so links
+// already shared stay valid; each later collision gets ':2', ':3', ... in render order.
+const ANCHOR_SEEN = Object.create(null);
+function uniqueAnchor(base) {
+  const n = (ANCHOR_SEEN[base] || 0) + 1;
+  ANCHOR_SEEN[base] = n;
+  return n > 1 ? base + ':' + n : base;
+}
+function periodPhrase() {
+  const p = L1_FACTS.period || {};
+  if (!p.start || !p.end) return 'an unknown window';
+  const days = p.days != null ? `${p.days}-day ` : '';
+  return `the last ${days}window (${p.start} \u2192 ${p.end})`;
+}
+function exploreUsageSentence(modelDotName, sourceFile) {
+  const fact = ownFact(L1_FACTS.usage, 'explore:' + modelDotName);
+  let s;
+  if (fact && fact.no_usage_row) {
+    const c = fact.content_reference_count || 0;
+    s = `no usage row recorded in ${periodPhrase()} (0 queries) \u00b7 ${c} content reference${c !== 1 ? 's' : ''} in the window`;
+  } else if (fact) {
+    const q = fact.query_count || 0;
+    const c = fact.content_reference_count || 0;
+    s = `queried ${q} time${q !== 1 ? 's' : ''} in ${periodPhrase()} \u00b7 ${c} content reference${c !== 1 ? 's' : ''} in the window`;
+  } else {
+    s = `no usage row was provided for '${modelDotName}' in the L1 facts`;
+  }
+  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${sourceFile}'`;
+  return s + '.';
+}
+function viewSentence(node) {
+  const refs = node.referencing_explores || [];
+  let s;
+  if (node.status === 'orphaned') {
+    s = 'no explore references this view (structural orphan)';
+  } else if (node.status === 'zombie_view') {
+    s = `referenced by ${refs.length} explore${refs.length !== 1 ? 's' : ''}, all currently dead`;
+  } else {
+    s = `referenced by ${refs.length} explore${refs.length !== 1 ? 's' : ''}`;
+  }
+  if (node.source_file) s += ` \u00b7 exists in resolved IR at '${node.source_file}'`;
+  return s + '.';
+}
+function pdtCostSentence(buildCount, bytesProcessed, costUsd, usedBy, sourceFile) {
+  let s = `built ${buildCount || 0} time${buildCount !== 1 ? 's' : ''}, processing ${fmt_bytes(bytesProcessed || 0)} \u00b7 ${fmt_usd(costUsd || 0)} estimated over ${periodPhrase()}`;
+  if (usedBy && usedBy.length) {
+    const deadCount = usedBy.filter(c => c.dead).length;
+    s += ` \u00b7 used by ${usedBy.length} explore${usedBy.length !== 1 ? 's' : ''}`;
+    if (deadCount) s += ` (${deadCount} dead)`;
+  } else {
+    s += ' \u00b7 no consumers recorded';
+  }
+  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${sourceFile}'`;
+  return s + '.';
+}
+function evidenceSentence(evId) {
+  if (!evId) return 'No evidence id provided.';
+  const namespace = evId.split(':')[0];
+  switch (namespace) {
+    case 'dead': {
+      const nodeId = resolveEvidenceNodeId(evId);
+      const node = nodeId ? NODE_BY_ID[nodeId] : null;
+      if (node && node.kind === 'explore') return exploreUsageSentence(`${node.model}.${node.label}`, node.source_file);
+      if (node && node.kind === 'view') return viewSentence(node);
+      return `No graph node found for evidence id '${evId}'.`;
+    }
+    case 'explore': {
+      const node = NODE_BY_ID[evId];
+      return node
+        ? exploreUsageSentence(`${node.model}.${node.label}`, node.source_file)
+        : `No graph node found for evidence id '${evId}'.`;
+    }
+    case 'view': {
+      const node = NODE_BY_ID[evId];
+      return node ? viewSentence(node) : `No graph node found for evidence id '${evId}'.`;
+    }
+    case 'pdt': {
+      const node = NODE_BY_ID[evId];
+      if (!node) return `No graph node found for evidence id '${evId}'.`;
+      if (node.status === 'missing_build_facts') {
+        return `no PDT build facts were provided for '${node.label}' — cost and build count are unknown` +
+          (node.source_file ? ` · exists in resolved IR at '${node.source_file}'` : '') + '.';
+      }
+      return pdtCostSentence(node.build_count, node.bytes_processed, node.estimated_cost_usd, node.used_by_explores, node.source_file);
+    }
+    case 'usage': {
+      const rest = evId.slice('usage:'.length); // "explore:MODEL.NAME" or "view:NAME"
+      if (rest.startsWith('explore:')) {
+        const key = rest.slice('explore:'.length);
+        const nodeId = exploreNodeIdFromKey(key);
+        const node = nodeId ? NODE_BY_ID[nodeId] : null;
+        return exploreUsageSentence(key, node ? node.source_file : null);
+      }
+      return 'no usage is tracked at the view level \u2014 view aliveness is derived structurally' +
+        ' from whether any explore still reaches it, not from a query-count fact.';
+    }
+    case 'pdt_build': {
+      const view = evId.slice('pdt_build:'.length);
+      const fact = ownFact(L1_FACTS.pdt_build, view);
+      if (!fact) return `No PDT build facts were provided for '${view}'.`;
+      const node = NODE_BY_ID['pdt:' + view];
+      return pdtCostSentence(
+        fact.build_count, fact.bytes_processed, fact.estimated_cost_usd,
+        node ? node.used_by_explores : null, node ? node.source_file : null
+      );
+    }
+    case 'schema_table': {
+      const table = evId.slice('schema_table:'.length);
+      const fact = ownFact(L1_FACTS.schema_table, table);
+      if (!fact) {
+        return `table '${table}' was not found in the provided schema facts \u2014 the resolved IR references it, but no warehouse metadata confirms it exists.`;
+      }
+      const cols = fact.columns || [];
+      const colList = cols.length ? `: ${cols.join(', ')}` : '';
+      return `table '${table}' is present in the provided schema facts with ${fact.column_count} known column${fact.column_count !== 1 ? 's' : ''}${colList}.`;
+    }
+    case 'physical_table': {
+      const table = evId.slice('physical_table:'.length);
+      const fact = ownFact(L1_FACTS.schema_table, table);
+      const scanned = Object.keys(L1_FACTS.schema_table).length;
+      if (!fact) {
+        return `physical table '${table}' is not present in the provided schema facts (scanned ${scanned} table${scanned !== 1 ? 's' : ''}).`;
+      }
+      const node = NODE_BY_ID[evId];
+      let s = `physical table '${table}' is present in the provided schema facts with ${fact.column_count} known column${fact.column_count !== 1 ? 's' : ''}`;
+      if (node && node.source_file) s += ` \u00b7 exists in resolved IR at '${node.source_file}'`;
+      return s + '.';
+    }
+    case 'field':
+      return `no field-level L1 fact is tracked for '${evId.slice('field:'.length)}'` +
+        ' \u2014 see the table/view evidence alongside this field for usage and schema context.';
+    default:
+      return `No evidence sentence is defined for the '${namespace}' namespace yet.`;
+  }
+}
+
 function evidenceHtml(evId) {
   const nodeId = resolveEvidenceNodeId(evId);
   const label = escapeHtml(evId);
-  return nodeId
-    ? `<a href="#" class="pill pill-link" data-node-id="${escapeHtml(nodeId)}">${label}</a>`
-    : `<span class="evidence-plain">${label}</span>`;
+  const cls = nodeId ? 'pill ev-chip pill-link' : 'pill ev-chip pill-info';
+  const nodeAttr = nodeId ? ` data-node-id="${escapeHtml(nodeId)}"` : '';
+  return `<a href="#" class="${cls}" data-ev-id="${label}"${nodeAttr}>${label}</a>`;
 }
 function evidenceListHtml(ids) { return (ids || []).map(evidenceHtml).join(''); }
+// A row's own artifact id (not one of its evidence_ids) — used as the deep-link/copy-link
+// target and as the chip that opens the row's headline sentence (dead-explore usage,
+// PDT cost/builds) on click. `rowId` lets the copy-link/DOM-anchor target diverge from the
+// chip's evidence id — needed for Schema Drift, where several rows share one
+// `schema_table:` id (not unique enough for a DOM id) but each row's own SchemaDriftRecord
+// id is; defaults to `id` when the two coincide (Dead Code Register, PDT Ledger).
+function primaryChipHtml(id, label, rowId) {
+  const anchorId = rowId || id;
+  const nodeId = resolveEvidenceNodeId(id);
+  const cls = nodeId ? 'ev-chip pill-link row-primary-link' : 'ev-chip pill-info row-primary-link';
+  const nodeAttr = nodeId ? ` data-node-id="${escapeHtml(nodeId)}"` : '';
+  return `<a href="#" class="${cls}" data-ev-id="${escapeHtml(id)}"${nodeAttr}>${escapeHtml(label)}</a>` +
+    `<button type="button" class="copy-link-btn" data-copy-hash="${escapeHtml(anchorId)}" title="Copy link to this row">🔗</button>`;
+}
+
+function toggleEvidencePanel(chip) {
+  // A primary chip (row Name/View cell) has a copy-link <button> immediately after it —
+  // anchor the sentence panel after THAT, not the chip, or the sibling check below never
+  // finds it and re-clicking stacks duplicate panels instead of toggling.
+  const afterChip = chip.nextElementSibling;
+  const anchor = (afterChip && afterChip.classList && afterChip.classList.contains('copy-link-btn'))
+    ? afterChip : chip;
+  const evId = chip.dataset.evId;
+  const next = anchor.nextElementSibling;
+  if (next && next.classList && next.classList.contains('evidence-sentence')) {
+    next.remove();
+    return;
+  }
+  const panel = el('div', 'evidence-sentence');
+  panel.textContent = evId + ': ' + evidenceSentence(evId);
+  anchor.insertAdjacentElement('afterend', panel);
+}
+function openHashTarget() {
+  const raw = location.hash.slice(1);
+  if (!raw) return;
+  let id = raw;
+  try { id = decodeURIComponent(raw); } catch (e) { id = raw; }
+  // Decoded first (the encoded form this build writes), raw second — so a link copied
+  // from an older build, where the fragment was written unencoded, still resolves.
+  let row = document.getElementById(id);
+  if (!row && id !== raw) row = document.getElementById(raw);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Plain string equality on dataset — no selector-escaping regex. The escaped-regex
+  // version died at parse time in the GENERATED page (non-raw Python string collapsed a
+  // backslash layer: /["\]/g → unterminated class), killing every script on the page.
+  // Caught only by the live browser pass — Python tests never execute the JS.
+  const chips = Array.from(row.querySelectorAll('.ev-chip'));
+  const chip = chips.find(c => c.dataset.evId === id) || chips[0] || null;
+  // Idempotent by contract: hash navigation (including Back to an already-open target)
+  // must leave the panel OPEN — a toggle here closed it on revisit (Codex P2, PR #28).
+  if (chip) openEvidencePanel(chip);
+}
+
+function openEvidencePanel(chip) {
+  const afterChip = chip.nextElementSibling;
+  const anchor = (afterChip && afterChip.classList && afterChip.classList.contains('copy-link-btn'))
+    ? afterChip : chip;
+  const next = anchor.nextElementSibling;
+  if (next && next.classList && next.classList.contains('evidence-sentence')) return; // already open
+  toggleEvidencePanel(chip);
+}
 
 let CY = null;
 function focusGraphNode(nodeId) {
@@ -531,11 +816,36 @@ function focusGraphNode(nodeId) {
   ele.emit('tap');
 }
 document.addEventListener('click', function(evt) {
-  const target = evt.target.closest('.pill-link');
-  if (!target) return;
-  evt.preventDefault();
-  focusGraphNode(target.dataset.nodeId);
+  const chip = evt.target.closest('.ev-chip');
+  if (chip) {
+    evt.preventDefault();
+    toggleEvidencePanel(chip);
+    if (chip.dataset.nodeId) focusGraphNode(chip.dataset.nodeId);
+    return;
+  }
+  const copyBtn = evt.target.closest('.copy-link-btn');
+  if (copyBtn) {
+    evt.preventDefault();
+    const id = copyBtn.dataset.copyHash;
+    // location.origin is the literal string "null" under file:// — and opening
+    // dashboard.html directly is a supported posture for this self-contained file.
+    // href minus any existing hash is scheme-agnostic (Codex P1, PR #28).
+    // encodeURIComponent, because openHashTarget() decodes what it reads. Without the
+    // encode the pair is asymmetric: an id holding a literal percent-escape (a quoted
+    // physical table like 'foo%20bar') decodes to 'foo bar' on open and matches nothing.
+    // Encode-on-write + decode-on-read round-trips every accepted name (Codex, PR #28).
+    const url = location.href.split('#')[0] + '#' + encodeURIComponent(id);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        const prev = copyBtn.textContent;
+        copyBtn.textContent = '✓';
+        setTimeout(() => { copyBtn.textContent = prev; }, 1200);
+      }).catch(() => {});
+    }
+  }
 });
+window.addEventListener('hashchange', openHashTarget);
+window.addEventListener('load', openHashTarget);
 
 // ── KPI Row ───────────────────────────────────────────────────────────────────
 (function() {
@@ -555,7 +865,7 @@ document.addEventListener('click', function(evt) {
   const row = document.getElementById('kpi-row');
   cards.forEach(c => {
     const card = el('div', 'kpi-card ' + (c.cls||''));
-    card.innerHTML = `<div class="label">${c.label}</div><div class="value">${c.value}</div><div class="sub">${c.sub}</div>`;
+    card.innerHTML = `<div class="label">${escapeHtml(c.label)}</div><div class="value">${escapeHtml(c.value)}</div><div class="sub">${escapeHtml(c.sub)}</div>`;
     row.appendChild(card);
   });
 })();
@@ -572,13 +882,14 @@ document.addEventListener('click', function(evt) {
   const tbody = el('tbody');
   items.forEach(r => {
     const tr = el('tr', 'dead-row');
+    tr.id = r.id;
     const kindBadge = r.kind === 'explore' ? 'badge-red' : 'badge-orange';
     const pills = evidenceListHtml(r.evidence_ids);
     tr.innerHTML = `
-      <td><span class="badge ${kindBadge}">${r.kind}</span></td>
-      <td style="font-family:monospace;font-weight:600">${r.name}</td>
-      <td class="file-tag">${r.source_file||''}</td>
-      <td>${r.static_reason||''}<div class="reason-text">${r.usage_reason||''}</div></td>
+      <td><span class="badge ${kindBadge}">${escapeHtml(r.kind)}</span></td>
+      <td style="font-family:monospace;font-weight:600">${primaryChipHtml(r.id, r.name)}</td>
+      <td class="file-tag">${escapeHtml(r.source_file||'')}</td>
+      <td>${escapeHtml(r.static_reason||'')}<div class="reason-text">${escapeHtml(r.usage_reason||'')}</div></td>
       <td>${pills}</td>`;
     tbody.appendChild(tr);
   });
@@ -606,6 +917,8 @@ document.addEventListener('click', function(evt) {
   const tbody = el('tbody');
   pdts.forEach(r => {
     const tr = el('tr');
+    const primaryId = 'pdt:' + r.view;
+    tr.id = primaryId;
     const isUnused = r.status === 'unused';
     const isZombie = r.status === 'zombie';
     const statusCell = isZombie
@@ -616,9 +929,9 @@ document.addEventListener('click', function(evt) {
     const costColor = isZombie ? 'var(--purple)' : isUnused ? 'var(--red)' : 'var(--text)';
     const explores = (r.used_by_explores||[]).map(e => `<div class="file-tag">${e}</div>`).join('');
     tr.innerHTML = `
-      <td style="font-family:monospace;font-weight:600">${r.view}</td>
+      <td style="font-family:monospace;font-weight:600">${primaryChipHtml(primaryId, r.view)}</td>
       <td style="font-weight:600;color:${costColor}">${fmt_usd(r.estimated_cost_usd)}</td>
-      <td>${r.build_count}</td>
+      <td>${escapeHtml(r.build_count)}</td>
       <td>${fmt_bytes(r.bytes_processed)}</td>
       <td>${statusCell}</td>
       <td>${explores || '<span style="color:var(--muted)">none</span>'}</td>`;
@@ -675,12 +988,21 @@ document.addEventListener('click', function(evt) {
     const [cls, label] = actionStyle[r.action] || ['badge-gray', r.action];
     const cost = r.estimated_cost_usd ? ` · saves ${fmt_usd(r.estimated_cost_usd)}/mo` : '';
     const evCount = (r.evidence_ids||[]).length;
+    // Roadmap items carry no own artifact id — the chip itself resolves via the slice's own
+    // evidence_ids[0] (explore:/view:/pdt:/field:, always the record's own namespace per
+    // _cleanup_roadmap()) verbatim, unchanged. The DOM anchor/copy-link target is a SEPARATE
+    // 'roadmap:' namespace so it can never collide with a ledger/register row's own id —
+    // multiple actions can share one primaryId (e.g. two roadmap rows on the same field),
+    // so a ':2'/':3' suffix disambiguates within the roadmap itself.
+    const primaryId = r.evidence_ids[0];
+    const roadmapId = uniqueAnchor('roadmap:' + primaryId);
     const li = el('li', 'roadmap-item');
+    li.id = roadmapId;
     li.innerHTML = `
       <div class="roadmap-num">${i+1}</div>
       <div class="roadmap-body">
         <span class="badge ${cls}">${label}</span>
-        &nbsp;<span class="roadmap-target">${escapeHtml(r.target)}</span>
+        &nbsp;<span class="roadmap-target">${primaryChipHtml(primaryId, r.target, roadmapId)}</span>
         <div class="roadmap-meta">${escapeHtml(r.kind)}${cost}</div>
         <details class="evidence-details"><summary>${evCount} evidence link${evCount!==1?'s':''}</summary>
           <div class="evidence-list">${evidenceListHtml(r.evidence_ids)}</div>
@@ -723,13 +1045,20 @@ document.addEventListener('click', function(evt) {
   const tbody = el('tbody');
   groups.forEach(r => {
     const tr = el('tr', 'dead-row');
+    // Row's own SchemaDriftRecord id is the stable DOM anchor/copy-link target (several
+    // rows can share one table, so `schema_table:` alone isn't unique enough for that);
+    // the chip itself still resolves via `schema_table:`, one of the row's own
+    // pre-existing evidence_ids (no new id scheme invented).
+    const driftAnchor = uniqueAnchor(r.id);
+    tr.id = driftAnchor;
+    const chipLabel = (r.table||'') + (r.column ? ' · ' + r.column : '');
     tr.innerHTML = `
       <td><span class="badge badge-red">${escapeHtml(r.kind)}</span></td>
-      <td style="font-family:monospace">${escapeHtml(r.table||'')}${r.column ? ' · ' + escapeHtml(r.column) : ''}</td>
+      <td style="font-family:monospace">${primaryChipHtml('schema_table:' + r.table, chipLabel, driftAnchor)}</td>
       <td class="file-tag">${escapeHtml(r.field||'')}</td>
       <td class="file-tag">${escapeHtml(r.source_file||'')}</td>
       <td class="reason-text">${escapeHtml(r.reason||'')}</td>
-      <td>${r.count > 1 ? '×' + r.count : ''}</td>`;
+      <td>${escapeHtml(r.count > 1 ? '\u00d7' + r.count : '')}</td>`;
     tbody.appendChild(tr);
   });
   tbl.appendChild(tbody);
@@ -744,7 +1073,7 @@ document.addEventListener('click', function(evt) {
   items.forEach(r => {
     const item = el('div', 'accordion-item');
     const trigger = el('button', 'accordion-trigger');
-    trigger.innerHTML = `<span class="arrow">▶</span><span style="font-family:monospace">${r.physical_table}</span><span style="margin-left:auto;font-size:12px;color:var(--muted)">${(r.explores||[]).length} explore${(r.explores||[]).length!==1?'s':''} affected</span>`;
+    trigger.innerHTML = `<span class="arrow">▶</span><span style="font-family:monospace">${escapeHtml(r.physical_table)}</span><span style="margin-left:auto;font-size:12px;color:var(--muted)">${(r.explores||[]).length} explore${(r.explores||[]).length!==1?'s':''} affected</span>`;
     trigger.onclick = () => {
       const open = trigger.classList.toggle('open');
       content.classList.toggle('open', open);

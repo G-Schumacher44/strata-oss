@@ -234,3 +234,57 @@ def view_consumer_map(graph: IRGraph) -> dict[str, list[str]]:
 
 def _explores_using_view(graph: IRGraph, view: str) -> list[str]:
     return view_consumer_map(graph).get(view, [])
+
+
+def evidence_facts(graph: IRGraph) -> dict[str, dict]:
+    """Aggregated facts the dashboard's evidence-sentence panel displays: content-reference
+    counts per explore (content_references is a flat list — counting per explore is a real
+    derivation, not a passthrough) and per-table column facts (column_count is derived from
+    the columns list, same reasoning). Derived here, not by the outputs layer — per
+    outputs/AGENTS.md, outputs serialize what L1 computed, they do not derive it themselves.
+    """
+    l1 = graph.metadata.get("l1", {})
+
+    content_reference_counts: dict[str, int] = {}
+    for ref in l1.get("content_references", []):
+        key = f"{ref['model']}.{ref['explore']}"
+        content_reference_counts[key] = content_reference_counts.get(key, 0) + 1
+
+    schema_table_facts = {
+        name: {
+            "column_count": len(rec.get("columns", [])),
+            "columns": list(rec.get("columns", [])),
+        }
+        for name, rec in l1.get("schema_tables", {}).items()
+    }
+
+    # The complete per-explore usage evidence, one entry per explore NODE — not per usage
+    # row. Live System Activity emits no row for a never-queried explore, so a row-keyed
+    # map drops exactly the explores whose dead verdicts most need evidence; row absence
+    # is itself the zero-usage fact and is flagged (`no_usage_row`) so the sentence can
+    # state it. Derived here, not in outputs (Codex PR #28 r7 — the r5 backfill living in
+    # `_build_l1_facts()` recreated the drift this seam exists to prevent).
+    explore_usage_evidence: dict[str, dict] = {}
+    for key, rec in l1.get("explore_usage", {}).items():
+        explore_usage_evidence[key] = {
+            "query_count": rec["query_count"],
+            "content_reference_count": content_reference_counts.get(key, 0),
+        }
+    for node in graph.nodes.values():
+        if node.kind != "explore":
+            continue
+        key = f"{node.attrs.get('model', '')}.{node.name}"
+        explore_usage_evidence.setdefault(
+            key,
+            {
+                "query_count": 0,
+                "content_reference_count": content_reference_counts.get(key, 0),
+                "no_usage_row": True,
+            },
+        )
+
+    return {
+        "content_reference_counts": content_reference_counts,
+        "schema_table_facts": schema_table_facts,
+        "explore_usage_evidence": explore_usage_evidence,
+    }

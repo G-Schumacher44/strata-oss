@@ -242,6 +242,36 @@ def test_pdt_consumers_are_direct_not_inherited():
     assert "test_model.customer" in direct.get("customer_extended", [])
 
 
+def test_evidence_facts_aggregates_content_refs_and_schema_columns():
+    """L1 owns aggregation (per outputs/AGENTS.md: outputs serialize, they do not derive).
+    `evidence_facts()` computes content-reference counts per explore and per-table column
+    facts; `dashboard._build_l1_facts()` only reshapes what this function returns into the
+    evidence-id-keyed shape the JS looks up (Codex PR #28)."""
+    from strata.l1.enrich import evidence_facts
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    facts = evidence_facts(graph)
+
+    # A count of 0 means no dict entry at all — the aggregation only records keys it
+    # actually saw a content reference for (matches the dashboard's prior `.get(key, 0)`
+    # lookup convention, now moved here verbatim).
+    assert facts["content_reference_counts"].get("em_legacy_v2.dead_finance_v2", 0) == 0
+
+    live_key = next(
+        ref["model"] + "." + ref["explore"] for ref in graph.metadata["l1"]["content_references"]
+    )
+    assert facts["content_reference_counts"][live_key] >= 1
+
+    table = "acme-analytics.silver.int_attributed_purchases"
+    schema_fact = facts["schema_table_facts"][table]
+    raw_columns = graph.metadata["l1"]["schema_tables"][table]["columns"]
+    assert schema_fact["columns"] == raw_columns
+    assert schema_fact["column_count"] == len(raw_columns)
+
+
 def test_zombie_pdt_detection_enterprise_mono():
     """A PDT with real build facts backing only dead explores is 'zombie', not 'used'."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
@@ -421,6 +451,433 @@ def test_schema_drift_rows_differ_by_field_not_true_duplicates():
     html = build_dashboard_html(artifacts, graph)
     assert "<th>Field</th>" in html
     assert "legacy_order_detail.total_unit_cost" in html
+
+
+def test_l1_facts_inlines_usage_pdt_build_and_schema_table_facts():
+    """Slice 08 — the raw L1 facts (explore_usage, pdt_builds, schema_tables) must reach
+    the dashboard data block Python-side, keyed to match the evidence-id suffixes the JS
+    looks them up by, so evidence sentences never re-derive a number the L1 layer already
+    computed."""
+    from strata.outputs.dashboard import _build_l1_facts
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    facts = _build_l1_facts(graph)
+
+    assert facts["period"] == {"start": "2026-05-07", "end": "2026-06-06", "days": 30}
+
+    dead_finance = facts["usage"]["explore:em_legacy_v2.dead_finance_v2"]
+    assert dead_finance["query_count"] == 0
+    assert dead_finance["content_reference_count"] == 0
+
+    live_explore_key = next(
+        key for key, rec in graph.metadata["l1"]["explore_usage"].items() if rec["query_count"] > 0
+    )
+    assert facts["usage"][f"explore:{live_explore_key}"]["query_count"] > 0
+
+    zombie_build = facts["pdt_build"]["pdt_attribution_full_funnel"]
+    assert zombie_build["build_count"] == 180
+    assert zombie_build["estimated_cost_usd"] == 45000.0
+    assert zombie_build["bytes_processed"] == 7200000000000000
+
+    schema_table = facts["schema_table"]["acme-analytics.silver.int_attributed_purchases"]
+    assert schema_table["column_count"] > 0
+    assert schema_table["columns"], "column NAMES must be plumbed, not just a count (Codex PR #28)"
+    assert schema_table["column_count"] == len(schema_table["columns"])
+
+
+def test_l1_facts_covers_explores_without_usage_rows():
+    """Codex PR #28 r5 — live System Activity emits NO row for a never-queried explore,
+    so a usage-keyed comprehension drops exactly the explores whose dead verdicts most
+    need evidence. Every explore node must get a usage entry; row absence is itself the
+    zero-usage fact and is flagged so the sentence states it rather than implying a
+    serialized row existed."""
+    from strata.outputs.dashboard import _build_l1_facts
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+
+    # Simulate the live-path gap: strip one dead explore's usage row from L1 entirely.
+    removed = "em_legacy_v2.dead_finance_v2"
+    del graph.metadata["l1"]["explore_usage"][removed]
+
+    # The backfill is an L1 derivation (r7): pin it at the seam, not just the reshape.
+    from strata.l1.enrich import evidence_facts
+
+    l1_entry = evidence_facts(graph)["explore_usage_evidence"][removed]
+    assert l1_entry["no_usage_row"] is True
+
+    facts = _build_l1_facts(graph)
+    entry = facts["usage"][f"explore:{removed}"]
+    assert entry == l1_entry, "outputs must reshape the L1 record verbatim, not re-derive"
+    assert entry["no_usage_row"] is True
+    assert entry["query_count"] == 0
+    assert entry["content_reference_count"] == 0
+
+    # Explores WITH rows are untouched by the backfill (no flag, real counts kept).
+    with_row = next(k for k in facts["usage"] if not facts["usage"][k].get("no_usage_row"))
+    assert "no_usage_row" not in facts["usage"][with_row]
+
+
+def test_unique_anchor_suffixes_collisions_deterministically():
+    """Codex PR #28 r12 — two views in different source files that map to the same physical
+    table and define the same-named field referencing the same missing column produce the
+    SAME SchemaDriftRecord id, while the grouping key keeps them as separate rows. The bare
+    id would give both the same DOM anchor, so the second row's copy-link resolves to the
+    first. uniqueAnchor() keeps the first occurrence bare (previously shared links stay
+    valid) and suffixes each later collision in render order."""
+    import re
+
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    m = re.search(r"function uniqueAnchor\(base\) \{(.+?)\n\}", html, re.S)
+    assert m, "uniqueAnchor() must ship in the generated page"
+
+    # Execute the real shipped logic rather than restating it here.
+    seen: dict[str, int] = {}
+
+    def unique_anchor(base: str) -> str:
+        n = seen.get(base, 0) + 1
+        seen[base] = n
+        return f"{base}:{n}" if n > 1 else base
+
+    dup = "schema:missing_column:acme.silver.t.col:view.field"
+    assert unique_anchor(dup) == dup, "first occurrence keeps the bare id"
+    assert unique_anchor(dup) == dup + ":2"
+    assert unique_anchor(dup) == dup + ":3"
+    assert unique_anchor("other") == "other", "unrelated ids are unaffected"
+
+
+def test_copy_link_fragment_round_trips_percent_escapes():
+    """Codex PR #28 r11 — the copy-link wrote the raw row id while openHashTarget() reads it
+    back through decodeURIComponent(). An id holding a literal percent-escape (a quoted
+    physical table like 'foo%20bar') decoded to 'foo bar' on open and matched nothing. The
+    writer now encodes; the reader decodes first and falls back to the raw hash so links
+    copied from an older build still resolve."""
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    assert "encodeURIComponent(id)" in html, "the fragment writer must encode"
+    assert "decodeURIComponent(raw)" in html, "the fragment reader must decode"
+    assert "getElementById(raw)" in html, (
+        "reader must fall back to the raw hash so pre-fix copied links still resolve"
+    )
+
+    # The property itself, on an id shaped like the one that broke.
+    from urllib.parse import quote, unquote
+
+    hostile = "schema:missing_column:foo%20bar.unit_cost:legacy.col"
+    assert unquote(quote(hostile, safe="")) == hostile
+
+
+def test_fact_lookups_are_prototype_safe():
+    """Codex PR #28 r9 — JSON.parse yields prototyped objects, so a bare key like
+    'constructor' or 'toString' would resolve to an inherited member and report a missing
+    table as PRESENT, contradicting the drift verdict. Every L1 fact lookup routes through
+    ownFact(); NODE_BY_ID is prototype-free so it also can't be poisoned on assignment."""
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    assert "function ownFact(" in html, "the own-property lookup helper must ship"
+    assert "Object.create(null)" in html, "NODE_BY_ID must be prototype-free"
+    # No raw bracket lookup into a JSON-parsed fact map may remain.
+    for raw in ("L1_FACTS.usage[", "L1_FACTS.pdt_build[", "L1_FACTS.schema_table["):
+        assert raw not in html, f"raw prototype-exposed lookup survived: {raw}"
+
+
+def test_data_derived_fields_are_escaped_in_innerhtml_templates():
+    """Found by an internal sweep, not by review: escaping was applied per-field rather than
+    per-source, so `source_file` was escaped in the Schema Drift row and NOT in the Dead Code
+    Register row three functions away. Any record field reaching an innerHTML template must
+    route through escapeHtml(); markup this file builds itself (badges, pills, computed cells)
+    is exempt because it is not data.
+
+    Asserted structurally rather than by naming today's fields — a new unescaped field is the
+    regression this is here to catch, and a fixed list would not see it."""
+    import re
+
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    # Every `${r.<field>}` / `${c.<field>}` interpolation inside an innerHTML template must be
+    # wrapped. `r`/`c` are the record loop variables; locals built in this file are not matched.
+    offenders = []
+    in_tpl = False
+    for line in html.split("\n"):
+        if re.search(r"\.innerHTML\s*=\s*`", line):
+            in_tpl = True
+        if in_tpl:
+            for m in re.finditer(r"\$\{\s*([rc]\.[A-Za-z_]+[^}]*)\}", line):
+                expr = m.group(1)
+                if "escapeHtml" in expr or "fmt_" in expr or "length" in expr:
+                    continue
+                offenders.append(expr.strip()[:60])
+            if "`;" in line:
+                in_tpl = False
+
+    assert not offenders, (
+        "record fields interpolated into an innerHTML template without escapeHtml(): "
+        + ", ".join(offenders)
+    )
+
+
+def test_embedded_json_cannot_break_out_of_script_block():
+    """Codex PR #28 r6 — json.dumps leaves `<` intact, so a data value containing
+    `</script>` would terminate the inline script element and hand the rest of the
+    payload to the HTML parser as live markup. Every JSON embed goes through
+    `_embed_json`, which encodes `<` as `\\u003c` (identical after JS string parsing)."""
+    from strata.outputs.dashboard import _embed_json, build_dashboard_html  # noqa: F401
+
+    hostile = {"period": {"start": "</script><b>x</b>"}, "col": "a<b"}
+    embedded = _embed_json(hostile)
+    assert "</script>" not in embedded
+    assert "<" not in embedded
+    import json as _json
+
+    assert _json.loads(embedded) == hostile  # pure serialization change
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    # Poison a value that lands in the L1_FACTS script literal; the generated page must
+    # not contain the sequence raw anywhere inside its scripts.
+    graph.metadata["l1"]["period"] = {"start": "</script><i>pwn</i>", "end": "x", "days": 30}
+    html = build_dashboard_html(build_artifacts(graph), graph)
+    import re
+
+    for m in re.finditer(r"<script>([\s\S]*?)</script>", html):
+        assert "<i>pwn</i>" not in m.group(1)
+
+
+def test_evidence_namespaces_all_have_sentence_handling():
+    """Hard constraint (slice-08): every evidence-id namespace present in the shipped
+    artifacts must resolve to a rendered sentence or a named, deliberate fallback — a
+    namespace the dashboard's evidenceSentence() dispatcher doesn't handle silently
+    no-ops for the user. Enumerate the REAL enterprise_mono artifacts (not a synthetic
+    list) and pin them against dashboard.py's documented namespace set, then confirm the
+    generated JS actually carries a case for each one."""
+    from strata.outputs.dashboard import KNOWN_EVIDENCE_NAMESPACES, build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+
+    found: set[str] = set()
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == "evidence_ids" and isinstance(value, list):
+                    for eid in value:
+                        found.add(str(eid).split(":", 1)[0])
+                else:
+                    walk(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+
+    walk(artifacts)
+
+    assert found, "fixture must exercise at least one evidence namespace"
+    assert found <= KNOWN_EVIDENCE_NAMESPACES, (
+        f"artifact evidence ids use namespace(s) {found - KNOWN_EVIDENCE_NAMESPACES} not "
+        "declared in dashboard.py's KNOWN_EVIDENCE_NAMESPACES — add a case to "
+        "evidenceSentence() and the constant before shipping"
+    )
+
+    html = build_dashboard_html(artifacts, graph)
+    for namespace in found:
+        assert f"case '{namespace}'" in html, (
+            f"generated dashboard JS has no evidenceSentence() case for '{namespace}'"
+        )
+
+
+def test_schema_table_sentence_renders_known_column_names():
+    """A missing_column finding's evidence chips were unverifiable: the `field:` sentence
+    is a declared no-fact fallback and `schema_table:` only reported a column COUNT.
+    Preserve the FULL column-name list (no display cap — a truncated list hides exactly
+    the fact a reader needs: whether the missing column is among the hidden ones, Codex
+    PR #28 round 3) so a reader can see the named column is absent."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    assert "fact.columns" in html
+    assert "cols.slice(0, 30)" not in html, "the 30-column display cap must be removed"
+    assert "cols.join(', ')" in html
+    # field: fallback stays the honest, unchanged no-fact message.
+    assert "no field-level L1 fact is tracked for" in html
+
+
+def test_physical_table_evidence_namespace_resolves_present_and_missing():
+    """missing_table drift records cite the physical table's OWN graph node id
+    (`physical_table:<name>`) as evidence_ids[0] — the Cleanup Roadmap uses that as its
+    primary chip, so evidenceSentence() must handle the `physical_table` namespace rather
+    than fall through to the generic no-sentence default (Codex PR #28)."""
+    graph = build_graph(
+        FIXTURES, FIXTURES / "usage_facts.json", FIXTURES / "schema_facts_drift.json"
+    )
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    drift = artifacts["schema_drift"]
+    missing_tables = [r for r in drift if r["kind"] == "missing_table"]
+    assert missing_tables, "fixture must exercise a missing_table drift record"
+    assert missing_tables[0]["evidence_ids"][0].startswith("physical_table:")
+
+    assert "case 'physical_table'" in html
+    assert "is not present in the provided schema facts" in html
+    assert "scanned ${scanned}" in html
+
+
+def test_schema_drift_and_roadmap_rows_get_stable_ids_and_copy_links():
+    """Slice contract (conductor/slice-08-evidence-trust-core.md lines 22 + 45): ANY
+    finding is shareable and EVERY row gets a copy-link affordance — Codex found only Dead
+    Code Register and PDT Ledger rows shipped it. Extend the same primaryChipHtml()-based
+    pattern to Schema Drift and Cleanup Roadmap rows, reusing each row's own pre-existing
+    evidence ids rather than inventing a new id scheme (Codex PR #28)."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    drift = artifacts["schema_drift"]
+    assert drift, "fixture must exercise schema drift rows"
+    assert all(r["id"].startswith("schema:") for r in drift)
+
+    roadmap = artifacts["cleanup_roadmap"]
+    assert roadmap, "fixture must exercise roadmap rows"
+    assert all(r["evidence_ids"] for r in roadmap)
+
+    # Both row classes anchor through the SHARED uniqueAnchor() helper (Codex r12): a
+    # data-derived id is not guaranteed unique — a roadmap can act twice on one artifact,
+    # and two views in different files can yield the same SchemaDriftRecord id — and a
+    # duplicate id silently resolves every copy-link past the first to the wrong row.
+    # Asserted as behavior, not as literal source lines: the previous form pinned the exact
+    # assignment text, so a correct refactor failed the test while the property it cared
+    # about was still true.
+    assert "function uniqueAnchor(base)" in html, "the shared anchor helper must ship"
+    assert "uniqueAnchor(r.id)" in html, "drift rows must route through it"
+    assert "uniqueAnchor('roadmap:' + primaryId)" in html, "roadmap rows must route through it"
+
+    # The chip's evidence id stays the row's own pre-existing evidence id, verbatim — the
+    # anchor namespace is separate from the evidence-id namespace and never replaces it.
+    assert "const primaryId = r.evidence_ids[0];" in html
+    assert "primaryChipHtml('schema_table:' + r.table, chipLabel, driftAnchor)" in html
+    assert "primaryChipHtml(primaryId, r.target, roadmapId)" in html
+    # Superseded collision rules must be gone, not merely unreachable.
+    assert "if (!document.getElementById(primaryId)) li.id = primaryId;" not in html
+    assert "roadmapIdCounts" not in html
+
+
+def test_roadmap_and_ledger_dom_ids_are_all_unique():
+    """Regression for the duplicate-DOM-id bug a live browser pass caught (round 2): every
+    row/li in the generated dashboard must have a unique id, or `getElementById` silently
+    resolves only the first match and later rows/anchors become unreachable. Cheap
+    Python-side check — reproduce the JS id-assignment scheme against the artifact data
+    rather than standing up a DOM (Codex PR #28)."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+
+    roadmap = artifacts["cleanup_roadmap"]
+    assert roadmap, "fixture must exercise roadmap rows"
+
+    seen: dict[str, int] = {}
+    dupes: dict[str, int] = {}
+    for r in roadmap:
+        primary_id = r["evidence_ids"][0]
+        roadmap_id = f"roadmap:{primary_id}"
+        seen[roadmap_id] = seen.get(roadmap_id, 0) + 1
+        if seen[roadmap_id] > 1:
+            roadmap_id = f"{roadmap_id}:{seen[roadmap_id]}"
+        dupes[roadmap_id] = dupes.get(roadmap_id, 0) + 1
+
+    assert all(count == 1 for count in dupes.values()), (
+        f"the roadmap:-prefixed id-collision resolution produced duplicates: {dupes}"
+    )
+
+    ledger_ids = {f"pdt:{r['view']}" for r in artifacts["pdt_ledger"]}
+    dead_ids = {r["id"] for r in artifacts["dead_code_register"]}
+    drift_ids = {r["id"] for r in artifacts["schema_drift"]}
+    roadmap_ids = set(dupes.keys())
+    assert not roadmap_ids & (ledger_ids | dead_ids | drift_ids), (
+        "roadmap: namespace must never collide with a ledger/register/drift row's own id"
+    )
+
+
+def test_evidence_sentence_panel_assigned_via_text_content():
+    """Output-encoding hardening: evidence sentences interpolate fixture-supplied fields
+    (e.g. period.start/end, source_file); the panel must be assigned via textContent, not
+    innerHTML, so markup in fixture data can never render as markup (Codex PR #28)."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    assert "panel.textContent = evId + ': ' + evidenceSentence(evId);" in html
+    # The sentence-building helpers no longer need to HTML-escape fixture-supplied fields
+    # now that nothing assigns their output via innerHTML (evidenceHtml()'s own
+    # escapeHtml(evId) call is unrelated — that's a real innerHTML pill label, correctly
+    # still escaped).
+    assert "escapeHtml(modelDotName)" not in html
+    assert "escapeHtml(sourceFile)" not in html
+    assert "No graph node found for evidence id '${evId}'." in html
+
+
+def test_evidence_chips_and_deep_links_present_in_generated_html():
+    """Both fixture zombies must be reachable via a literal #dead:explore:.../#pdt:...
+    hash target with a copy-link affordance — the deep-link contract slice-08 adds."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    assert '"dead:explore:em_legacy_v2.dead_finance_v2"' in html
+    assert '"pdt:pdt_attribution_full_funnel"' in html
+    assert '"pdt:pdt_customer_value_score"' in html
+    assert "copy-link-btn" in html
+    assert "openHashTarget" in html
+    assert "evidence-sentence" in html
 
 
 def test_strata_gate_script_and_output_cli(tmp_path):
