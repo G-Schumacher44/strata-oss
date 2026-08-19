@@ -951,7 +951,11 @@ window.addEventListener('load', openHashTarget);
     // _cleanup_roadmap()), so reuse it verbatim rather than inventing a new row id.
     const primaryId = r.evidence_ids[0];
     const li = el('li', 'roadmap-item');
-    li.id = primaryId;
+    // The ledger/register row rendered earlier is the canonical anchor for this artifact;
+    // claiming the same id twice makes the roadmap copy of it unreachable and the document
+    // invalid. Defer: the copy-link still carries primaryId, so sharing a roadmap finding
+    // deep-links to the canonical row (where the evidence lives).
+    if (!document.getElementById(primaryId)) li.id = primaryId;
     li.innerHTML = `
       <div class="roadmap-num">${i+1}</div>
       <div class="roadmap-body">

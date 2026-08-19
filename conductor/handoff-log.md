@@ -195,6 +195,16 @@ Dispatched agent addressed the three remaining unresolved Codex findings, all in
   HTML write happens first, so the regenerated file is still current) and ran the
   pre-push parse guard: extracted all 5 `<script>` blocks and `new Function(src)`'d each
   in Node — all 5 parse clean.
+- **r2 browser re-verify + duplicate-id fix (Koa head, real Chrome)** — the r2 fixes
+  verified live: Schema Drift deep link scrolls+opens (`schema:missing_column:...` row),
+  schema_table sentences name 30 columns + `+K more`, evidence panel is structurally
+  text-only (0 child elements — the textContent hardening). Browser also caught one
+  defect the 121 tests couldn't: roadmap `li.id = evidence_ids[0]` DUPLICATED the PDT
+  Ledger row ids for both zombie PDTs (invalid document; `getElementById` made the
+  roadmap anchor unreachable). Fix: the li claims the id only if no earlier element owns
+  it — copy-link keeps `primaryId` either way, so sharing a roadmap finding deep-links to
+  the canonical ledger/register row. Post-fix: zero duplicate ids, 25/27 roadmap items
+  self-anchored, 27/27 have copy-links.
 - **Behaviorally verified in Node** (same pure-logic-extraction technique as the prior
   session): stubbed `document`/`window`/`location`, sliced the generated script down to
   before the KPI-Row IIFE, and called the real generated functions directly —
