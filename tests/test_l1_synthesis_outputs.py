@@ -488,6 +488,34 @@ def test_l1_facts_inlines_usage_pdt_build_and_schema_table_facts():
     assert schema_table["column_count"] == len(schema_table["columns"])
 
 
+def test_l1_facts_covers_explores_without_usage_rows():
+    """Codex PR #28 r5 — live System Activity emits NO row for a never-queried explore,
+    so a usage-keyed comprehension drops exactly the explores whose dead verdicts most
+    need evidence. Every explore node must get a usage entry; row absence is itself the
+    zero-usage fact and is flagged so the sentence states it rather than implying a
+    serialized row existed."""
+    from strata.outputs.dashboard import _build_l1_facts
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+
+    # Simulate the live-path gap: strip one dead explore's usage row from L1 entirely.
+    removed = "em_legacy_v2.dead_finance_v2"
+    del graph.metadata["l1"]["explore_usage"][removed]
+
+    facts = _build_l1_facts(graph)
+    entry = facts["usage"][f"explore:{removed}"]
+    assert entry["no_usage_row"] is True
+    assert entry["query_count"] == 0
+    assert entry["content_reference_count"] == 0
+
+    # Explores WITH rows are untouched by the backfill (no flag, real counts kept).
+    with_row = next(k for k in facts["usage"] if not facts["usage"][k].get("no_usage_row"))
+    assert "no_usage_row" not in facts["usage"][with_row]
+
+
 def test_evidence_namespaces_all_have_sentence_handling():
     """Hard constraint (slice-08): every evidence-id namespace present in the shipped
     artifacts must resolve to a rendered sentence or a named, deliberate fallback — a
