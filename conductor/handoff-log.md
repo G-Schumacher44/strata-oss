@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-18 — feat/dashboard-evidence-trust-core
 
-Commit: f4d3705 (pre-merge branch anchor — implementation commit; squash-merge repo,
+Commit: 3987015 (pre-merge branch anchor — implementation commit; squash-merge repo,
   post-squash resolve via `gh pr view 28 --json mergeCommit -q .mergeCommit.oid`)
 Anchor semantics (squash-aware, per the convention slice-06 established): PRE-merge, the
   final commit on the PR branch is the implementation anchor. POST-squash, resolve the
@@ -143,10 +143,68 @@ Tag Posture: no version bump this slice — pure dashboard-generator addition, n
   session (no browser-use permission available here — same gap prior rounds flagged);
   worth a human eyeball on the next browser pass.
 
+### Round 4 — Codex round 4 (PR #28, 2 findings) fixed — this session
+
+1. **Live usage window dropped on the provider path** — `strata dashboard --looker-url
+   --days N` passes `days` to `LookerSystemActivityProvider`, but `UsageFacts.to_mapping()`
+   never carried a `period`, so `build_graph_with_provider()` called `enrich_graph()` with
+   none and the serialized L1 `period` was `{}` — live evidence sentences would have
+   claimed an unknown window despite the provider querying a known N-day range. Added an
+   optional `period()` hook: NOT part of the `UsageProvider` Protocol (fixture/replay
+   providers don't know their own window and must stay conformant without it), duck-typed
+   via `getattr(provider, "period", None)` in `UsageFacts.from_provider()`. Added
+   `LookerSystemActivityProvider.period()` returning the same `{start, end, days}` shape
+   the fixture path already uses (`l1/fixtures.py`'s `load_usage_facts()`) — `end` is
+   `datetime.now(UTC)`, `start` is `end - timedelta(days=self.days)`, mirroring the
+   `f"{self.days} days"` relative-to-now filter `run_inline_query()` already sends.
+   Threaded `period=mapping.get("period")` through `build_graph_with_provider()` in
+   `pipeline.py`. No new period schema — one shape, matching the existing L1 convention
+   exactly.
+2. **PDT evidence sentence claimed a fabricated `/mo` figure** — `pdt_builds()` filters to
+   `self.days` and sums bytes with zero monthly normalization, but `pdtCostSentence()`
+   (this PR's own new wording) said `$X/mo`. Per operator disposition: do NOT extrapolate
+   to a synthetic monthly number (that fabricates a different figure than what was
+   measured) — state the cost over its real window instead, reusing `periodPhrase()`
+   (same function `exploreUsageSentence()` already uses, including its honest "an unknown
+   window" fallback when period is absent). New wording: `"$X estimated over the last
+   N-day window (start → end)"` (or `"...over an unknown window"` with no period). Only
+   this PR's own new sentence changed — pre-existing `/mo` UI surfaces (PDT Ledger table's
+   COST/MO column, roadmap savings line, node detail panel's "Cost / mo" row) are
+   untouched; explicitly out of scope per disposition. **Follow-up candidate, not fixed
+   here:** those pre-existing `/mo` surfaces may now read as inconsistent next to the new
+   window-labeled evidence sentence — worth a human call on whether to unify their wording
+   in a future slice.
+
+**What was verified:**
+- Full suite: **126 passed** (124 prior + 2 new: `test_looker_provider_period_
+  propagates_actual_query_window` — pins a non-30 `days=45` value so a hardcoded default
+  couldn't fake it passing, asserts `(end - start).days == days`; `test_pdt_cost_
+  sentence_states_real_window_not_fabricated_monthly` — asserts the fixed source line is
+  present and the old `/mo)` line is gone).
+- `ruff check` + `ruff format --check` clean; `mypy src` clean.
+- Regenerated the enterprise_mono fixture dashboard (same sandbox `PermissionError` on
+  the HTTP server bind as round 3 — HTML write happens first, mtime confirmed current)
+  and ran the pre-push parse guard: extracted all 5 `<script>` blocks and
+  `new Function(src)`'d each in Node — all 5 parse clean.
+- **Behaviorally verified in Node** (same pure-logic-extraction technique as prior
+  rounds): extracted `periodPhrase()` + `pdtCostSentence()` from the regenerated HTML and
+  ran them against a synthetic 45-day period → `"built 3 times, processing 500000B ·
+  $12.34 estimated over the last 45-day window (2026-01-01 → 2026-02-15) · used by 2
+  explores (1 dead) · exists in resolved IR at 'models/foo.view.lkml'."`; against an empty
+  period → `"...estimated over an unknown window..."` (no fabricated number, no crash).
+- Self-contained-HTML invariant re-checked against the regenerated dashboard: only the
+  same pre-existing vendored-library license-header URLs, unchanged — zero external
+  requests.
+- Live-browser click-through was NOT re-run this session (no browser-use permission
+  available here — same recurring headless-session gap prior rounds flagged).
+
 **Exact Next Steps:**
-1. Push branch; let Codex re-review round 3's fixes.
-2. Human/Koa-head browser click-through of the `physical_table:` sentence and the new
-   `roadmap:`-anchored deep links (the recurring headless-session gap).
-3. Resolve threads only after the head verifies; dispatched agents never resolve threads
+1. Push branch; let Codex re-review round 4's fixes.
+2. Human/Koa-head browser click-through of the new PDT cost-sentence window wording (the
+   recurring headless-session gap).
+3. Consider (follow-up slice, not this PR): unify the pre-existing `/mo`-labeled UI
+   surfaces (PDT Ledger COST/MO column, roadmap savings, node detail panel) with the new
+   window-labeled evidence-sentence wording, now that both coexist on the page.
+4. Resolve threads only after the head verifies; dispatched agents never resolve threads
    or merge (standing house rule).
-4. No version bump / tag needed — generator-only addition, not a release artifact change.
+5. No version bump / tag needed — generator-only addition, not a release artifact change.
