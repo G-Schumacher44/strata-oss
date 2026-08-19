@@ -175,6 +175,28 @@ def test_graph_marks_dead_explores_dead():
     assert live["color"] == "#2ecc71"
 
 
+def test_view_status_credits_inherited_consumers():
+    """Codex P1 (PR #25): an explore targeting a CHILD view is a consumer of every ancestor
+    in the child's resolution_chain — the panel's view status must agree with the resolver's
+    own _mark_orphans ancestry walk. In the fixtures, test_model.customer targets
+    customer_extended, which extends base_customer: base_customer must show the inherited
+    consumer and must NOT read as orphaned."""
+    from strata.outputs.dashboard import _build_graph_data
+
+    graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
+    data = _build_graph_data(graph)
+    by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+
+    base = by_id["view:base_customer"]
+    keys = [c["key"] for c in base.get("referencing_explores", [])]
+    assert "test_model.customer" in keys, f"inherited consumer missing: {keys}"
+    assert base.get("status") != "orphaned", "ancestor of a targeted view must not be orphaned"
+
+    # Negative control: a genuinely orphaned view stays orphaned.
+    orphan = by_id.get("view:orphan_view")
+    assert orphan is not None and orphan.get("status") == "orphaned"
+
+
 def test_zombie_pdt_detection_enterprise_mono():
     """A PDT with real build facts backing only dead explores is 'zombie', not 'used'."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"

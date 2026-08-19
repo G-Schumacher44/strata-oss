@@ -79,6 +79,21 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             table_views.setdefault(edge.target.removeprefix("physical_table:"), []).append(
                 edge.source.removeprefix("view:")
             )
+    # Inheritance: an explore targeting a child view is a consumer of every ancestor in
+    # that view's resolution_chain — the resolver's _mark_orphans already treats ancestors
+    # as used, so the panel must agree or a base view shows "orphaned" while the canonical
+    # orphan flag says otherwise (Codex P1, PR #25). Same single-source rule: the chain
+    # comes from the resolver's own attrs, never re-derived here.
+    for node in graph.nodes.values():
+        if node.kind != "view":
+            continue
+        direct = view_explores.get(node.name)
+        if not direct:
+            continue
+        for anc in node.attrs.get("resolution_chain", []):
+            anc = anc.lstrip("+")
+            if anc and anc != node.name:
+                view_explores.setdefault(anc, []).extend(direct)
     view_explores = {name: sorted(set(keys)) for name, keys in view_explores.items()}
     table_views = {name: sorted(set(views)) for name, views in table_views.items()}
 
@@ -860,7 +875,9 @@ document.addEventListener('click', function(evt) {
     if (d.kind === 'view') {
       if (d.status === 'orphaned') return '<span class="badge badge-gray">ORPHANED</span>';
       if (d.status === 'zombie_view') return '<span class="zombie-badge">⚠ ZOMBIE VIEW</span>';
-      return '<span class="badge badge-green">ACTIVE</span>';
+      // Blue, not green: the legend renders views blue; green is already claimed by
+      // active explores and in-use PDTs (Codex P2, PR #25 — status colors must match the legend).
+      return '<span class="badge badge-blue">ACTIVE</span>';
     }
     return '';
   }
