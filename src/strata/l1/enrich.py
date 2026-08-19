@@ -258,7 +258,33 @@ def evidence_facts(graph: IRGraph) -> dict[str, dict]:
         for name, rec in l1.get("schema_tables", {}).items()
     }
 
+    # The complete per-explore usage evidence, one entry per explore NODE — not per usage
+    # row. Live System Activity emits no row for a never-queried explore, so a row-keyed
+    # map drops exactly the explores whose dead verdicts most need evidence; row absence
+    # is itself the zero-usage fact and is flagged (`no_usage_row`) so the sentence can
+    # state it. Derived here, not in outputs (Codex PR #28 r7 — the r5 backfill living in
+    # `_build_l1_facts()` recreated the drift this seam exists to prevent).
+    explore_usage_evidence: dict[str, dict] = {}
+    for key, rec in l1.get("explore_usage", {}).items():
+        explore_usage_evidence[key] = {
+            "query_count": rec["query_count"],
+            "content_reference_count": content_reference_counts.get(key, 0),
+        }
+    for node in graph.nodes.values():
+        if node.kind != "explore":
+            continue
+        key = f"{node.attrs.get('model', '')}.{node.name}"
+        explore_usage_evidence.setdefault(
+            key,
+            {
+                "query_count": 0,
+                "content_reference_count": content_reference_counts.get(key, 0),
+                "no_usage_row": True,
+            },
+        )
+
     return {
         "content_reference_counts": content_reference_counts,
         "schema_table_facts": schema_table_facts,
+        "explore_usage_evidence": explore_usage_evidence,
     }

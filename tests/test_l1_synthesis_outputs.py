@@ -505,8 +505,15 @@ def test_l1_facts_covers_explores_without_usage_rows():
     removed = "em_legacy_v2.dead_finance_v2"
     del graph.metadata["l1"]["explore_usage"][removed]
 
+    # The backfill is an L1 derivation (r7): pin it at the seam, not just the reshape.
+    from strata.l1.enrich import evidence_facts
+
+    l1_entry = evidence_facts(graph)["explore_usage_evidence"][removed]
+    assert l1_entry["no_usage_row"] is True
+
     facts = _build_l1_facts(graph)
     entry = facts["usage"][f"explore:{removed}"]
+    assert entry == l1_entry, "outputs must reshape the L1 record verbatim, not re-derive"
     assert entry["no_usage_row"] is True
     assert entry["query_count"] == 0
     assert entry["content_reference_count"] == 0

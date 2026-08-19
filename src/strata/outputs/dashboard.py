@@ -51,33 +51,10 @@ def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
     (per outputs/AGENTS.md: outputs serialize, they do not derive)."""
     l1 = graph.metadata.get("l1", {})
     facts = evidence_facts(graph)
-    content_ref_counts = facts["content_reference_counts"]
 
     usage = {
-        f"explore:{key}": {
-            "query_count": rec["query_count"],
-            "content_reference_count": content_ref_counts.get(key, 0),
-        }
-        for key, rec in l1.get("explore_usage", {}).items()
+        f"explore:{key}": dict(rec) for key, rec in facts["explore_usage_evidence"].items()
     }
-    # A dead-explore verdict rests on two facts: zero queries AND zero content references
-    # in the window. Live System Activity emits NO row for a never-queried explore, so a
-    # usage-keyed comprehension alone drops exactly the explores whose verdicts most need
-    # evidence — their chips fell to the "no usage row" fallback, substantiating neither
-    # condition. Every explore node gets an entry; row absence itself is the zero-usage
-    # fact (flagged so the sentence can say so instead of implying a serialized row).
-    for node in graph.nodes.values():
-        if node.kind != "explore":
-            continue
-        key = f"{node.attrs.get('model', '')}.{node.name}"
-        usage.setdefault(
-            f"explore:{key}",
-            {
-                "query_count": 0,
-                "content_reference_count": content_ref_counts.get(key, 0),
-                "no_usage_row": True,
-            },
-        )
 
     pdt_build = {
         view: {
