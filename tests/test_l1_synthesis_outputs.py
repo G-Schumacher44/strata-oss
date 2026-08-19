@@ -454,6 +454,8 @@ def test_l1_facts_inlines_usage_pdt_build_and_schema_table_facts():
 
     schema_table = facts["schema_table"]["acme-analytics.silver.int_attributed_purchases"]
     assert schema_table["column_count"] > 0
+    assert schema_table["columns"], "column NAMES must be plumbed, not just a count (Codex PR #28)"
+    assert schema_table["column_count"] == len(schema_table["columns"])
 
 
 def test_evidence_namespaces_all_have_sentence_handling():
@@ -499,6 +501,80 @@ def test_evidence_namespaces_all_have_sentence_handling():
         assert f"case '{namespace}'" in html, (
             f"generated dashboard JS has no evidenceSentence() case for '{namespace}'"
         )
+
+
+def test_schema_table_sentence_renders_known_column_names():
+    """A missing_column finding's evidence chips were unverifiable: the `field:` sentence
+    is a declared no-fact fallback and `schema_table:` only reported a column COUNT.
+    Preserve the column NAMES (capped ~30, '+K more' beyond that) so a reader can see the
+    named column is absent (Codex PR #28)."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    assert "fact.columns" in html
+    assert "cols.slice(0, 30)" in html
+    assert "+${cols.length - 30} more" in html
+    # field: fallback stays the honest, unchanged no-fact message.
+    assert "no field-level L1 fact is tracked for" in html
+
+
+def test_schema_drift_and_roadmap_rows_get_stable_ids_and_copy_links():
+    """Slice contract (conductor/slice-08-evidence-trust-core.md lines 22 + 45): ANY
+    finding is shareable and EVERY row gets a copy-link affordance — Codex found only Dead
+    Code Register and PDT Ledger rows shipped it. Extend the same primaryChipHtml()-based
+    pattern to Schema Drift and Cleanup Roadmap rows, reusing each row's own pre-existing
+    evidence ids rather than inventing a new id scheme (Codex PR #28)."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    drift = artifacts["schema_drift"]
+    assert drift, "fixture must exercise schema drift rows"
+    assert all(r["id"].startswith("schema:") for r in drift)
+
+    roadmap = artifacts["cleanup_roadmap"]
+    assert roadmap, "fixture must exercise roadmap rows"
+    assert all(r["evidence_ids"] for r in roadmap)
+
+    # Schema Drift: the DOM row id is the row's own SchemaDriftRecord id (several rows can
+    # share one table, so `schema_table:` alone isn't unique enough); the chip itself still
+    # resolves via `schema_table:`, one of the row's own pre-existing evidence ids.
+    assert "tr.id = r.id;" in html
+    assert "primaryChipHtml('schema_table:' + r.table, chipLabel, r.id)" in html
+
+    # Cleanup Roadmap items carry no own artifact id, so the primary chip/copy-link reuse
+    # the row's own evidence_ids[0] (the target's own namespace) verbatim.
+    assert "const primaryId = r.evidence_ids[0];" in html
+    assert "li.id = primaryId;" in html
+    assert "primaryChipHtml(primaryId, r.target)" in html
+
+
+def test_evidence_sentence_panel_assigned_via_text_content():
+    """Output-encoding hardening: evidence sentences interpolate fixture-supplied fields
+    (e.g. period.start/end, source_file); the panel must be assigned via textContent, not
+    innerHTML, so markup in fixture data can never render as markup (Codex PR #28)."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    assert "panel.textContent = evId + ': ' + evidenceSentence(evId);" in html
+    # The sentence-building helpers no longer need to HTML-escape fixture-supplied fields
+    # now that nothing assigns their output via innerHTML (evidenceHtml()'s own
+    # escapeHtml(evId) call is unrelated — that's a real innerHTML pill label, correctly
+    # still escaped).
+    assert "escapeHtml(modelDotName)" not in html
+    assert "escapeHtml(sourceFile)" not in html
+    assert "No graph node found for evidence id '${evId}'." in html
 
 
 def test_evidence_chips_and_deep_links_present_in_generated_html():

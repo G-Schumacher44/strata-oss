@@ -53,7 +53,10 @@ def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
     }
 
     schema_table = {
-        name: {"column_count": len(rec.get("columns", []))}
+        name: {
+            "column_count": len(rec.get("columns", [])),
+            "columns": list(rec.get("columns", [])),
+        }
         for name, rec in l1.get("schema_tables", {}).items()
     }
 
@@ -593,9 +596,9 @@ function exploreUsageSentence(modelDotName, sourceFile) {
     const c = fact.content_reference_count || 0;
     s = `queried ${q} time${q !== 1 ? 's' : ''} in ${periodPhrase()} \u00b7 ${c} content reference${c !== 1 ? 's' : ''} in the window`;
   } else {
-    s = `no usage row was provided for '${escapeHtml(modelDotName)}' in the L1 facts`;
+    s = `no usage row was provided for '${modelDotName}' in the L1 facts`;
   }
-  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${escapeHtml(sourceFile)}'`;
+  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${sourceFile}'`;
   return s + '.';
 }
 function viewSentence(node) {
@@ -608,7 +611,7 @@ function viewSentence(node) {
   } else {
     s = `referenced by ${refs.length} explore${refs.length !== 1 ? 's' : ''}`;
   }
-  if (node.source_file) s += ` \u00b7 exists in resolved IR at '${escapeHtml(node.source_file)}'`;
+  if (node.source_file) s += ` \u00b7 exists in resolved IR at '${node.source_file}'`;
   return s + '.';
 }
 function pdtCostSentence(buildCount, bytesProcessed, costUsd, usedBy, sourceFile) {
@@ -620,7 +623,7 @@ function pdtCostSentence(buildCount, bytesProcessed, costUsd, usedBy, sourceFile
   } else {
     s += ' \u00b7 no consumers recorded';
   }
-  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${escapeHtml(sourceFile)}'`;
+  if (sourceFile) s += ` \u00b7 exists in resolved IR at '${sourceFile}'`;
   return s + '.';
 }
 function evidenceSentence(evId) {
@@ -632,24 +635,24 @@ function evidenceSentence(evId) {
       const node = nodeId ? NODE_BY_ID[nodeId] : null;
       if (node && node.kind === 'explore') return exploreUsageSentence(`${node.model}.${node.label}`, node.source_file);
       if (node && node.kind === 'view') return viewSentence(node);
-      return `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+      return `No graph node found for evidence id '${evId}'.`;
     }
     case 'explore': {
       const node = NODE_BY_ID[evId];
       return node
         ? exploreUsageSentence(`${node.model}.${node.label}`, node.source_file)
-        : `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+        : `No graph node found for evidence id '${evId}'.`;
     }
     case 'view': {
       const node = NODE_BY_ID[evId];
-      return node ? viewSentence(node) : `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+      return node ? viewSentence(node) : `No graph node found for evidence id '${evId}'.`;
     }
     case 'pdt': {
       const node = NODE_BY_ID[evId];
-      if (!node) return `No graph node found for evidence id '${escapeHtml(evId)}'.`;
+      if (!node) return `No graph node found for evidence id '${evId}'.`;
       if (node.status === 'missing_build_facts') {
-        return `no PDT build facts were provided for '${escapeHtml(node.label)}' — cost and build count are unknown` +
-          (node.source_file ? ` · exists in resolved IR at '${escapeHtml(node.source_file)}'` : '') + '.';
+        return `no PDT build facts were provided for '${node.label}' — cost and build count are unknown` +
+          (node.source_file ? ` · exists in resolved IR at '${node.source_file}'` : '') + '.';
       }
       return pdtCostSentence(node.build_count, node.bytes_processed, node.estimated_cost_usd, node.used_by_explores, node.source_file);
     }
@@ -667,7 +670,7 @@ function evidenceSentence(evId) {
     case 'pdt_build': {
       const view = evId.slice('pdt_build:'.length);
       const fact = L1_FACTS.pdt_build[view];
-      if (!fact) return `No PDT build facts were provided for '${escapeHtml(view)}'.`;
+      if (!fact) return `No PDT build facts were provided for '${view}'.`;
       const node = NODE_BY_ID['pdt:' + view];
       return pdtCostSentence(
         fact.build_count, fact.bytes_processed, fact.estimated_cost_usd,
@@ -677,15 +680,20 @@ function evidenceSentence(evId) {
     case 'schema_table': {
       const table = evId.slice('schema_table:'.length);
       const fact = L1_FACTS.schema_table[table];
-      return fact
-        ? `table '${escapeHtml(table)}' is present in the provided schema facts with ${fact.column_count} known column${fact.column_count !== 1 ? 's' : ''}.`
-        : `table '${escapeHtml(table)}' was not found in the provided schema facts \u2014 the resolved IR references it, but no warehouse metadata confirms it exists.`;
+      if (!fact) {
+        return `table '${table}' was not found in the provided schema facts \u2014 the resolved IR references it, but no warehouse metadata confirms it exists.`;
+      }
+      const cols = fact.columns || [];
+      const shown = cols.slice(0, 30).join(', ');
+      const more = cols.length > 30 ? ` (+${cols.length - 30} more)` : '';
+      const colList = shown ? `: ${shown}${more}` : '';
+      return `table '${table}' is present in the provided schema facts with ${fact.column_count} known column${fact.column_count !== 1 ? 's' : ''}${colList}.`;
     }
     case 'field':
-      return `no field-level L1 fact is tracked for '${escapeHtml(evId.slice('field:'.length))}'` +
+      return `no field-level L1 fact is tracked for '${evId.slice('field:'.length)}'` +
         ' \u2014 see the table/view evidence alongside this field for usage and schema context.';
     default:
-      return `No evidence sentence is defined for the '${escapeHtml(namespace)}' namespace yet.`;
+      return `No evidence sentence is defined for the '${namespace}' namespace yet.`;
   }
 }
 
@@ -699,13 +707,17 @@ function evidenceHtml(evId) {
 function evidenceListHtml(ids) { return (ids || []).map(evidenceHtml).join(''); }
 // A row's own artifact id (not one of its evidence_ids) — used as the deep-link/copy-link
 // target and as the chip that opens the row's headline sentence (dead-explore usage,
-// PDT cost/builds) on click.
-function primaryChipHtml(id, label) {
+// PDT cost/builds) on click. `rowId` lets the copy-link/DOM-anchor target diverge from the
+// chip's evidence id — needed for Schema Drift, where several rows share one
+// `schema_table:` id (not unique enough for a DOM id) but each row's own SchemaDriftRecord
+// id is; defaults to `id` when the two coincide (Dead Code Register, PDT Ledger).
+function primaryChipHtml(id, label, rowId) {
+  const anchorId = rowId || id;
   const nodeId = resolveEvidenceNodeId(id);
   const cls = nodeId ? 'ev-chip pill-link row-primary-link' : 'ev-chip pill-info row-primary-link';
   const nodeAttr = nodeId ? ` data-node-id="${escapeHtml(nodeId)}"` : '';
   return `<a href="#" class="${cls}" data-ev-id="${escapeHtml(id)}"${nodeAttr}>${escapeHtml(label)}</a>` +
-    `<button type="button" class="copy-link-btn" data-copy-hash="${escapeHtml(id)}" title="Copy link to this row">🔗</button>`;
+    `<button type="button" class="copy-link-btn" data-copy-hash="${escapeHtml(anchorId)}" title="Copy link to this row">🔗</button>`;
 }
 
 function toggleEvidencePanel(chip) {
@@ -721,7 +733,8 @@ function toggleEvidencePanel(chip) {
     next.remove();
     return;
   }
-  const panel = el('div', 'evidence-sentence', escapeHtml(evId) + ': ' + evidenceSentence(evId));
+  const panel = el('div', 'evidence-sentence');
+  panel.textContent = evId + ': ' + evidenceSentence(evId);
   anchor.insertAdjacentElement('afterend', panel);
 }
 function openHashTarget() {
@@ -933,12 +946,17 @@ window.addEventListener('load', openHashTarget);
     const [cls, label] = actionStyle[r.action] || ['badge-gray', r.action];
     const cost = r.estimated_cost_usd ? ` · saves ${fmt_usd(r.estimated_cost_usd)}/mo` : '';
     const evCount = (r.evidence_ids||[]).length;
+    // Roadmap items carry no own artifact id — the slice's own evidence_ids[0] IS the
+    // target's own id (explore:/view:/pdt:/field:, always the record's own namespace per
+    // _cleanup_roadmap()), so reuse it verbatim rather than inventing a new row id.
+    const primaryId = r.evidence_ids[0];
     const li = el('li', 'roadmap-item');
+    li.id = primaryId;
     li.innerHTML = `
       <div class="roadmap-num">${i+1}</div>
       <div class="roadmap-body">
         <span class="badge ${cls}">${label}</span>
-        &nbsp;<span class="roadmap-target">${escapeHtml(r.target)}</span>
+        &nbsp;<span class="roadmap-target">${primaryChipHtml(primaryId, r.target)}</span>
         <div class="roadmap-meta">${escapeHtml(r.kind)}${cost}</div>
         <details class="evidence-details"><summary>${evCount} evidence link${evCount!==1?'s':''}</summary>
           <div class="evidence-list">${evidenceListHtml(r.evidence_ids)}</div>
@@ -981,9 +999,15 @@ window.addEventListener('load', openHashTarget);
   const tbody = el('tbody');
   groups.forEach(r => {
     const tr = el('tr', 'dead-row');
+    // Row's own SchemaDriftRecord id is the stable DOM anchor/copy-link target (several
+    // rows can share one table, so `schema_table:` alone isn't unique enough for that);
+    // the chip itself still resolves via `schema_table:`, one of the row's own
+    // pre-existing evidence_ids (no new id scheme invented).
+    tr.id = r.id;
+    const chipLabel = (r.table||'') + (r.column ? ' · ' + r.column : '');
     tr.innerHTML = `
       <td><span class="badge badge-red">${escapeHtml(r.kind)}</span></td>
-      <td style="font-family:monospace">${escapeHtml(r.table||'')}${r.column ? ' · ' + escapeHtml(r.column) : ''}</td>
+      <td style="font-family:monospace">${primaryChipHtml('schema_table:' + r.table, chipLabel, r.id)}</td>
       <td class="file-tag">${escapeHtml(r.field||'')}</td>
       <td class="file-tag">${escapeHtml(r.source_file||'')}</td>
       <td class="reason-text">${escapeHtml(r.reason||'')}</td>

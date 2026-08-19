@@ -134,3 +134,84 @@ new fact is a value they already compute (`explore_usage`, `pdt_builds`,
    clean per standing order (dispatched agents never merge).
 3. No version bump / tag needed — generator-only addition, not a release artifact
    change.
+
+## 2026-08-18 — Codex round 2 (PR #28, 3 findings) fixed
+
+Dispatched agent addressed the three remaining unresolved Codex findings, all in
+`src/strata/outputs/dashboard.py` + `tests/test_l1_synthesis_outputs.py`:
+
+1. **Output-encoding hardening** — the evidence-sentence panel was built with
+   `el('div', 'evidence-sentence', ...)` (innerHTML) over fixture-supplied fields
+   (`period.start/end`, `source_file`, etc.). Fixed by construction: `toggleEvidencePanel`
+   now creates the panel div and assigns `panel.textContent = evId + ': ' +
+   evidenceSentence(evId)` — no HTML parsing of the sentence, ever. Since nothing renders
+   `evidenceSentence()`'s output via innerHTML anymore, the `escapeHtml(...)` wrapping
+   inside `exploreUsageSentence`, `viewSentence`, `pdtCostSentence`, and every
+   `evidenceSentence()` case was removed (it was becoming a correctness bug, not just
+   redundant: textContent would have rendered the escaped entities — `&amp;` — literally
+   instead of un-escaping them). `evidenceHtml()`/`primaryChipHtml()`'s own
+   `escapeHtml(...)` calls are untouched — those really do feed innerHTML (pill/chip
+   markup) and still need it.
+2. **Every-row copy-link/deep-link** — Schema Drift and Cleanup Roadmap rows had no row
+   id or copy-link, only Dead Code Register and PDT Ledger did (slice-08's own hard
+   constraint, lines 22 + 45). Extended `primaryChipHtml()` with an optional third
+   `rowId` param so the DOM-anchor/copy-link target can diverge from the chip's
+   evidence-sentence id:
+   - **Schema Drift**: `tr.id = r.id` (the row's own, already-unique
+     `SchemaDriftRecord.id`, e.g. `schema:missing_column:<table>.<column>:<field>` —
+     needed because several rows can share one `schema_table:<table>` id, which isn't
+     unique enough for a DOM anchor); the primary chip itself resolves via
+     `schema_table:<table>`, one of the row's own pre-existing `evidence_ids` (no new
+     namespace).
+   - **Cleanup Roadmap**: roadmap items carry no artifact id of their own, so
+     `li.id = r.evidence_ids[0]` — verified by walking `_cleanup_roadmap()`
+     (`src/strata/outputs/artifacts.py`) that `evidence_ids[0]` is always the row's own
+     target id (`explore:`/`view:`/`pdt:`/`field:`, per action kind), i.e. "derive from
+     the row's existing evidence id set," not a new scheme.
+   No changes to `openHashTarget()` — its existing `chips[0]` fallback (for when the
+   hash-target id doesn't exactly match a chip's `data-ev-id`) already covers the
+   Schema Drift case where `tr.id` and the chip's `data-ev-id` differ.
+3. **`schema_table:` sentence now names columns, not just a count** — `missing_column`
+   findings were unverifiable: `field:` is a declared no-fact fallback (left unchanged —
+   the field id only carries `view.field_name`, no physical table, so "not among N known
+   columns" isn't cheaply derivable from it without new plumbing), and `schema_table:`
+   only reported `column_count`. `_build_l1_facts` now also inlines
+   `"columns": list(rec.get("columns", []))` (from `l1.schema_tables`, already built by
+   `schema.py`'s `enrich_schema_drift` — no new Python-side derivation). The JS
+   `schema_table:` case renders the names, capped at 30 with a `(+K more)` suffix when
+   longer.
+
+**What was verified:**
+- Full suite: **121 passed** (118 prior + 3 new: column-name plumbing extended into the
+  existing `test_l1_facts_inlines_usage_pdt_build_and_schema_table_facts`, plus two new
+  tests — `test_schema_table_sentence_renders_known_column_names` and
+  `test_schema_drift_and_roadmap_rows_get_stable_ids_and_copy_links` — plus
+  `test_evidence_sentence_panel_assigned_via_text_content` pinning the textContent
+  assignment and the removed dead escaping).
+- `ruff check` + `ruff format --check` clean; `mypy src --ignore-missing-imports` clean.
+- Regenerated the enterprise_mono fixture dashboard
+  (`bin/strata dashboard --repo tests/lookml/enterprise_mono --usage-fixture ... --schema-fixture ... --no-browser`
+  — the CLI's local HTTP server bind fails in this sandbox (`PermissionError`), but the
+  HTML write happens first, so the regenerated file is still current) and ran the
+  pre-push parse guard: extracted all 5 `<script>` blocks and `new Function(src)`'d each
+  in Node — all 5 parse clean.
+- **Behaviorally verified in Node** (same pure-logic-extraction technique as the prior
+  session): stubbed `document`/`window`/`location`, sliced the generated script down to
+  before the KPI-Row IIFE, and called the real generated functions directly —
+  `evidenceSentence('schema_table:acme-analytics.gold_marts.fct_cart_abandonment')`
+  returns `"table '...' is present in the provided schema facts with 8 known columns:
+  cart_date, channel, total_carts, ..."`; the missing-table and `field:` fallbacks are
+  unchanged; `primaryChipHtml(evId, label, rowId)` correctly diverges `data-ev-id` from
+  `data-copy-hash` when `rowId` is given (Schema Drift) and falls back to the old
+  identical-id behavior when it's omitted (Dead Code Register / PDT Ledger, unchanged).
+  Live-browser click-through of the two new row types was NOT re-run this session (no
+  browser-use permission available here, same gap slice-07/08 already flagged) — worth a
+  human eyeball on the next browser pass.
+- Self-contained-HTML invariant re-checked against the regenerated dashboard: only the
+  same pre-existing vendored-library license-header URLs, unchanged.
+
+**Exact Next Steps:**
+1. Human/Koa-head browser click-through of the new Schema Drift/Cleanup Roadmap
+   copy-links and deep links (same gap as the slice-08 dispatch — headless session).
+2. Push branch, let Codex re-review round 2's fixes; resolve threads only after the head
+   verifies (per house rules, dispatched agents never resolve threads or merge).
