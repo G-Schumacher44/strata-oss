@@ -593,6 +593,17 @@ function resolveEvidenceNodeId(evId) {
 function ownFact(map, key) {
   return (map && Object.prototype.hasOwnProperty.call(map, key)) ? map[key] : undefined;
 }
+// Deterministic unique DOM anchor. Data-derived ids are NOT guaranteed unique: a roadmap
+// can act twice on one artifact, and two views in different files can produce the same
+// SchemaDriftRecord id (same table+column+field). A duplicate id makes every copy-link past
+// the first resolve to the wrong row, silently. First occurrence keeps the bare id so links
+// already shared stay valid; each later collision gets ':2', ':3', ... in render order.
+const ANCHOR_SEEN = Object.create(null);
+function uniqueAnchor(base) {
+  const n = (ANCHOR_SEEN[base] || 0) + 1;
+  ANCHOR_SEEN[base] = n;
+  return n > 1 ? base + ':' + n : base;
+}
 function periodPhrase() {
   const p = L1_FACTS.period || {};
   if (!p.start || !p.end) return 'an unknown window';
@@ -973,7 +984,6 @@ window.addEventListener('load', openHashTarget);
     repair_schema_reference: ['badge-blue', 'Repair Schema'],
   };
   const ul = el('ul', 'roadmap-list');
-  const roadmapIdCounts = {};
   items.forEach((r, i) => {
     const [cls, label] = actionStyle[r.action] || ['badge-gray', r.action];
     const cost = r.estimated_cost_usd ? ` · saves ${fmt_usd(r.estimated_cost_usd)}/mo` : '';
@@ -985,10 +995,7 @@ window.addEventListener('load', openHashTarget);
     // multiple actions can share one primaryId (e.g. two roadmap rows on the same field),
     // so a ':2'/':3' suffix disambiguates within the roadmap itself.
     const primaryId = r.evidence_ids[0];
-    let roadmapId = 'roadmap:' + primaryId;
-    const seen = (roadmapIdCounts[roadmapId] || 0) + 1;
-    roadmapIdCounts[roadmapId] = seen;
-    if (seen > 1) roadmapId += ':' + seen;
+    const roadmapId = uniqueAnchor('roadmap:' + primaryId);
     const li = el('li', 'roadmap-item');
     li.id = roadmapId;
     li.innerHTML = `
@@ -1042,11 +1049,12 @@ window.addEventListener('load', openHashTarget);
     // rows can share one table, so `schema_table:` alone isn't unique enough for that);
     // the chip itself still resolves via `schema_table:`, one of the row's own
     // pre-existing evidence_ids (no new id scheme invented).
-    tr.id = r.id;
+    const driftAnchor = uniqueAnchor(r.id);
+    tr.id = driftAnchor;
     const chipLabel = (r.table||'') + (r.column ? ' · ' + r.column : '');
     tr.innerHTML = `
       <td><span class="badge badge-red">${escapeHtml(r.kind)}</span></td>
-      <td style="font-family:monospace">${primaryChipHtml('schema_table:' + r.table, chipLabel, r.id)}</td>
+      <td style="font-family:monospace">${primaryChipHtml('schema_table:' + r.table, chipLabel, driftAnchor)}</td>
       <td class="file-tag">${escapeHtml(r.field||'')}</td>
       <td class="file-tag">${escapeHtml(r.source_file||'')}</td>
       <td class="reason-text">${escapeHtml(r.reason||'')}</td>

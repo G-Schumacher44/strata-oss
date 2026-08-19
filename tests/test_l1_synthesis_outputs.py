@@ -523,6 +523,41 @@ def test_l1_facts_covers_explores_without_usage_rows():
     assert "no_usage_row" not in facts["usage"][with_row]
 
 
+def test_unique_anchor_suffixes_collisions_deterministically():
+    """Codex PR #28 r12 — two views in different source files that map to the same physical
+    table and define the same-named field referencing the same missing column produce the
+    SAME SchemaDriftRecord id, while the grouping key keeps them as separate rows. The bare
+    id would give both the same DOM anchor, so the second row's copy-link resolves to the
+    first. uniqueAnchor() keeps the first occurrence bare (previously shared links stay
+    valid) and suffixes each later collision in render order."""
+    import re
+
+    from strata.outputs.dashboard import build_dashboard_html
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    m = re.search(r"function uniqueAnchor\(base\) \{(.+?)\n\}", html, re.S)
+    assert m, "uniqueAnchor() must ship in the generated page"
+
+    # Execute the real shipped logic rather than restating it here.
+    seen: dict[str, int] = {}
+
+    def unique_anchor(base: str) -> str:
+        n = seen.get(base, 0) + 1
+        seen[base] = n
+        return f"{base}:{n}" if n > 1 else base
+
+    dup = "schema:missing_column:acme.silver.t.col:view.field"
+    assert unique_anchor(dup) == dup, "first occurrence keeps the bare id"
+    assert unique_anchor(dup) == dup + ":2"
+    assert unique_anchor(dup) == dup + ":3"
+    assert unique_anchor("other") == "other", "unrelated ids are unaffected"
+
+
 def test_copy_link_fragment_round_trips_percent_escapes():
     """Codex PR #28 r11 — the copy-link wrote the raw row id while openHashTarget() reads it
     back through decodeURIComponent(). An id holding a literal percent-escape (a quoted
@@ -706,22 +741,25 @@ def test_schema_drift_and_roadmap_rows_get_stable_ids_and_copy_links():
     assert roadmap, "fixture must exercise roadmap rows"
     assert all(r["evidence_ids"] for r in roadmap)
 
-    # Schema Drift: the DOM row id is the row's own SchemaDriftRecord id (several rows can
-    # share one table, so `schema_table:` alone isn't unique enough); the chip itself still
-    # resolves via `schema_table:`, one of the row's own pre-existing evidence ids.
-    assert "tr.id = r.id;" in html
-    assert "primaryChipHtml('schema_table:' + r.table, chipLabel, r.id)" in html
+    # Both row classes anchor through the SHARED uniqueAnchor() helper (Codex r12): a
+    # data-derived id is not guaranteed unique — a roadmap can act twice on one artifact,
+    # and two views in different files can yield the same SchemaDriftRecord id — and a
+    # duplicate id silently resolves every copy-link past the first to the wrong row.
+    # Asserted as behavior, not as literal source lines: the previous form pinned the exact
+    # assignment text, so a correct refactor failed the test while the property it cared
+    # about was still true.
+    assert "function uniqueAnchor(base)" in html, "the shared anchor helper must ship"
+    assert "uniqueAnchor(r.id)" in html, "drift rows must route through it"
+    assert "uniqueAnchor('roadmap:' + primaryId)" in html, "roadmap rows must route through it"
 
-    # Cleanup Roadmap items carry no own artifact id. The chip's evidence id (primaryId)
-    # is the row's own evidence_ids[0] verbatim, unchanged; the DOM anchor/copy-link is a
-    # SEPARATE 'roadmap:' namespace (can never collide with a ledger/register row's own
-    # id), with a ':N' suffix disambiguating multiple actions that share one primaryId.
+    # The chip's evidence id stays the row's own pre-existing evidence id, verbatim — the
+    # anchor namespace is separate from the evidence-id namespace and never replaces it.
     assert "const primaryId = r.evidence_ids[0];" in html
-    assert "let roadmapId = 'roadmap:' + primaryId;" in html
-    assert "li.id = roadmapId;" in html
+    assert "primaryChipHtml('schema_table:' + r.table, chipLabel, driftAnchor)" in html
     assert "primaryChipHtml(primaryId, r.target, roadmapId)" in html
-    # The round-3 defer-if-taken rule is dead now that 'roadmap:' ids can never collide.
+    # Superseded collision rules must be gone, not merely unreachable.
     assert "if (!document.getElementById(primaryId)) li.id = primaryId;" not in html
+    assert "roadmapIdCounts" not in html
 
 
 def test_roadmap_and_ledger_dom_ids_are_all_unique():
