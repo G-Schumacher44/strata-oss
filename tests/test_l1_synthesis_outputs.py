@@ -242,6 +242,36 @@ def test_pdt_consumers_are_direct_not_inherited():
     assert "test_model.customer" in direct.get("customer_extended", [])
 
 
+def test_evidence_facts_aggregates_content_refs_and_schema_columns():
+    """L1 owns aggregation (per outputs/AGENTS.md: outputs serialize, they do not derive).
+    `evidence_facts()` computes content-reference counts per explore and per-table column
+    facts; `dashboard._build_l1_facts()` only reshapes what this function returns into the
+    evidence-id-keyed shape the JS looks up (Codex PR #28)."""
+    from strata.l1.enrich import evidence_facts
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    facts = evidence_facts(graph)
+
+    # A count of 0 means no dict entry at all — the aggregation only records keys it
+    # actually saw a content reference for (matches the dashboard's prior `.get(key, 0)`
+    # lookup convention, now moved here verbatim).
+    assert facts["content_reference_counts"].get("em_legacy_v2.dead_finance_v2", 0) == 0
+
+    live_key = next(
+        ref["model"] + "." + ref["explore"] for ref in graph.metadata["l1"]["content_references"]
+    )
+    assert facts["content_reference_counts"][live_key] >= 1
+
+    table = "acme-analytics.silver.int_attributed_purchases"
+    schema_fact = facts["schema_table_facts"][table]
+    raw_columns = graph.metadata["l1"]["schema_tables"][table]["columns"]
+    assert schema_fact["columns"] == raw_columns
+    assert schema_fact["column_count"] == len(raw_columns)
+
+
 def test_zombie_pdt_detection_enterprise_mono():
     """A PDT with real build facts backing only dead explores is 'zombie', not 'used'."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
@@ -506,8 +536,9 @@ def test_evidence_namespaces_all_have_sentence_handling():
 def test_schema_table_sentence_renders_known_column_names():
     """A missing_column finding's evidence chips were unverifiable: the `field:` sentence
     is a declared no-fact fallback and `schema_table:` only reported a column COUNT.
-    Preserve the column NAMES (capped ~30, '+K more' beyond that) so a reader can see the
-    named column is absent (Codex PR #28)."""
+    Preserve the FULL column-name list (no display cap — a truncated list hides exactly
+    the fact a reader needs: whether the missing column is among the hidden ones, Codex
+    PR #28 round 3) so a reader can see the named column is absent."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
     SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
@@ -516,10 +547,31 @@ def test_schema_table_sentence_renders_known_column_names():
     html = build_dashboard_html(artifacts, graph)
 
     assert "fact.columns" in html
-    assert "cols.slice(0, 30)" in html
-    assert "+${cols.length - 30} more" in html
+    assert "cols.slice(0, 30)" not in html, "the 30-column display cap must be removed"
+    assert "cols.join(', ')" in html
     # field: fallback stays the honest, unchanged no-fact message.
     assert "no field-level L1 fact is tracked for" in html
+
+
+def test_physical_table_evidence_namespace_resolves_present_and_missing():
+    """missing_table drift records cite the physical table's OWN graph node id
+    (`physical_table:<name>`) as evidence_ids[0] — the Cleanup Roadmap uses that as its
+    primary chip, so evidenceSentence() must handle the `physical_table` namespace rather
+    than fall through to the generic no-sentence default (Codex PR #28)."""
+    graph = build_graph(
+        FIXTURES, FIXTURES / "usage_facts.json", FIXTURES / "schema_facts_drift.json"
+    )
+    artifacts = build_artifacts(graph)
+    html = build_dashboard_html(artifacts, graph)
+
+    drift = artifacts["schema_drift"]
+    missing_tables = [r for r in drift if r["kind"] == "missing_table"]
+    assert missing_tables, "fixture must exercise a missing_table drift record"
+    assert missing_tables[0]["evidence_ids"][0].startswith("physical_table:")
+
+    assert "case 'physical_table'" in html
+    assert "is not present in the provided schema facts" in html
+    assert "scanned ${scanned}" in html
 
 
 def test_schema_drift_and_roadmap_rows_get_stable_ids_and_copy_links():
@@ -549,11 +601,54 @@ def test_schema_drift_and_roadmap_rows_get_stable_ids_and_copy_links():
     assert "tr.id = r.id;" in html
     assert "primaryChipHtml('schema_table:' + r.table, chipLabel, r.id)" in html
 
-    # Cleanup Roadmap items carry no own artifact id, so the primary chip/copy-link reuse
-    # the row's own evidence_ids[0] (the target's own namespace) verbatim.
+    # Cleanup Roadmap items carry no own artifact id. The chip's evidence id (primaryId)
+    # is the row's own evidence_ids[0] verbatim, unchanged; the DOM anchor/copy-link is a
+    # SEPARATE 'roadmap:' namespace (can never collide with a ledger/register row's own
+    # id), with a ':N' suffix disambiguating multiple actions that share one primaryId.
     assert "const primaryId = r.evidence_ids[0];" in html
-    assert "li.id = primaryId;" in html
-    assert "primaryChipHtml(primaryId, r.target)" in html
+    assert "let roadmapId = 'roadmap:' + primaryId;" in html
+    assert "li.id = roadmapId;" in html
+    assert "primaryChipHtml(primaryId, r.target, roadmapId)" in html
+    # The round-3 defer-if-taken rule is dead now that 'roadmap:' ids can never collide.
+    assert "if (!document.getElementById(primaryId)) li.id = primaryId;" not in html
+
+
+def test_roadmap_and_ledger_dom_ids_are_all_unique():
+    """Regression for the duplicate-DOM-id bug a live browser pass caught (round 2): every
+    row/li in the generated dashboard must have a unique id, or `getElementById` silently
+    resolves only the first match and later rows/anchors become unreachable. Cheap
+    Python-side check — reproduce the JS id-assignment scheme against the artifact data
+    rather than standing up a DOM (Codex PR #28)."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    artifacts = build_artifacts(graph)
+
+    roadmap = artifacts["cleanup_roadmap"]
+    assert roadmap, "fixture must exercise roadmap rows"
+
+    seen: dict[str, int] = {}
+    dupes: dict[str, int] = {}
+    for r in roadmap:
+        primary_id = r["evidence_ids"][0]
+        roadmap_id = f"roadmap:{primary_id}"
+        seen[roadmap_id] = seen.get(roadmap_id, 0) + 1
+        if seen[roadmap_id] > 1:
+            roadmap_id = f"{roadmap_id}:{seen[roadmap_id]}"
+        dupes[roadmap_id] = dupes.get(roadmap_id, 0) + 1
+
+    assert all(count == 1 for count in dupes.values()), (
+        f"the roadmap:-prefixed id-collision resolution produced duplicates: {dupes}"
+    )
+
+    ledger_ids = {f"pdt:{r['view']}" for r in artifacts["pdt_ledger"]}
+    dead_ids = {r["id"] for r in artifacts["dead_code_register"]}
+    drift_ids = {r["id"] for r in artifacts["schema_drift"]}
+    roadmap_ids = set(dupes.keys())
+    assert not roadmap_ids & (ledger_ids | dead_ids | drift_ids), (
+        "roadmap: namespace must never collide with a ledger/register/drift row's own id"
+    )
 
 
 def test_evidence_sentence_panel_assigned_via_text_content():

@@ -7,14 +7,24 @@ from pathlib import Path
 from typing import Any
 
 from strata.ir.types import IRGraph
-from strata.l1.enrich import view_consumer_map
+from strata.l1.enrich import evidence_facts, view_consumer_map
 
 # Evidence-id namespaces the embedded JS's evidenceSentence() dispatcher must handle —
 # one case per entry, or a named deliberate fallback. Mirrored by hand in the JS switch
 # (search this file for "case '"); tests/test_l1_synthesis_outputs.py pins the real
 # enterprise_mono artifacts against this set so a future namespace can't silently no-op.
 KNOWN_EVIDENCE_NAMESPACES = frozenset(
-    {"dead", "explore", "view", "pdt", "field", "usage", "pdt_build", "schema_table"}
+    {
+        "dead",
+        "explore",
+        "view",
+        "pdt",
+        "field",
+        "usage",
+        "pdt_build",
+        "schema_table",
+        "physical_table",
+    }
 )
 
 
@@ -24,16 +34,15 @@ def _read_js(filename: str) -> str:
 
 
 def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
-    """Raw L1 facts inlined for the evidence-sentence panel — one Python-side source,
-    keyed to match the `usage:`/`pdt_build:`/`schema_table:` evidence-id suffixes so the
-    JS looks numbers up rather than re-deriving them (the panel-vs-canonical-source drift
-    PR #25's review rounds kept catching)."""
+    """Serializes the raw L1 facts the evidence-sentence panel needs, keyed to match the
+    `usage:`/`pdt_build:`/`schema_table:` evidence-id suffixes so the JS looks numbers up
+    rather than re-deriving them (the panel-vs-canonical-source drift PR #25's review
+    rounds kept catching). Aggregation (content-ref counts, column-count derivation) lives
+    in `l1.enrich.evidence_facts()` — this function only reshapes what L1 already computed
+    (per outputs/AGENTS.md: outputs serialize, they do not derive)."""
     l1 = graph.metadata.get("l1", {})
-
-    content_ref_counts: dict[str, int] = {}
-    for ref in l1.get("content_references", []):
-        key = f"{ref['model']}.{ref['explore']}"
-        content_ref_counts[key] = content_ref_counts.get(key, 0) + 1
+    facts = evidence_facts(graph)
+    content_ref_counts = facts["content_reference_counts"]
 
     usage = {
         f"explore:{key}": {
@@ -52,19 +61,11 @@ def _build_l1_facts(graph: IRGraph) -> dict[str, Any]:
         for view, rec in l1.get("pdt_builds", {}).items()
     }
 
-    schema_table = {
-        name: {
-            "column_count": len(rec.get("columns", [])),
-            "columns": list(rec.get("columns", [])),
-        }
-        for name, rec in l1.get("schema_tables", {}).items()
-    }
-
     return {
         "period": l1.get("period") or {},
         "usage": usage,
         "pdt_build": pdt_build,
-        "schema_table": schema_table,
+        "schema_table": facts["schema_table_facts"],
     }
 
 
@@ -684,10 +685,20 @@ function evidenceSentence(evId) {
         return `table '${table}' was not found in the provided schema facts \u2014 the resolved IR references it, but no warehouse metadata confirms it exists.`;
       }
       const cols = fact.columns || [];
-      const shown = cols.slice(0, 30).join(', ');
-      const more = cols.length > 30 ? ` (+${cols.length - 30} more)` : '';
-      const colList = shown ? `: ${shown}${more}` : '';
+      const colList = cols.length ? `: ${cols.join(', ')}` : '';
       return `table '${table}' is present in the provided schema facts with ${fact.column_count} known column${fact.column_count !== 1 ? 's' : ''}${colList}.`;
+    }
+    case 'physical_table': {
+      const table = evId.slice('physical_table:'.length);
+      const fact = L1_FACTS.schema_table[table];
+      const scanned = Object.keys(L1_FACTS.schema_table).length;
+      if (!fact) {
+        return `physical table '${table}' is not present in the provided schema facts (scanned ${scanned} table${scanned !== 1 ? 's' : ''}).`;
+      }
+      const node = NODE_BY_ID[evId];
+      let s = `physical table '${table}' is present in the provided schema facts with ${fact.column_count} known column${fact.column_count !== 1 ? 's' : ''}`;
+      if (node && node.source_file) s += ` \u00b7 exists in resolved IR at '${node.source_file}'`;
+      return s + '.';
     }
     case 'field':
       return `no field-level L1 fact is tracked for '${evId.slice('field:'.length)}'` +
@@ -942,25 +953,29 @@ window.addEventListener('load', openHashTarget);
     repair_schema_reference: ['badge-blue', 'Repair Schema'],
   };
   const ul = el('ul', 'roadmap-list');
+  const roadmapIdCounts = {};
   items.forEach((r, i) => {
     const [cls, label] = actionStyle[r.action] || ['badge-gray', r.action];
     const cost = r.estimated_cost_usd ? ` · saves ${fmt_usd(r.estimated_cost_usd)}/mo` : '';
     const evCount = (r.evidence_ids||[]).length;
-    // Roadmap items carry no own artifact id — the slice's own evidence_ids[0] IS the
-    // target's own id (explore:/view:/pdt:/field:, always the record's own namespace per
-    // _cleanup_roadmap()), so reuse it verbatim rather than inventing a new row id.
+    // Roadmap items carry no own artifact id — the chip itself resolves via the slice's own
+    // evidence_ids[0] (explore:/view:/pdt:/field:, always the record's own namespace per
+    // _cleanup_roadmap()) verbatim, unchanged. The DOM anchor/copy-link target is a SEPARATE
+    // 'roadmap:' namespace so it can never collide with a ledger/register row's own id —
+    // multiple actions can share one primaryId (e.g. two roadmap rows on the same field),
+    // so a ':2'/':3' suffix disambiguates within the roadmap itself.
     const primaryId = r.evidence_ids[0];
+    let roadmapId = 'roadmap:' + primaryId;
+    const seen = (roadmapIdCounts[roadmapId] || 0) + 1;
+    roadmapIdCounts[roadmapId] = seen;
+    if (seen > 1) roadmapId += ':' + seen;
     const li = el('li', 'roadmap-item');
-    // The ledger/register row rendered earlier is the canonical anchor for this artifact;
-    // claiming the same id twice makes the roadmap copy of it unreachable and the document
-    // invalid. Defer: the copy-link still carries primaryId, so sharing a roadmap finding
-    // deep-links to the canonical row (where the evidence lives).
-    if (!document.getElementById(primaryId)) li.id = primaryId;
+    li.id = roadmapId;
     li.innerHTML = `
       <div class="roadmap-num">${i+1}</div>
       <div class="roadmap-body">
         <span class="badge ${cls}">${label}</span>
-        &nbsp;<span class="roadmap-target">${primaryChipHtml(primaryId, r.target)}</span>
+        &nbsp;<span class="roadmap-target">${primaryChipHtml(primaryId, r.target, roadmapId)}</span>
         <div class="roadmap-meta">${escapeHtml(r.kind)}${cost}</div>
         <details class="evidence-details"><summary>${evCount} evidence link${evCount!==1?'s':''}</summary>
           <div class="evidence-list">${evidenceListHtml(r.evidence_ids)}</div>
