@@ -616,8 +616,9 @@ def test_data_derived_fields_are_escaped_in_innerhtml_templates():
 
     This version flags ANY `${...}` interpolation inside an innerHTML-class template (innerHTML/
     outerHTML/insertAdjacentHTML) unless the expression is provably safe: wrapped in
-    escapeHtml()/a known-safe helper, purely numeric/structural (`.length`, `.map().join(literal)`
-    chains whose callback body is itself safe), or a bare local variable whose OWN assignment
+    escapeHtml()/a known-safe helper (Number(...) among them — see `_SAFE_WRAPPERS`), purely
+    structural (`.map().join(literal)` chains whose callback body is itself safe), or a bare local
+    variable whose OWN assignment
     (within the same top-level IIFE/function scope — scoping matters, see
     `_safe_vars_for_scope`) resolves to one of the above. Allowlist of safe *shapes*, not a
     blocklist of bad field names — a new unescaped field is exactly the regression this is here
@@ -650,11 +651,18 @@ def test_data_derived_fields_are_escaped_in_innerhtml_templates():
 # r2 P2 — the allowlist previously trusted a helper's NAME, not what it does with its
 # arguments): each one escapes/derives every data-derived value it interpolates from its OWN
 # body, so a call is safe no matter what its arguments contain.
-#   escapeHtml       — the sanitizer itself.
-#   fmt_usd/fmt_bytes — numeric-only formatters (`.toFixed()`/arithmetic); every real call
-#     site passes a computed numeric field (cost/bytes), never free text, matching this
-#     file's existing treatment of `.length` as safe and `.toLocaleString()` as safe only
-#     when its receiver is provably numeric (see `_is_safe_numeric_expr`).
+#   escapeHtml — the sanitizer itself.
+#   Number — the JS built-in. `Number(x)` can only ever evaluate to a primitive number (or
+#     NaN); there is no code path back to a string, so a template-literal coercion of its
+#     result is always digits/`NaN`/`Infinity`, never attacker text (Codex PR #30 r4). Call
+#     sites wrap otherwise-unprovable numeric-ish receivers in it (e.g. `Number(r.bytes_processed)`,
+#     `Number((r.explores||[]).length)`) rather than trusting the checker to see through them.
+#   fmt_usd — every code path is `'$' + v.toFixed(2)`; `.toFixed` exists ONLY on
+#     Number.prototype, so for any non-number `v` (a string, array, object, null, undefined —
+#     everything JSON.parse can produce besides a bare number) `v.toFixed` is `undefined` and
+#     calling it throws a TypeError before the `+` concatenation ever runs. It can return
+#     `'$' + <digits>` or throw; there is no path back to input-derived text, so it stays
+#     unconditionally safe (Codex PR #30 r4 audit).
 #   primaryChipHtml, evidenceHtml — wrap every argument they interpolate in escapeHtml().
 #   evidenceListHtml — `ids.map(evidenceHtml).join('')`, i.e. only ever emits evidenceHtml's
 #     already-safe output.
@@ -664,8 +672,8 @@ def test_data_derived_fields_are_escaped_in_innerhtml_templates():
 #     fields against literal values; no field is ever interpolated into the output.
 _SAFE_WRAPPERS = (
     "escapeHtml",
+    "Number",
     "fmt_usd",
-    "fmt_bytes",
     "primaryChipHtml",
     "evidenceListHtml",
     "consumerListHtml",
@@ -684,7 +692,17 @@ _SAFE_WRAPPERS = (
 # `${detailRow('X', r.name)}` pass the guardrail with an unescaped second argument). It is
 # safe only when EVERY argument passed to it is itself provably safe — checked by recursing
 # into the call's arguments rather than trusting the callee's name.
-_ARG_SAFE_WRAPPERS = ("detailRow",)
+#
+# fmt_bytes lives here too, moved OUT of the unconditionally-safe tier above (Codex PR #30 r4):
+# unlike fmt_usd, its threshold checks (`b >= 1e12`, `b >= 1e9`, ...) all evaluate false when
+# `b` is a non-numeric string (`>=` coerces via ToNumber, which yields NaN, and every NaN
+# comparison is false) — every threshold falls through to the final `return b + ' B'`, and for
+# a string `b` that `+` is concatenation, not arithmetic: it returns the input string verbatim
+# with ' B' appended. `${fmt_bytes(r.name)}` would pass the checker unescaped exactly like the
+# original detailRow bug. Safe only when its argument is independently proven safe — every real
+# call site now wraps its argument in `Number(...)` (see dashboard.py), which IS provable via
+# the `Number` entry in `_SAFE_WRAPPERS` above.
+_ARG_SAFE_WRAPPERS = ("detailRow", "fmt_bytes")
 _SINK_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*`")
 _SINK_CALL_RE = re.compile(r"\.insertAdjacentHTML\s*\(\s*['\"][^'\"]*['\"]\s*,\s*`")
 # A sink assigned a bare identifier rather than a literal template — e.g.
@@ -971,8 +989,16 @@ def _is_safe_expr(expr, safe_vars):
     if len(parts) > 1:
         return all(_is_safe_expr(p, safe_vars) for p in parts)
 
-    if expr.endswith(".length"):
-        return True
+    # `.length` is deliberately NOT trusted as a safe ending (Codex PR #30 r4): every value
+    # this checker sees is JSON-parsed data, and a plain object can carry an own property
+    # literally named `length` (`r.length === '<img ...>'`) that shadows the real Array/String
+    # `.length` accessor entirely — `r.length` returns that string, not a count. A genuine
+    # Array's or primitive String's `.length` IS always numeric (the engine won't let you
+    # assign it anything else), but this checker has no way to prove a given receiver is
+    # actually one of those rather than a generic record — so every real `.length` value that
+    # reaches a sink is wrapped in `Number(...)` at the dashboard.py call site instead (see
+    # dashboard.py's evCount/explores/fields/views call sites), which the `Number` entry in
+    # `_SAFE_WRAPPERS` above proves safe unconditionally.
 
     m = re.match(r"(.*)\.toLocaleString\s*\(\s*\)\s*$", expr, re.S)
     if m and _is_safe_numeric_expr(m.group(1)):
@@ -994,7 +1020,12 @@ def _is_safe_numeric_expr(expr):
     '<img>'`), so treating `<receiver>.toLocaleString()` as a safe ending requires proving
     the receiver is numeric -- a generically "safe" (e.g. already-escaped-string) receiver
     is not enough (Codex PR #30 r3: `${r.name.toLocaleString()}` would otherwise pass this
-    checker unescaped, since strings implement `toLocaleString` and return themselves)."""
+    checker unescaped, since strings implement `toLocaleString` and return themselves).
+
+    `.length` is NOT trusted as a numeric ending here either, for the same reason
+    `_is_safe_expr` doesn't trust it (Codex PR #30 r4): a JSON-sourced object can carry an
+    own `length` property that isn't a number at all, so `r.length.toLocaleString()` could
+    resolve to a receiver whose `.length` is attacker-controlled text, not a count."""
     expr = expr.strip()
     if not expr:
         return False
@@ -1017,9 +1048,6 @@ def _is_safe_numeric_expr(expr):
         return True
 
     if _is_call_of(expr, "Number"):
-        return True
-
-    if expr.endswith(".length"):
         return True
 
     parts = _split_top_level(expr, ["+", "-", "*", "/"])

@@ -639,7 +639,7 @@ function viewSentence(node) {
   return s + '.';
 }
 function pdtCostSentence(buildCount, bytesProcessed, costUsd, usedBy, sourceFile) {
-  let s = `built ${buildCount || 0} time${buildCount !== 1 ? 's' : ''}, processing ${fmt_bytes(bytesProcessed || 0)} \u00b7 ${fmt_usd(costUsd || 0)} estimated over ${periodPhrase()}`;
+  let s = `built ${buildCount || 0} time${buildCount !== 1 ? 's' : ''}, processing ${fmt_bytes(Number(bytesProcessed || 0))} \u00b7 ${fmt_usd(costUsd || 0)} estimated over ${periodPhrase()}`;
   if (usedBy && usedBy.length) {
     const deadCount = usedBy.filter(c => c.dead).length;
     s += ` \u00b7 used by ${usedBy.length} explore${usedBy.length !== 1 ? 's' : ''}`;
@@ -931,7 +931,7 @@ window.addEventListener('load', openHashTarget);
       <td style="font-family:monospace;font-weight:600">${primaryChipHtml(primaryId, r.view)}</td>
       <td style="font-weight:600;color:${costColor}">${fmt_usd(r.estimated_cost_usd)}</td>
       <td>${escapeHtml(r.build_count)}</td>
-      <td>${fmt_bytes(r.bytes_processed)}</td>
+      <td>${fmt_bytes(Number(r.bytes_processed))}</td>
       <td>${statusCell}</td>
       <td>${explores || '<span style="color:var(--muted)">none</span>'}</td>`;
     tbody.appendChild(tr);
@@ -986,7 +986,7 @@ window.addEventListener('load', openHashTarget);
   items.forEach((r, i) => {
     const [cls, label] = actionStyle[r.action] || ['badge-gray', r.action];
     const cost = r.estimated_cost_usd ? ` · saves ${fmt_usd(r.estimated_cost_usd)}/mo` : '';
-    const evCount = (r.evidence_ids||[]).length;
+    const evCount = Number((r.evidence_ids||[]).length);
     // Roadmap items carry no own artifact id — the chip itself resolves via the slice's own
     // evidence_ids[0] (explore:/view:/pdt:/field:, always the record's own namespace per
     // _cleanup_roadmap()) verbatim, unchanged. The DOM anchor/copy-link target is a SEPARATE
@@ -1072,7 +1072,7 @@ window.addEventListener('load', openHashTarget);
   items.forEach(r => {
     const item = el('div', 'accordion-item');
     const trigger = el('button', 'accordion-trigger');
-    trigger.innerHTML = `<span class="arrow">▶</span><span style="font-family:monospace">${escapeHtml(r.physical_table)}</span><span style="margin-left:auto;font-size:12px;color:var(--muted)">${(r.explores||[]).length} explore${(r.explores||[]).length!==1?'s':''} affected</span>`;
+    trigger.innerHTML = `<span class="arrow">▶</span><span style="font-family:monospace">${escapeHtml(r.physical_table)}</span><span style="margin-left:auto;font-size:12px;color:var(--muted)">${Number((r.explores||[]).length)} explore${(r.explores||[]).length!==1?'s':''} affected</span>`;
     trigger.onclick = () => {
       const open = trigger.classList.toggle('open');
       content.classList.toggle('open', open);
@@ -1081,7 +1081,7 @@ window.addEventListener('load', openHashTarget);
     content.innerHTML = `<div class="impact-grid">
       <div class="impact-group"><label>Views</label><div class="items">${(r.views||[]).map(v=>`<span class="impact-tag">${escapeHtml(v)}</span>`).join('')||'<span style="color:var(--muted)">none</span>'}</div></div>
       <div class="impact-group"><label>Explores</label><div class="items">${(r.explores||[]).map(v=>`<span class="impact-tag">${escapeHtml(v)}</span>`).join('')}</div></div>
-      <div class="impact-group"><label>Fields (${(r.fields||[]).length})</label><div class="items">${(r.fields||[]).slice(0,8).map(v=>`<span class="impact-tag">${escapeHtml(v)}</span>`).join('')}${(r.fields||[]).length>8?`<span style="color:var(--muted);font-size:11px">+${(r.fields||[]).length-8} more</span>`:''}</div></div>
+      <div class="impact-group"><label>Fields (${Number((r.fields||[]).length)})</label><div class="items">${(r.fields||[]).slice(0,8).map(v=>`<span class="impact-tag">${escapeHtml(v)}</span>`).join('')}${(r.fields||[]).length>8?`<span style="color:var(--muted);font-size:11px">+${Number((r.fields||[]).length)-8} more</span>`:''}</div></div>
     </div>`;
     item.appendChild(trigger);
     item.appendChild(content);
@@ -1221,13 +1221,13 @@ window.addEventListener('load', openHashTarget);
     } else if (d.kind === 'pdt') {
       rows.push(detailRow('Cost / mo', fmt_usd(d.estimated_cost_usd||0)));
       rows.push(detailRow('Build Count', (d.build_count||0).toLocaleString()));
-      rows.push(detailRow('Data Scanned', fmt_bytes(d.bytes_processed||0)));
+      rows.push(detailRow('Data Scanned', fmt_bytes(Number(d.bytes_processed||0))));
       rows.push(detailRow('Used By', consumerListHtml(d.used_by_explores)));
     } else if (d.kind === 'view') {
       rows.push(detailRow('Referencing Explores', consumerListHtml(d.referencing_explores)));
     } else if (d.kind === 'physical_table') {
       const views = d.referencing_views || [];
-      rows.push(detailRow('Referencing Views', `${views.length} view${views.length!==1?'s':''}`));
+      rows.push(detailRow('Referencing Views', `${Number(views.length)} view${views.length!==1?'s':''}`));
       if (views.length) {
         rows.push(detailRow('Views', views.map(v => `<span class="pill">${escapeHtml(v)}</span>`).join('')));
       }
