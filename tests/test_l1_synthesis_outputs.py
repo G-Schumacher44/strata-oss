@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -608,14 +609,20 @@ def test_fact_lookups_are_prototype_safe():
 def test_data_derived_fields_are_escaped_in_innerhtml_templates():
     """Found by an internal sweep, not by review: escaping was applied per-field rather than
     per-source, so `source_file` was escaped in the Schema Drift row and NOT in the Dead Code
-    Register row three functions away. Any record field reaching an innerHTML template must
-    route through escapeHtml(); markup this file builds itself (badges, pills, computed cells)
-    is exempt because it is not data.
+    Register row three functions away. A later sweep (issue #29) found the guardrail itself had
+    a blind spot: it only matched literal `${r.field}` / `${c.field}` tokens, so interpolation
+    through an intermediate variable (`${label}`) or a nested map-callback parameter (`${e}`,
+    `${v}`) passed silently even though those were exactly as unescaped.
 
-    Asserted structurally rather than by naming today's fields — a new unescaped field is the
-    regression this is here to catch, and a fixed list would not see it."""
-    import re
-
+    This version flags ANY `${...}` interpolation inside an innerHTML-class template (innerHTML/
+    outerHTML/insertAdjacentHTML) unless the expression is provably safe: wrapped in
+    escapeHtml()/a known-safe helper (Number(...) among them — see `_SAFE_WRAPPERS`), purely
+    structural (`.map().join(literal)` chains whose callback body is itself safe), or a bare local
+    variable whose OWN assignment
+    (within the same top-level IIFE/function scope — scoping matters, see
+    `_safe_vars_for_scope`) resolves to one of the above. Allowlist of safe *shapes*, not a
+    blocklist of bad field names — a new unescaped field is exactly the regression this is here
+    to catch, and a fixed list would not see it."""
     from strata.outputs.dashboard import build_dashboard_html
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
@@ -624,26 +631,522 @@ def test_data_derived_fields_are_escaped_in_innerhtml_templates():
     graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
     html = build_dashboard_html(build_artifacts(graph), graph)
 
-    # Every `${r.<field>}` / `${c.<field>}` interpolation inside an innerHTML template must be
-    # wrapped. `r`/`c` are the record loop variables; locals built in this file are not matched.
-    offenders = []
-    in_tpl = False
-    for line in html.split("\n"):
-        if re.search(r"\.innerHTML\s*=\s*`", line):
-            in_tpl = True
-        if in_tpl:
-            for m in re.finditer(r"\$\{\s*([rc]\.[A-Za-z_]+[^}]*)\}", line):
-                expr = m.group(1)
-                if "escapeHtml" in expr or "fmt_" in expr or "length" in expr:
-                    continue
-                offenders.append(expr.strip()[:60])
-            if "`;" in line:
-                in_tpl = False
-
+    offenders = _find_unescaped_innerhtml_interpolations(html)
     assert not offenders, (
-        "record fields interpolated into an innerHTML template without escapeHtml(): "
-        + ", ".join(offenders)
+        "unescaped `${...}` interpolation reaching an innerHTML-class sink: "
+        + ", ".join(f"line {line}: {expr}" for line, expr in offenders)
     )
+
+
+# ── Escaping guardrail internals ────────────────────────────────────────────────
+# A small allowlist-based JS-template safety checker used only by
+# test_data_derived_fields_are_escaped_in_innerhtml_templates above. It is a heuristic, not a
+# full JS parser: it understands template literals, ternaries, `||`/`+`/`-`, string/number
+# literals, and `.map(fn).join(literal)` / `.slice(n,m)` chains whose callback body is itself
+# safe. Anything it can't prove safe is flagged — false positives get wrapped in escapeHtml()
+# (harmless), false negatives are the actual risk, which is why every sink fix in issue #29 has
+# a matching negative-control run (remove the escapeHtml, confirm this test goes red).
+
+# Every name below was checked against its actual dashboard.py implementation (Codex PR #30
+# r2 P2 — the allowlist previously trusted a helper's NAME, not what it does with its
+# arguments): each one escapes/derives every data-derived value it interpolates from its OWN
+# body, so a call is safe no matter what its arguments contain.
+#   escapeHtml — the sanitizer itself.
+#   Number — the JS built-in. `Number(x)` can only ever evaluate to a primitive number (or
+#     NaN); there is no code path back to a string, so a template-literal coercion of its
+#     result is always digits/`NaN`/`Infinity`, never attacker text (Codex PR #30 r4). Call
+#     sites wrap otherwise-unprovable numeric-ish receivers in it (e.g. `Number(r.bytes_processed)`,
+#     `Number((r.explores||[]).length)`) rather than trusting the checker to see through them.
+#   fmt_usd — every code path is `'$' + v.toFixed(2)`; `.toFixed` exists ONLY on
+#     Number.prototype, so for any non-number `v` (a string, array, object, null, undefined —
+#     everything JSON.parse can produce besides a bare number) `v.toFixed` is `undefined` and
+#     calling it throws a TypeError before the `+` concatenation ever runs. It can return
+#     `'$' + <digits>` or throw; there is no path back to input-derived text, so it stays
+#     unconditionally safe (Codex PR #30 r4 audit).
+#   primaryChipHtml, evidenceHtml — wrap every argument they interpolate in escapeHtml().
+#   evidenceListHtml — `ids.map(evidenceHtml).join('')`, i.e. only ever emits evidenceHtml's
+#     already-safe output.
+#   consumerListHtml — escapes `c.key`; the only other field read (`c.dead`) is a boolean
+#     used to pick between two fixed literal strings, never interpolated itself.
+#   statusBadge — returns one of a fixed set of literal `<span>` strings chosen by comparing
+#     fields against literal values; no field is ever interpolated into the output.
+_SAFE_WRAPPERS = (
+    "escapeHtml",
+    "Number",
+    "fmt_usd",
+    "primaryChipHtml",
+    "evidenceListHtml",
+    "consumerListHtml",
+    "statusBadge",
+    "evidenceHtml",
+)
+# uniqueAnchor is deliberately NOT here (Codex PR #30 r1): it returns its `base` argument
+# verbatim, unescaped — it's an id-collision-disambiguation helper, not an HTML-safety
+# wrapper. Every current call site only feeds its result into an already-safe wrapper
+# (primaryChipHtml, which escapes it) or a non-sink `.id =` assignment, never directly
+# into a `${...}` innerHTML placeholder — but the allowlist must not claim otherwise.
+
+# detailRow(key, valHtml) escapes `key` internally but returns `valHtml` VERBATIM — every
+# real call site escapes it first, but the helper itself does not (Codex PR #30 r2 P2: it
+# was wrongly listed alongside the unconditionally-safe wrappers above, which would have let
+# `${detailRow('X', r.name)}` pass the guardrail with an unescaped second argument). It is
+# safe only when EVERY argument passed to it is itself provably safe — checked by recursing
+# into the call's arguments rather than trusting the callee's name.
+#
+# fmt_bytes lives here too, moved OUT of the unconditionally-safe tier above (Codex PR #30 r4):
+# unlike fmt_usd, its threshold checks (`b >= 1e12`, `b >= 1e9`, ...) all evaluate false when
+# `b` is a non-numeric string (`>=` coerces via ToNumber, which yields NaN, and every NaN
+# comparison is false) — every threshold falls through to the final `return b + ' B'`, and for
+# a string `b` that `+` is concatenation, not arithmetic: it returns the input string verbatim
+# with ' B' appended. `${fmt_bytes(r.name)}` would pass the checker unescaped exactly like the
+# original detailRow bug. Safe only when its argument is independently proven safe — every real
+# call site now wraps its argument in `Number(...)` (see dashboard.py), which IS provable via
+# the `Number` entry in `_SAFE_WRAPPERS` above.
+_ARG_SAFE_WRAPPERS = ("detailRow", "fmt_bytes")
+_SINK_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*`")
+_SINK_CALL_RE = re.compile(r"\.insertAdjacentHTML\s*\(\s*['\"][^'\"]*['\"]\s*,\s*`")
+# A sink assigned a bare identifier rather than a literal template — e.g.
+# `el.innerHTML = content;` — instead of resolving straight to a template literal.
+# Only the simple `const x = \`...\`; ... el.innerHTML = x;` shape is tracked (Artemis
+# PR #30 should_fix): the identifier is resolved against this scope's own template-literal
+# const/let declarations (see `_template_vars_for_scope`); an identifier that resolves to
+# neither a safe var nor a known template-literal declaration is flagged, not assumed safe.
+_SINK_VAR_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*([A-Za-z_]\w*)\s*;")
+_CONST_RE = re.compile(r"\b(?:const|let)\s+(\[[^\]]*\]|[A-Za-z_]\w*)\s*=\s*")
+_TEMPLATE_CONST_RE = re.compile(r"\b(?:const|let)\s+([A-Za-z_]\w*)\s*=\s*`")
+# Top-level (column-0) IIFEs and function declarations — this file's scopes, consistently
+# formatted. Variable-safety is inferred per scope so a `label`/`cls` local in one function
+# can't leak "safe" status into an unrelated same-named local in another (issue #29 review).
+_TOP_LEVEL_BLOCK_RE = re.compile(
+    r"^(?:\(function\s*\([^)]*\)\s*\{|function\s+[A-Za-z_]\w*\s*\([^)]*\)\s*\{)", re.M
+)
+
+
+def _find_matching_paren(text, open_idx, open_ch="(", close_ch=")"):
+    depth = 0
+    i = open_idx
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c in "'\"":
+            j = i + 1
+            while j < n and text[j] != c:
+                if text[j] == "\\":
+                    j += 1
+                j += 1
+            i = j + 1
+            continue
+        if c == "`":
+            _, end = _extract_template_placeholders(text, i + 1)
+            i = end
+            continue
+        if c == open_ch:
+            depth += 1
+        elif c == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _extract_template_placeholders(text, start):
+    """Given text[start] just after an opening backtick, return (placeholders, end_index):
+    every `${...}` expression found — including ones nested inside template literals that
+    themselves live inside an outer `${...}` (e.g. a nested-template map callback) — and
+    the index just past the closing backtick."""
+    pos = start
+    n = len(text)
+    mode_stack = ["tmpl"]
+    cur_expr = []
+    placeholders = []
+    while pos < n:
+        ch = text[pos]
+        top = mode_stack[-1]
+        if top == "tmpl":
+            if ch == "\\":
+                pos += 2
+                continue
+            if ch == "`":
+                mode_stack.pop()
+                pos += 1
+                if not mode_stack:
+                    return placeholders, pos
+                continue
+            if ch == "$" and pos + 1 < n and text[pos + 1] == "{":
+                mode_stack.append(("expr", 1))
+                cur_expr.append([])
+                pos += 2
+                continue
+            pos += 1
+            continue
+        _, depth = top
+        if ch == "`":
+            nested_placeholders, nested_end = _extract_template_placeholders(text, pos + 1)
+            placeholders.extend(nested_placeholders)
+            cur_expr[-1].append(text[pos:nested_end])
+            pos = nested_end
+            continue
+        if ch in "'\"":
+            j = pos + 1
+            while j < n and text[j] != ch:
+                if text[j] == "\\":
+                    j += 1
+                j += 1
+            cur_expr[-1].append(text[pos : j + 1])
+            pos = j + 1
+            continue
+        if ch == "{":
+            mode_stack[-1] = ("expr", depth + 1)
+            cur_expr[-1].append(ch)
+            pos += 1
+            continue
+        if ch == "}":
+            if depth == 1:
+                expr_text = "".join(cur_expr.pop())
+                placeholders.append(expr_text)
+                mode_stack.pop()
+            else:
+                mode_stack[-1] = ("expr", depth - 1)
+                cur_expr[-1].append(ch)
+            pos += 1
+            continue
+        cur_expr[-1].append(ch)
+        pos += 1
+    return placeholders, pos
+
+
+def _split_top_level(s, seps):
+    """Split `s` on any token in `seps` at bracket/string/template-literal depth 0."""
+    seps = sorted(seps, key=len, reverse=True)
+    parts = []
+    buf = []
+    depth = 0
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c in "'\"":
+            j = i + 1
+            while j < n and s[j] != c:
+                if s[j] == "\\":
+                    j += 1
+                j += 1
+            buf.append(s[i : j + 1])
+            i = j + 1
+            continue
+        if c == "`":
+            _, end = _extract_template_placeholders(s, i + 1)
+            buf.append(s[i:end])
+            i = end
+            continue
+        if c in "([{":
+            depth += 1
+            buf.append(c)
+            i += 1
+            continue
+        if c in ")]}":
+            depth -= 1
+            buf.append(c)
+            i += 1
+            continue
+        if depth == 0:
+            matched = next((sep for sep in seps if s.startswith(sep, i)), None)
+            if matched:
+                parts.append("".join(buf))
+                buf = []
+                i += len(matched)
+                continue
+        buf.append(c)
+        i += 1
+    parts.append("".join(buf))
+    return parts
+
+
+def _neutralize_maps_and_slices(expr, safe_vars):
+    """Replace `.map(param => body)` with the neutral `.map()` when `body` is itself safe
+    (whatever the map's base array contains is never rendered directly — only what the
+    callback returns is), and `.slice(n, m)` with `.slice()` unconditionally. Returns
+    (new_expr, all_maps_were_safe)."""
+    out = []
+    i = 0
+    n = len(expr)
+    ok = True
+    while i < n:
+        m = re.match(r"\.map\(", expr[i:])
+        if m:
+            open_idx = i + m.end() - 1
+            close_idx = _find_matching_paren(expr, open_idx)
+            if close_idx == -1:
+                out.append(expr[i])
+                i += 1
+                continue
+            callback = expr[open_idx + 1 : close_idx]
+            arrow_parts = _split_top_level(callback, ["=>"])
+            if len(arrow_parts) == 2 and _is_safe_expr(arrow_parts[1], safe_vars):
+                out.append(".map()")
+                i = close_idx + 1
+                continue
+            ok = False
+            out.append(expr[i : close_idx + 1])
+            i = close_idx + 1
+            continue
+        m2 = re.match(r"\.slice\(\s*[\d,\s]*\)", expr[i:])
+        if m2:
+            out.append(".slice()")
+            i += m2.end()
+            continue
+        out.append(expr[i])
+        i += 1
+    return "".join(out), ok
+
+
+def _is_call_of(expr, name):
+    m = re.match(re.escape(name) + r"\s*\(", expr)
+    if not m:
+        return False
+    depth = 0
+    i = m.end() - 1
+    n = len(expr)
+    while i < n:
+        if expr[i] == "(":
+            depth += 1
+        elif expr[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i == n - 1
+        i += 1
+    return False
+
+
+def _call_args(expr, name):
+    """If `expr` is exactly a call to `name(...)` (nothing before it, nothing trailing after
+    its closing paren), return its top-level-split argument expressions; else None."""
+    m = re.match(re.escape(name) + r"\s*\(", expr)
+    if not m:
+        return None
+    open_idx = m.end() - 1
+    close_idx = _find_matching_paren(expr, open_idx)
+    if close_idx != len(expr) - 1:
+        return None
+    args_str = expr[open_idx + 1 : close_idx]
+    if not args_str.strip():
+        return []
+    return _split_top_level(args_str, [","])
+
+
+def _is_safe_expr(expr, safe_vars):
+    expr = expr.strip()
+    if not expr:
+        return True
+
+    if expr.startswith("(") and expr.endswith(")"):
+        depth = 0
+        wraps_all = True
+        for idx, c in enumerate(expr):
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0 and idx != len(expr) - 1:
+                    wraps_all = False
+                    break
+        if wraps_all:
+            return _is_safe_expr(expr[1:-1], safe_vars)
+
+    if any(_is_call_of(expr, name) for name in _SAFE_WRAPPERS):
+        return True
+
+    for name in _ARG_SAFE_WRAPPERS:
+        args = _call_args(expr, name)
+        if args is not None:
+            return all(_is_safe_expr(a, safe_vars) for a in args)
+
+    if expr.startswith("`"):
+        placeholders, end = _extract_template_placeholders(expr, 1)
+        if end == len(expr):
+            return all(_is_safe_expr(p, safe_vars) for p in placeholders)
+
+    if len(expr) >= 2 and expr[0] == expr[-1] and expr[0] in "'\"":
+        return True
+
+    if re.fullmatch(r"-?\d+(\.\d+)?", expr):
+        return True
+
+    if re.fullmatch(r"[A-Za-z_]\w*", expr):
+        return expr in safe_vars
+
+    parts = _split_top_level(expr, ["?", ":"])
+    if len(parts) >= 3 and len(parts) % 2 == 1:
+        value_indices = list(range(1, len(parts) - 1, 2)) + [len(parts) - 1]
+        return all(_is_safe_expr(parts[idx], safe_vars) for idx in value_indices)
+
+    parts = _split_top_level(expr, ["||"])
+    if len(parts) > 1:
+        return all(_is_safe_expr(p, safe_vars) for p in parts)
+
+    parts = _split_top_level(expr, ["+", "-"])
+    if len(parts) > 1:
+        return all(_is_safe_expr(p, safe_vars) for p in parts)
+
+    # `.length` is deliberately NOT trusted as a safe ending (Codex PR #30 r4): every value
+    # this checker sees is JSON-parsed data, and a plain object can carry an own property
+    # literally named `length` (`r.length === '<img ...>'`) that shadows the real Array/String
+    # `.length` accessor entirely — `r.length` returns that string, not a count. A genuine
+    # Array's or primitive String's `.length` IS always numeric (the engine won't let you
+    # assign it anything else), but this checker has no way to prove a given receiver is
+    # actually one of those rather than a generic record — so every real `.length` value that
+    # reaches a sink is wrapped in `Number(...)` at the dashboard.py call site instead (see
+    # dashboard.py's evCount/explores/fields/views call sites), which the `Number` entry in
+    # `_SAFE_WRAPPERS` above proves safe unconditionally.
+
+    m = re.match(r"(.*)\.toLocaleString\s*\(\s*\)\s*$", expr, re.S)
+    if m and _is_safe_numeric_expr(m.group(1)):
+        return True
+
+    neutralized, ok = _neutralize_maps_and_slices(expr, safe_vars)
+    if not ok:
+        return False
+    if neutralized != expr:
+        return _is_safe_join_chain_residual(neutralized)
+
+    return False
+
+
+def _is_safe_numeric_expr(expr):
+    """Narrower than `_is_safe_expr`: proves `expr` can only ever evaluate to a JS number,
+    not merely that it won't inject unescaped HTML. `String.prototype.toLocaleString`
+    returns its receiver's own string value UNCHANGED (`'<img>'.toLocaleString() ===
+    '<img>'`), so treating `<receiver>.toLocaleString()` as a safe ending requires proving
+    the receiver is numeric -- a generically "safe" (e.g. already-escaped-string) receiver
+    is not enough (Codex PR #30 r3: `${r.name.toLocaleString()}` would otherwise pass this
+    checker unescaped, since strings implement `toLocaleString` and return themselves).
+
+    `.length` is NOT trusted as a numeric ending here either, for the same reason
+    `_is_safe_expr` doesn't trust it (Codex PR #30 r4): a JSON-sourced object can carry an
+    own `length` property that isn't a number at all, so `r.length.toLocaleString()` could
+    resolve to a receiver whose `.length` is attacker-controlled text, not a count."""
+    expr = expr.strip()
+    if not expr:
+        return False
+
+    if expr.startswith("(") and expr.endswith(")"):
+        depth = 0
+        wraps_all = True
+        for idx, c in enumerate(expr):
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0 and idx != len(expr) - 1:
+                    wraps_all = False
+                    break
+        if wraps_all:
+            return _is_safe_numeric_expr(expr[1:-1])
+
+    if re.fullmatch(r"-?\d+(\.\d+)?", expr):
+        return True
+
+    if _is_call_of(expr, "Number"):
+        return True
+
+    parts = _split_top_level(expr, ["+", "-", "*", "/"])
+    if len(parts) > 1:
+        return all(_is_safe_numeric_expr(p) for p in parts)
+
+    return False
+
+
+def _is_safe_join_chain_residual(expr):
+    """After `.map()`/`.slice()` neutralization, only an identifier/property-access base
+    (never itself rendered — it's just the iteration source), the neutral tokens, and a
+    trailing `.join('literal')` may remain."""
+    m = re.search(r"\.join\(\s*(?:'[^']*'|\"[^\"]*\")\s*\)$", expr)
+    if m:
+        expr = expr[: m.start()]
+    if expr.startswith("("):
+        close = _find_matching_paren(expr, 0)
+        if close == -1:
+            return False
+        inner = expr[1:close]
+        if not re.fullmatch(r"[A-Za-z_][\w.]*(?:\s*\|\|\s*\[\s*\])?", inner):
+            return False
+        expr = expr[close + 1 :]
+    return re.fullmatch(r"(?:\.[A-Za-z_]\w*(?:\(\))?|\[[^\]]*\])*", expr) is not None
+
+
+def _iter_top_level_blocks(js):
+    for m in _TOP_LEVEL_BLOCK_RE.finditer(js):
+        brace_idx = m.end() - 1
+        end = _find_matching_paren(js, brace_idx, open_ch="{", close_ch="}")
+        if end != -1:
+            yield m.start(), end + 1
+
+
+def _safe_vars_for_scope(block):
+    """Local vars in `block` whose own assignment is provably safe (recursing through the
+    same rules `_is_safe_expr` uses), so a later bare `${name}` in the same scope can be
+    trusted. Scoped per top-level block on purpose: two unrelated functions in this file both
+    have a local named `label`, and only one of them is escapeHtml()-derived."""
+    safe_vars = set()
+    for cm in _CONST_RE.finditer(block):
+        name_group = cm.group(1)
+        rhs = _split_top_level(block[cm.end() :], [";"])[0]
+        names = (
+            [x.strip() for x in name_group[1:-1].split(",")]
+            if name_group.startswith("[")
+            else [name_group]
+        )
+        if _is_safe_expr(rhs, safe_vars):
+            safe_vars.update(names)
+    # Array.prototype.forEach/map's optional second callback arg is always the numeric index.
+    for im in re.finditer(
+        r"\.(?:forEach|map)\(\s*\(\s*[A-Za-z_]\w*\s*,\s*([A-Za-z_]\w*)\s*\)", block
+    ):
+        safe_vars.add(im.group(1))
+    return safe_vars
+
+
+def _template_vars_for_scope(block):
+    """Map of `name -> placeholders` for every `const`/`let` in `block` whose RHS is a
+    template literal (`const x = \\`...\\`;`), so a later bare-identifier sink assignment
+    (`el.innerHTML = x;`) can be resolved back to the placeholders it actually carries,
+    the same way `${x}` interpolation would be."""
+    template_vars = {}
+    for tm in _TEMPLATE_CONST_RE.finditer(block):
+        placeholders, _ = _extract_template_placeholders(block, tm.end())
+        template_vars[tm.group(1)] = placeholders
+    return template_vars
+
+
+def _find_unescaped_innerhtml_interpolations(html):
+    offenders = []
+    for block_start, block_end in _iter_top_level_blocks(html):
+        block = html[block_start:block_end]
+        safe_vars = _safe_vars_for_scope(block)
+        template_vars = _template_vars_for_scope(block)
+        for regex in (_SINK_ASSIGN_RE, _SINK_CALL_RE):
+            for sm in regex.finditer(block):
+                placeholders, _ = _extract_template_placeholders(block, sm.end())
+                line_no = html[: block_start + sm.start()].count("\n") + 1
+                for p in placeholders:
+                    if not _is_safe_expr(p, safe_vars):
+                        offenders.append((line_no, p.strip()[:80]))
+        for vm in _SINK_VAR_ASSIGN_RE.finditer(block):
+            name = vm.group(1)
+            line_no = html[: block_start + vm.start()].count("\n") + 1
+            if name in safe_vars:
+                continue
+            if name in template_vars:
+                for p in template_vars[name]:
+                    if not _is_safe_expr(p, safe_vars):
+                        offenders.append((line_no, p.strip()[:80]))
+                continue
+            # Neither a provably-safe local nor a traceable template-literal declaration —
+            # a bare identifier reaching an innerHTML-class sink that this checker cannot
+            # prove safe is exactly the class of regression it exists to catch.
+            offenders.append((line_no, f"unresolved variable `{name}` assigned to sink"))
+    return offenders
 
 
 def test_embedded_json_cannot_break_out_of_script_block():

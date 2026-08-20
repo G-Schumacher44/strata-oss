@@ -11,6 +11,7 @@ Not part of the installable package — all user-facing functionality lives in `
 | `notify.py` | CI / manual | Builds Slack and Jira notification payloads from `strata outputs` artifacts. Pass `--dry-run` to print without sending. |
 | `generate_schema_facts.py` | Manual | Queries BigQuery `INFORMATION_SCHEMA.COLUMNS` for tables referenced in a LookML repo and writes `schema_facts.json`. Predecessor to `strata generate-schema` CLI. |
 | `test_mcp_live.py` | Manual | Governance investigation driver — calls all MCP tools against a playground and prints a human-readable findings report. Use to validate tool correctness against a live fixture. |
+| `check_dashboard_js_syntax.py` | `.github/workflows/strata-ci.yml` | Builds a dashboard from fixture data, extracts each `<script>` block, and runs `node --check` on it. Catches page-fatal generated-JS syntax errors the Python test suite can't see. Requires `node` on `PATH`; skips (exit 0) if absent. |
 
 ## Running
 
