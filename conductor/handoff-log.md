@@ -4,8 +4,10 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-19 — fix/dashboard-innerhtml-escaping-sweep
 
-Commit: (pre-merge branch anchor — set once the PR is opened; squash-merge repo,
-  post-squash resolve via `gh pr view <PR#> --json mergeCommit -q .mergeCommit.oid`)
+Commit: 61701a9 (Round 2 implementation commit — see below; this is a squash-merge
+  repo, so post-merge the durable anchor becomes `gh pr view 30 --json mergeCommit
+  -q .mergeCommit.oid`, but the handoff must anchor to a real commit while the PR is
+  open, per Codex PR #30 r1 — a "set once merged" placeholder is not an anchor)
 Conductor Mode: none — this repo has no `conductor/standard.json` (Conductor-stamped
   governance script skipped per its own instructions); scope came directly from GitHub
   issue #29 (a post-merge Artemis audit of PR #28 / slice-08, commit 6c9eede).
@@ -100,12 +102,73 @@ Tag Posture: no version bump — pure dashboard-generator fix, no release trigge
 - `scripts/check_dashboard_js_syntax.py` run standalone against the real (fixed) branch:
   5/5 generated `<script>` blocks pass `node --check`.
 
-**Exact Next Steps:**
-1. Open the PR (`Closes #29`), including the sink-sweep list and negative-control
-   evidence from this entry in the PR body.
-2. Pre-gate ritual (`koa review --branch ... --base main`) before pushing, per the
-   dispatch's mandatory pre-PR gate instructions.
+**Exact Next Steps (Round 1, superseded by Round 2 below):**
+1. ~~Open the PR (`Closes #29`)~~ — done, PR #30.
+2. ~~Pre-gate ritual before pushing~~ — done.
 3. No version bump / tag needed — generator + test + CI-only change, no release
-   artifact touched.
-4. No follow-up slice implied by this branch; issue #29's optional item 4 (CI JS parse
-   step) is now done, not deferred.
+   artifact touched. (Still true in Round 2.)
+4. No follow-up slice implied by this branch. (Still true in Round 2.)
+
+### Round 2 — PR #30 gate findings (Codex + Artemis), commit `61701a9`
+
+**What changed** (all in `src/strata/outputs/dashboard.py` and
+`tests/test_l1_synthesis_outputs.py` unless noted):
+
+1. **Codex P1 — handoff anchor placeholder.** This block's `Commit:` field said
+   "set once the PR is opened" instead of a real 7-char SHA even after the PR was open.
+   Fixed: anchored to `61701a9` (the Round 2 implementation commit) above, with the
+   post-squash resolution path kept as a note, not a substitute for a real anchor now.
+2. **Codex P2 — `uniqueAnchor` on the safe-wrapper allowlist.** `uniqueAnchor(base)`
+   returns `base` verbatim, unescaped — it's a DOM-id-collision disambiguator, not an
+   escaping helper, so treating it as a safe wrapper in the guardrail's allowlist was
+   wrong even though no template currently interpolates its result directly (both call
+   sites — `roadmapId`, `driftAnchor` — only feed it to `primaryChipHtml()`, which
+   escapes it, or a non-sink `.id =` assignment). Removed from `_SAFE_WRAPPERS`.
+3. **Artemis should_fix — guardrail sink-shape coverage.** The guardrail only matched
+   `.innerHTML =`/`.outerHTML =`/`.insertAdjacentHTML(...)` followed immediately by a
+   template literal. Extended to also match `+=` on both properties, and to resolve a
+   bare identifier assigned to a sink (`el.innerHTML = x;`) back to its own
+   `const x = \`template\`;` declaration in the same top-level scope — flagging it as
+   unresolved/unprovable if no such declaration exists, per the file's existing
+   allowlist-of-safe-shapes philosophy.
+4. **`el()`'s dead third `html` parameter removed.** It was the one bare-identifier-
+   into-innerHTML shape already in the file with no resolvable declaration (a plain
+   function parameter) — grep confirmed no caller ever passes a third argument, so
+   rather than special-case unreachable dead code in the guardrail, deleted the
+   parameter and its `e.innerHTML = html` branch.
+
+**What was verified:**
+- Full suite: **132 passed**.
+- `ruff check src/ tests/ scripts/` and `ruff format --check src/ tests/ scripts/`: clean.
+- `mypy src/strata --ignore-missing-imports`: clean (87 files).
+- `scripts/check_dashboard_js_syntax.py`: 5/5 generated `<script>` blocks pass
+  `node --check`.
+- **Negative control (mandatory, one per newly-covered shape) — each mutation applied
+  to the real roadmap-row template in `dashboard.py`, guardrail run, reverted:**
+  1. Added `${uniqueAnchor(r.action)}` as a direct interpolation → guardrail correctly
+     went RED, reporting `uniqueAnchor(r.action)` as the offending expression.
+  2. Added `li.innerHTML += \`${r.action}\`;` → RED, reported `r.action`.
+  3. Added `const mutationHtml = \`${r.action}\`; li.innerHTML = mutationHtml;` → RED,
+     resolved through the new template-var lookup and reported `r.action`.
+  4. Added `li.innerHTML = someUnresolvedMutationVar;` (no matching declaration) → RED,
+     reported `unresolved variable \`someUnresolvedMutationVar\` assigned to sink`.
+  All four restored; suite green again after each.
+
+**Known, intentionally out-of-scope gap:** `panel.innerHTML = rows.join('');` (node
+detail panel) is a sink assignment the guardrail still does not trace — `rows` is built
+via repeated `.push(...)` calls (each pushing the result of a safe wrapper:
+`detailRow`/`statusBadge`/`consumerListHtml`), not a single provably-safe RHS expression
+the existing `_is_safe_expr` machinery can evaluate. Manually verified safe (every
+pushed value already routes through a safe wrapper). Tracing multi-statement array-push
+accumulation was not part of the three sink shapes named in the Artemis finding and
+would be a meaningfully larger change (push-site tracking, not sink-site tracking) —
+left as a follow-up if a future review wants it, not silently declared "covered."
+
+**Exact Next Steps:**
+1. Push this branch; reply to both Codex inline threads (handoff anchor, uniqueAnchor
+   allowlist) describing the fix — replying is not resolving, resolution follows re-gate.
+2. Re-run the gate on PR #30.
+3. No version bump / tag needed.
+4. No follow-up slice implied; the `rows.join('')` gap above is a candidate for a small
+   follow-up if anyone wants the guardrail to trace array-accumulation sinks too, not a
+   blocker for this PR.
