@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## 2026-08-19 — fix/dashboard-innerhtml-escaping-sweep
 
-Commit: 61701a9 (Round 2 implementation commit — see below; this is a squash-merge
+Commit: 140f267 (Round 5 implementation commit — see below; this is a squash-merge
   repo, so post-merge the durable anchor becomes `gh pr view 30 --json mergeCommit
   -q .mergeCommit.oid`, but the handoff must anchor to a real commit while the PR is
   open, per Codex PR #30 r1 — a "set once merged" placeholder is not an anchor)
@@ -269,7 +269,7 @@ needed; see verification below):
   receiver-provability check isn't overly strict for the legitimate case). Reverted; `git
   diff src/strata/outputs/dashboard.py` confirmed empty before committing.
 
-**Exact Next Steps:**
+**Exact Next Steps (Round 4, superseded by Round 5 below):**
 1. Push this branch; reply to the round-3 Codex inline thread (`.toLocaleString()`
    receiver-provability) describing the fix — replying is not resolving, resolution follows
    re-gate.
@@ -277,3 +277,108 @@ needed; see verification below):
 3. No version bump / tag needed.
 4. No follow-up slice implied; the `rows.join('')` gap (Round 2) remains the one
    documented, intentionally out-of-scope tracing gap.
+
+### Round 5 — PR #30 round-4 gate findings (Codex), commit 140f267 — FINAL checker-heuristic round
+
+**What changed** (both `src/strata/outputs/dashboard.py` and
+`tests/test_l1_synthesis_outputs.py`; commit 140f267):
+
+1. **Codex — `fmt_bytes` was wrongly unconditionally-safe.** It sat in
+   `_SAFE_WRAPPERS` alongside `fmt_usd`, but the two are NOT siblings the way the
+   comment claimed. `fmt_usd`'s only body is `'$' + v.toFixed(2)` — `.toFixed`
+   exists exclusively on `Number.prototype`, so any non-number argument makes
+   `v.toFixed` `undefined` and calling it throws a `TypeError` before the `+`
+   ever runs; there is no path back to input-derived text, so it legitimately
+   stays unconditional (documented in a new, longer `_SAFE_WRAPPERS` comment).
+   `fmt_bytes` is different: its four `b >= 1eN` threshold checks all evaluate
+   to `false` for a non-numeric string (`>=` coerces via `ToNumber`, and every
+   `NaN` comparison is `false`), so a string argument falls through every
+   threshold to the final `return b + ' B'` — and for a string `b` that `+` is
+   concatenation, not arithmetic, returning the input **verbatim** with `' B'`
+   appended. `${fmt_bytes(r.name)}` would have passed the old allowlist
+   unescaped. Moved `fmt_bytes` into `_ARG_SAFE_WRAPPERS` (same tier as
+   `detailRow` — every argument must itself be independently proven safe).
+2. **Codex — `.length` was trusted as an unconditionally-safe ending.** Every
+   value this checker inspects is JSON-parsed record data, and a plain object
+   can carry an own property literally named `length`
+   (`r.length === '<img ...>'`) that shadows the real Array/String `.length`
+   accessor entirely — `r.length` then returns that string, not a count. A
+   genuine Array's or primitive String's `.length` IS always numeric (the JS
+   engine won't let you assign it anything else), but the checker has no way to
+   prove syntactically that a given receiver is actually one of those rather
+   than a generic record. Dropped the unconditional `.length` trust from BOTH
+   `_is_safe_expr` (the general HTML-safety prover) and `_is_safe_numeric_expr`
+   (the narrower numeric prover round 3 introduced for `.toLocaleString()`
+   receivers — it had the exact same blind spot, e.g.
+   `r.length.toLocaleString()`).
+3. **`Number` added to `_SAFE_WRAPPERS`** as the honest replacement for both of
+   the above: `Number(x)` can only ever evaluate to a primitive number or
+   `NaN` — there is no code path back to a string, so a template-literal
+   coercion of its result is always digits/`NaN`/`Infinity`, never attacker
+   text, regardless of what `x` is. This is the same "wrap it, don't
+   special-case the checker" move the finding's brief required.
+4. **Restructured every real `dashboard.py` call site** that needed it, in both
+   directions — sink-scanned AND the `rows.join('')` sink the checker still
+   can't trace (round 2's documented gap; fixing the *runtime* bug there too,
+   since it's a real innerHTML sink even though the heuristic can't see it, not
+   just a checker-satisfaction exercise):
+   - `pdtCostSentence`'s `fmt_bytes(bytesProcessed || 0)` →
+     `fmt_bytes(Number(bytesProcessed || 0))` (textContent-only sink, fixed for
+     the underlying `fmt_bytes` correctness, not because the checker sees it).
+   - PDT Ledger row: `fmt_bytes(r.bytes_processed)` →
+     `fmt_bytes(Number(r.bytes_processed))` (real sink-scanned site).
+   - Node-detail panel (`rows.join('')` sink): `fmt_bytes(d.bytes_processed||0)`
+     → `fmt_bytes(Number(d.bytes_processed||0))`.
+   - Cleanup Roadmap's `evCount` local: `(r.evidence_ids||[]).length` →
+     `Number((r.evidence_ids||[]).length)` (this one WAS sink-scanned — `evCount`
+     feeds `${evCount}` inside `li.innerHTML`, and `_safe_vars_for_scope` stopped
+     trusting its assignment the moment the blanket `.length` rule was dropped;
+     confirmed by rerunning the full suite, which would have gone RED here if
+     left unwrapped).
+   - Migration Impact accordion: both `(r.explores||[]).length` and
+     `(r.fields||[]).length` occurrences used as direct interpolation values
+     (not the ternary conditions — a ternary's condition branch is never
+     rendered, so it doesn't need proving, and both leftover raw `.length`
+     conditions were left untouched on purpose).
+   - Node-detail panel's `views.length` → `Number(views.length)` (also a
+     `rows.join('')`-sink site, same runtime-correctness reasoning as
+     `d.bytes_processed` above).
+
+**What was verified:**
+- Full suite: **132 passed**.
+- `ruff check src/ tests/ scripts/` and `ruff format --check src/ tests/ scripts/`: clean.
+- `mypy src/strata --ignore-missing-imports`: clean (87 files).
+- `scripts/check_dashboard_js_syntax.py`: 5/5 generated `<script>` blocks pass `node --check`.
+- **Negative controls (mandatory, exact shapes from the finding), checked by calling the
+  checker's prover functions directly (`_is_safe_expr`/`_is_safe_numeric_expr` imported from
+  the test module) rather than mutating and reverting dashboard.py, since neither shape has a
+  real call site to temporarily mutate:**
+  - `fmt_bytes(r.name)` → `_is_safe_expr(...)` returns `False` (RED), correctly caught by the
+    new `_ARG_SAFE_WRAPPERS` entry.
+  - `r.length` → both `_is_safe_expr(...)` and `_is_safe_numeric_expr(...)` return `False`
+    (RED) now that the blanket `.length` trust is gone from both provers.
+- **Positive controls**, same direct-call method, confirming the real fixed patterns stay
+  GREEN: `fmt_bytes(Number(r.bytes_processed))`, `fmt_usd(r.estimated_cost_usd)` (unchanged,
+  still unconditional), `Number((r.explores||[]).length)`,
+  `Number((r.fields||[]).length)-8` (the arithmetic residual after wrapping the base),
+  `Number(views.length)` — all `True`.
+- The full-fixture sweep test (`test_data_derived_fields_are_escaped_in_innerhtml_templates`,
+  which runs the checker end-to-end against the real generated enterprise_mono HTML, not just
+  synthetic expressions) passed both before AND after every dashboard.py wrap, confirming the
+  `evCount`/`explores`/`fields` real sites needed the fix (they'd have gone RED without the
+  `Number(...)` wrap once the blanket `.length` rule was removed) and that nothing else broke.
+
+**Exact Next Steps:**
+1. Push this branch; reply to all three round-4 Codex inline threads (`fmt_bytes`
+   allowlist, `.length` safe-ending, handoff anchor) describing the fixes — replying is not
+   resolving, resolution follows re-gate.
+2. Re-run the gate on PR #30. Per the task brief, this is the FINAL round for
+   checker-heuristic findings — if Codex round 5 raises a NEW heuristic gap, treat it as
+   requiring a written justification for why the class of bug (`_SAFE_WRAPPERS` trusting a
+   name instead of a body, or a safe-ending regex trusting a syntax shape instead of a
+   receiver type) wasn't fully closed by rounds 2-5, rather than another one-off patch.
+3. No version bump / tag needed.
+4. No follow-up slice implied; the `rows.join('')` array-accumulation sink-tracing gap
+   (documented since Round 2) remains the one intentionally out-of-scope item — this round
+   fixed the two REAL vulnerabilities that happened to live behind it (`d.bytes_processed`,
+   `views.length`) without closing the general tracing gap itself.
