@@ -207,7 +207,7 @@ left as a follow-up if a future review wants it, not silently declared "covered.
   correctly stayed GREEN (proves the new arg-recursion isn't overly strict). Reverted; `git
   diff src/strata/outputs/dashboard.py` confirmed empty before committing.
 
-**Exact Next Steps:**
+**Exact Next Steps (Round 3, superseded by Round 4 below):**
 1. Push this branch; reply to both round-2 Codex inline threads (mode vocabulary,
    `detailRow` allowlist) describing the fix — replying is not resolving, resolution follows
    re-gate.
@@ -216,3 +216,64 @@ left as a follow-up if a future review wants it, not silently declared "covered.
 4. No follow-up slice implied; the `rows.join('')` gap (Round 2, above) is still a candidate
    for a small follow-up if anyone wants the guardrail to trace array-accumulation sinks too,
    not a blocker for this PR.
+
+### Round 4 — PR #30 round-3 gate finding (Codex), commit set below
+
+**What changed** (`tests/test_l1_synthesis_outputs.py` only — no `dashboard.py` change was
+needed; see verification below):
+
+1. **Codex P1 — `.toLocaleString()` safe-ending trusted the wrong thing.** The guardrail's
+   `_is_safe_expr` treated ANY expression ending in `.toLocaleString()` as safe, reasoning
+   it only ever formats numbers. Wrong: `String.prototype.toLocaleString` exists too and
+   returns the string UNCHANGED, so `${r.name.toLocaleString()}` (raw untrusted string,
+   receiver never proven numeric) would have passed the checker unescaped — the same class
+   of bug as Round 3's `detailRow` finding (trusting a method NAME instead of what it does
+   with its receiver). Fixed: `.toLocaleString()` is now safe only when its receiver passes
+   a new, narrower `_is_safe_numeric_expr` — numeric literal, `Number(...)`, `.length`,
+   parenthesized/arithmetic (`+ - * /`) combinations of the same, or nothing else. This is
+   deliberately NOT the same as `_is_safe_expr` ("won't inject HTML"): an already-escaped
+   string is injection-safe but not numeric, and `'<img>'.toLocaleString() === '<img>'`
+   proves generic safety isn't sufficient for this specific method ending.
+2. **Audited every other method-based safe ending in the checker for the same mistrust
+   shape** (per the finding's instruction to check `.toFixed()` and similar): the only
+   other such ending is `.length` (line ~973), which is safe unconditionally — `.length` on
+   a string/array is always a JS number by spec, no receiver-type ambiguity exists the way
+   it does for `toLocaleString`/`toFixed`/`toPrecision`. `.toFixed()` does NOT appear
+   anywhere in the checker's safe-endings list — the file's only two `.toFixed()` calls
+   live inside `fmt_bytes`/`fmt_usd`'s own bodies (already unconditionally-safe entries in
+   `_SAFE_WRAPPERS`, trusted as whole-function calls, not via a safe-ending regex), so
+   there was nothing to change there.
+3. **No real `dashboard.py` call site needed a change.** Audited all three real
+   `.toLocaleString()` call sites (`total_queries||0`, `query_count||0`, `build_count||0`,
+   all `<numeric-field>||0` shapes): none of them is ever the direct subject of a `${...}`
+   interpolation inside an innerHTML-class sink template — the KPI-card one flows through
+   `${escapeHtml(c.value)}` one level removed (already safe regardless of `c.value`'s
+   content), and the two `detailRow(...)` ones build the node-detail-panel's `rows` array
+   via `.push()`, which is the `rows.join('')` array-accumulation gap Round 2's handoff
+   already documented as out of the guardrail's traced-sink scope. So tightening the
+   safe-ending rule changed zero real templates — confirmed by the unmodified full suite
+   passing and `git diff src/strata/outputs/dashboard.py` staying empty throughout.
+
+**What was verified:**
+- Full suite: **132 passed**.
+- `ruff check src/ tests/ scripts/` and `ruff format --check src/ tests/ scripts/`: clean.
+- `mypy src/strata --ignore-missing-imports`: clean (87 files).
+- `scripts/check_dashboard_js_syntax.py`: 5/5 generated `<script>` blocks pass `node --check`.
+- **Negative control (mandatory, exact shape from the finding):** temporarily changed the
+  Dead Code Register's `source_file` cell from `${escapeHtml(r.source_file||'')}` to
+  `${r.name.toLocaleString()}` (`r` already in scope from that row's `.forEach(r => ...)`)
+  — guardrail correctly went RED, reporting `line 4843: r.name.toLocaleString()` as the
+  offender. Reverted.
+- **Positive control:** same spot with a numeric-literal receiver,
+  `${(1234).toLocaleString()}` — guardrail correctly stayed GREEN (proves the new
+  receiver-provability check isn't overly strict for the legitimate case). Reverted; `git
+  diff src/strata/outputs/dashboard.py` confirmed empty before committing.
+
+**Exact Next Steps:**
+1. Push this branch; reply to the round-3 Codex inline thread (`.toLocaleString()`
+   receiver-provability) describing the fix — replying is not resolving, resolution follows
+   re-gate.
+2. Re-run the gate on PR #30.
+3. No version bump / tag needed.
+4. No follow-up slice implied; the `rows.join('')` gap (Round 2) remains the one
+   documented, intentionally out-of-scope tracing gap.

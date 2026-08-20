@@ -653,7 +653,8 @@ def test_data_derived_fields_are_escaped_in_innerhtml_templates():
 #   escapeHtml       — the sanitizer itself.
 #   fmt_usd/fmt_bytes — numeric-only formatters (`.toFixed()`/arithmetic); every real call
 #     site passes a computed numeric field (cost/bytes), never free text, matching this
-#     file's existing treatment of `.length`/`.toLocaleString()` as safe.
+#     file's existing treatment of `.length` as safe and `.toLocaleString()` as safe only
+#     when its receiver is provably numeric (see `_is_safe_numeric_expr`).
 #   primaryChipHtml, evidenceHtml — wrap every argument they interpolate in escapeHtml().
 #   evidenceListHtml — `ids.map(evidenceHtml).join('')`, i.e. only ever emits evidenceHtml's
 #     already-safe output.
@@ -973,7 +974,8 @@ def _is_safe_expr(expr, safe_vars):
     if expr.endswith(".length"):
         return True
 
-    if re.search(r"\.toLocaleString\s*\(\s*\)\s*$", expr):
+    m = re.match(r"(.*)\.toLocaleString\s*\(\s*\)\s*$", expr, re.S)
+    if m and _is_safe_numeric_expr(m.group(1)):
         return True
 
     neutralized, ok = _neutralize_maps_and_slices(expr, safe_vars)
@@ -981,6 +983,48 @@ def _is_safe_expr(expr, safe_vars):
         return False
     if neutralized != expr:
         return _is_safe_join_chain_residual(neutralized)
+
+    return False
+
+
+def _is_safe_numeric_expr(expr):
+    """Narrower than `_is_safe_expr`: proves `expr` can only ever evaluate to a JS number,
+    not merely that it won't inject unescaped HTML. `String.prototype.toLocaleString`
+    returns its receiver's own string value UNCHANGED (`'<img>'.toLocaleString() ===
+    '<img>'`), so treating `<receiver>.toLocaleString()` as a safe ending requires proving
+    the receiver is numeric -- a generically "safe" (e.g. already-escaped-string) receiver
+    is not enough (Codex PR #30 r3: `${r.name.toLocaleString()}` would otherwise pass this
+    checker unescaped, since strings implement `toLocaleString` and return themselves)."""
+    expr = expr.strip()
+    if not expr:
+        return False
+
+    if expr.startswith("(") and expr.endswith(")"):
+        depth = 0
+        wraps_all = True
+        for idx, c in enumerate(expr):
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0 and idx != len(expr) - 1:
+                    wraps_all = False
+                    break
+        if wraps_all:
+            return _is_safe_numeric_expr(expr[1:-1])
+
+    if re.fullmatch(r"-?\d+(\.\d+)?", expr):
+        return True
+
+    if _is_call_of(expr, "Number"):
+        return True
+
+    if expr.endswith(".length"):
+        return True
+
+    parts = _split_top_level(expr, ["+", "-", "*", "/"])
+    if len(parts) > 1:
+        return all(_is_safe_numeric_expr(p) for p in parts)
 
     return False
 
