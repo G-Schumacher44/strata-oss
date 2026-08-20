@@ -656,11 +656,23 @@ _SAFE_WRAPPERS = (
     "detailRow",
     "statusBadge",
     "evidenceHtml",
-    "uniqueAnchor",
 )
-_SINK_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*=\s*`")
+# uniqueAnchor is deliberately NOT here (Codex PR #30 r1): it returns its `base` argument
+# verbatim, unescaped — it's an id-collision-disambiguation helper, not an HTML-safety
+# wrapper. Every current call site only feeds its result into an already-safe wrapper
+# (primaryChipHtml, which escapes it) or a non-sink `.id =` assignment, never directly
+# into a `${...}` innerHTML placeholder — but the allowlist must not claim otherwise.
+_SINK_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*`")
 _SINK_CALL_RE = re.compile(r"\.insertAdjacentHTML\s*\(\s*['\"][^'\"]*['\"]\s*,\s*`")
+# A sink assigned a bare identifier rather than a literal template — e.g.
+# `el.innerHTML = content;` — instead of resolving straight to a template literal.
+# Only the simple `const x = \`...\`; ... el.innerHTML = x;` shape is tracked (Artemis
+# PR #30 should_fix): the identifier is resolved against this scope's own template-literal
+# const/let declarations (see `_template_vars_for_scope`); an identifier that resolves to
+# neither a safe var nor a known template-literal declaration is flagged, not assumed safe.
+_SINK_VAR_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*([A-Za-z_]\w*)\s*;")
 _CONST_RE = re.compile(r"\b(?:const|let)\s+(\[[^\]]*\]|[A-Za-z_]\w*)\s*=\s*")
+_TEMPLATE_CONST_RE = re.compile(r"\b(?:const|let)\s+([A-Za-z_]\w*)\s*=\s*`")
 # Top-level (column-0) IIFEs and function declarations — this file's scopes, consistently
 # formatted. Variable-safety is inferred per scope so a `label`/`cls` local in one function
 # can't leak "safe" status into an unrelated same-named local in another (issue #29 review).
@@ -980,11 +992,24 @@ def _safe_vars_for_scope(block):
     return safe_vars
 
 
+def _template_vars_for_scope(block):
+    """Map of `name -> placeholders` for every `const`/`let` in `block` whose RHS is a
+    template literal (`const x = \\`...\\`;`), so a later bare-identifier sink assignment
+    (`el.innerHTML = x;`) can be resolved back to the placeholders it actually carries,
+    the same way `${x}` interpolation would be."""
+    template_vars = {}
+    for tm in _TEMPLATE_CONST_RE.finditer(block):
+        placeholders, _ = _extract_template_placeholders(block, tm.end())
+        template_vars[tm.group(1)] = placeholders
+    return template_vars
+
+
 def _find_unescaped_innerhtml_interpolations(html):
     offenders = []
     for block_start, block_end in _iter_top_level_blocks(html):
         block = html[block_start:block_end]
         safe_vars = _safe_vars_for_scope(block)
+        template_vars = _template_vars_for_scope(block)
         for regex in (_SINK_ASSIGN_RE, _SINK_CALL_RE):
             for sm in regex.finditer(block):
                 placeholders, _ = _extract_template_placeholders(block, sm.end())
@@ -992,6 +1017,20 @@ def _find_unescaped_innerhtml_interpolations(html):
                 for p in placeholders:
                     if not _is_safe_expr(p, safe_vars):
                         offenders.append((line_no, p.strip()[:80]))
+        for vm in _SINK_VAR_ASSIGN_RE.finditer(block):
+            name = vm.group(1)
+            line_no = html[: block_start + vm.start()].count("\n") + 1
+            if name in safe_vars:
+                continue
+            if name in template_vars:
+                for p in template_vars[name]:
+                    if not _is_safe_expr(p, safe_vars):
+                        offenders.append((line_no, p.strip()[:80]))
+                continue
+            # Neither a provably-safe local nor a traceable template-literal declaration —
+            # a bare identifier reaching an innerHTML-class sink that this checker cannot
+            # prove safe is exactly the class of regression it exists to catch.
+            offenders.append((line_no, f"unresolved variable `{name}` assigned to sink"))
     return offenders
 
 

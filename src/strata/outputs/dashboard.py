@@ -534,10 +534,9 @@ a.row-primary-link:hover { color: var(--blue); background: none; }
 })();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function el(tag, cls, html) {
+function el(tag, cls) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
-  if (html !== undefined) e.innerHTML = html;
   return e;
 }
 function fmt_bytes(b) {
