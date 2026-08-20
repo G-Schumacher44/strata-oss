@@ -646,6 +646,21 @@ def test_data_derived_fields_are_escaped_in_innerhtml_templates():
 # (harmless), false negatives are the actual risk, which is why every sink fix in issue #29 has
 # a matching negative-control run (remove the escapeHtml, confirm this test goes red).
 
+# Every name below was checked against its actual dashboard.py implementation (Codex PR #30
+# r2 P2 — the allowlist previously trusted a helper's NAME, not what it does with its
+# arguments): each one escapes/derives every data-derived value it interpolates from its OWN
+# body, so a call is safe no matter what its arguments contain.
+#   escapeHtml       — the sanitizer itself.
+#   fmt_usd/fmt_bytes — numeric-only formatters (`.toFixed()`/arithmetic); every real call
+#     site passes a computed numeric field (cost/bytes), never free text, matching this
+#     file's existing treatment of `.length`/`.toLocaleString()` as safe.
+#   primaryChipHtml, evidenceHtml — wrap every argument they interpolate in escapeHtml().
+#   evidenceListHtml — `ids.map(evidenceHtml).join('')`, i.e. only ever emits evidenceHtml's
+#     already-safe output.
+#   consumerListHtml — escapes `c.key`; the only other field read (`c.dead`) is a boolean
+#     used to pick between two fixed literal strings, never interpolated itself.
+#   statusBadge — returns one of a fixed set of literal `<span>` strings chosen by comparing
+#     fields against literal values; no field is ever interpolated into the output.
 _SAFE_WRAPPERS = (
     "escapeHtml",
     "fmt_usd",
@@ -653,7 +668,6 @@ _SAFE_WRAPPERS = (
     "primaryChipHtml",
     "evidenceListHtml",
     "consumerListHtml",
-    "detailRow",
     "statusBadge",
     "evidenceHtml",
 )
@@ -662,6 +676,14 @@ _SAFE_WRAPPERS = (
 # wrapper. Every current call site only feeds its result into an already-safe wrapper
 # (primaryChipHtml, which escapes it) or a non-sink `.id =` assignment, never directly
 # into a `${...}` innerHTML placeholder — but the allowlist must not claim otherwise.
+
+# detailRow(key, valHtml) escapes `key` internally but returns `valHtml` VERBATIM — every
+# real call site escapes it first, but the helper itself does not (Codex PR #30 r2 P2: it
+# was wrongly listed alongside the unconditionally-safe wrappers above, which would have let
+# `${detailRow('X', r.name)}` pass the guardrail with an unescaped second argument). It is
+# safe only when EVERY argument passed to it is itself provably safe — checked by recursing
+# into the call's arguments rather than trusting the callee's name.
+_ARG_SAFE_WRAPPERS = ("detailRow",)
 _SINK_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*`")
 _SINK_CALL_RE = re.compile(r"\.insertAdjacentHTML\s*\(\s*['\"][^'\"]*['\"]\s*,\s*`")
 # A sink assigned a bare identifier rather than a literal template — e.g.
@@ -878,6 +900,22 @@ def _is_call_of(expr, name):
     return False
 
 
+def _call_args(expr, name):
+    """If `expr` is exactly a call to `name(...)` (nothing before it, nothing trailing after
+    its closing paren), return its top-level-split argument expressions; else None."""
+    m = re.match(re.escape(name) + r"\s*\(", expr)
+    if not m:
+        return None
+    open_idx = m.end() - 1
+    close_idx = _find_matching_paren(expr, open_idx)
+    if close_idx != len(expr) - 1:
+        return None
+    args_str = expr[open_idx + 1 : close_idx]
+    if not args_str.strip():
+        return []
+    return _split_top_level(args_str, [","])
+
+
 def _is_safe_expr(expr, safe_vars):
     expr = expr.strip()
     if not expr:
@@ -899,6 +937,11 @@ def _is_safe_expr(expr, safe_vars):
 
     if any(_is_call_of(expr, name) for name in _SAFE_WRAPPERS):
         return True
+
+    for name in _ARG_SAFE_WRAPPERS:
+        args = _call_args(expr, name)
+        if args is not None:
+            return all(_is_safe_expr(a, safe_vars) for a in args)
 
     if expr.startswith("`"):
         placeholders, end = _extract_template_placeholders(expr, 1)

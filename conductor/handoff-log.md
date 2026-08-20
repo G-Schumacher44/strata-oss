@@ -8,9 +8,11 @@ Commit: 61701a9 (Round 2 implementation commit — see below; this is a squash-m
   repo, so post-merge the durable anchor becomes `gh pr view 30 --json mergeCommit
   -q .mergeCommit.oid`, but the handoff must anchor to a real commit while the PR is
   open, per Codex PR #30 r1 — a "set once merged" placeholder is not an anchor)
-Conductor Mode: none — this repo has no `conductor/standard.json` (Conductor-stamped
-  governance script skipped per its own instructions); scope came directly from GitHub
-  issue #29 (a post-merge Artemis audit of PR #28 / slice-08, commit 6c9eede).
+Conductor Mode: patch — single-file bug fix + guardrail hardening, no new slice (per
+  `conductor/CONDUCTOR_MODES.md`'s Patch Mode: "bug fix, one-file change"). This repo has no
+  `conductor/standard.json` (the koa-spawn HUB-skill governance script skips itself per its
+  own instructions when that file is absent); scope came directly from GitHub issue #29 (a
+  post-merge Artemis audit of PR #28 / slice-08, commit 6c9eede).
 Context Budget: low — single-file bug-fix branch, no new slice.
 Context Loaded: GitHub issue #29, src/strata/outputs/dashboard.py (full innerHTML/
   outerHTML/insertAdjacentHTML sweep), tests/test_l1_synthesis_outputs.py (the existing
@@ -164,11 +166,53 @@ accumulation was not part of the three sink shapes named in the Artemis finding 
 would be a meaningfully larger change (push-site tracking, not sink-site tracking) —
 left as a follow-up if a future review wants it, not silently declared "covered."
 
+### Round 3 — PR #30 round-2 gate findings (Codex), commit set below
+
+**What changed:**
+
+1. **Codex P1 — invalid `Conductor Mode: none`.** `none` isn't a value in
+   `conductor/CONDUCTOR_MODES.md`'s vocabulary (`patch | slice | full | audit`). Reclassified
+   this whole branch as `patch` mode (matches its own "bug fix, one-file change" definition)
+   in the block header above; kept the honest "no `standard.json`" detail as context, not a
+   substitute for a real mode.
+2. **Codex P2 — `detailRow` wrongly in `_SAFE_WRAPPERS`.** Audited every one of the (then
+   nine) allowlisted helpers against its real `dashboard.py` implementation, one by one:
+   `escapeHtml`, `fmt_usd`, `fmt_bytes`, `primaryChipHtml`, `evidenceListHtml`,
+   `consumerListHtml`, `statusBadge`, `evidenceHtml` all escape/derive every data-derived
+   value they interpolate from their OWN body — unconditionally safe regardless of what's
+   passed in, so they stay in `_SAFE_WRAPPERS` (each one's reasoning is now a comment above
+   the tuple in `tests/test_l1_synthesis_outputs.py`). `detailRow(key, valHtml)` is the one
+   exception: it escapes `key` but returns `valHtml` **verbatim** — every real call site
+   already escapes its second argument (confirmed by reading all 8 call sites), but the
+   helper itself doesn't, so `${detailRow('X', r.name)}` would have passed the guardrail
+   with a raw, unescaped second argument. Moved `detailRow` out of `_SAFE_WRAPPERS` into a
+   new `_ARG_SAFE_WRAPPERS` tier: a call to one of these names is safe only when EVERY
+   argument passed to it is itself provably safe (recursed via the checker's existing
+   `_is_safe_expr` rules, using a new `_call_args()` helper to extract them) — not merely
+   because the callee's name is on a list. (Considered making this generic to any function
+   call, not just an explicit tier — rejected: e.g. `const d = evt.target.data();` is a
+   zero-argument call whose result is raw untrusted data, not literal HTML built from its
+   arguments; a name-scoped tier avoids misclassifying that shape as safe.)
+
+**What was verified:**
+- Full suite: **132 passed**.
+- `ruff check src/ tests/ scripts/` and `ruff format --check src/ tests/ scripts/`: clean.
+- `mypy src/strata --ignore-missing-imports`: clean (87 files).
+- `scripts/check_dashboard_js_syntax.py`: 5/5 generated `<script>` blocks pass `node --check`.
+- **Negative control (mandatory):** temporarily added `${detailRow('X', r.name)}` to the Dead
+  Code Table's existing `tr.innerHTML` template (`r` already in scope there from the row's
+  `.forEach(r => ...)` callback) — guardrail correctly went RED, reporting
+  `detailRow('X', r.name)` as the offender. Reverted.
+- **Positive control:** same spot with `${detailRow('X', escapeHtml(r.name))}` — guardrail
+  correctly stayed GREEN (proves the new arg-recursion isn't overly strict). Reverted; `git
+  diff src/strata/outputs/dashboard.py` confirmed empty before committing.
+
 **Exact Next Steps:**
-1. Push this branch; reply to both Codex inline threads (handoff anchor, uniqueAnchor
-   allowlist) describing the fix — replying is not resolving, resolution follows re-gate.
+1. Push this branch; reply to both round-2 Codex inline threads (mode vocabulary,
+   `detailRow` allowlist) describing the fix — replying is not resolving, resolution follows
+   re-gate.
 2. Re-run the gate on PR #30.
 3. No version bump / tag needed.
-4. No follow-up slice implied; the `rows.join('')` gap above is a candidate for a small
-   follow-up if anyone wants the guardrail to trace array-accumulation sinks too, not a
-   blocker for this PR.
+4. No follow-up slice implied; the `rows.join('')` gap (Round 2, above) is still a candidate
+   for a small follow-up if anyone wants the guardrail to trace array-accumulation sinks too,
+   not a blocker for this PR.
