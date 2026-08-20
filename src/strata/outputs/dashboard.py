@@ -927,7 +927,7 @@ window.addEventListener('load', openHashTarget);
       ? `<span class="kill-badge">⚠ KILL — ${fmt_usd(r.estimated_cost_usd)}/mo</span>`
       : `<span class="badge badge-green">In Use</span>`;
     const costColor = isZombie ? 'var(--purple)' : isUnused ? 'var(--red)' : 'var(--text)';
-    const explores = (r.used_by_explores||[]).map(e => `<div class="file-tag">${e}</div>`).join('');
+    const explores = (r.used_by_explores||[]).map(e => `<div class="file-tag">${escapeHtml(e)}</div>`).join('');
     tr.innerHTML = `
       <td style="font-family:monospace;font-weight:600">${primaryChipHtml(primaryId, r.view)}</td>
       <td style="font-weight:600;color:${costColor}">${fmt_usd(r.estimated_cost_usd)}</td>
@@ -1001,7 +1001,7 @@ window.addEventListener('load', openHashTarget);
     li.innerHTML = `
       <div class="roadmap-num">${i+1}</div>
       <div class="roadmap-body">
-        <span class="badge ${cls}">${label}</span>
+        <span class="badge ${escapeHtml(cls)}">${escapeHtml(label)}</span>
         &nbsp;<span class="roadmap-target">${primaryChipHtml(primaryId, r.target, roadmapId)}</span>
         <div class="roadmap-meta">${escapeHtml(r.kind)}${cost}</div>
         <details class="evidence-details"><summary>${evCount} evidence link${evCount!==1?'s':''}</summary>
@@ -1080,9 +1080,9 @@ window.addEventListener('load', openHashTarget);
     };
     const content = el('div', 'accordion-content');
     content.innerHTML = `<div class="impact-grid">
-      <div class="impact-group"><label>Views</label><div class="items">${(r.views||[]).map(v=>`<span class="impact-tag">${v}</span>`).join('')||'<span style="color:var(--muted)">none</span>'}</div></div>
-      <div class="impact-group"><label>Explores</label><div class="items">${(r.explores||[]).map(v=>`<span class="impact-tag">${v}</span>`).join('')}</div></div>
-      <div class="impact-group"><label>Fields (${(r.fields||[]).length})</label><div class="items">${(r.fields||[]).slice(0,8).map(v=>`<span class="impact-tag">${v}</span>`).join('')}${(r.fields||[]).length>8?`<span style="color:var(--muted);font-size:11px">+${(r.fields||[]).length-8} more</span>`:''}</div></div>
+      <div class="impact-group"><label>Views</label><div class="items">${(r.views||[]).map(v=>`<span class="impact-tag">${escapeHtml(v)}</span>`).join('')||'<span style="color:var(--muted)">none</span>'}</div></div>
+      <div class="impact-group"><label>Explores</label><div class="items">${(r.explores||[]).map(v=>`<span class="impact-tag">${escapeHtml(v)}</span>`).join('')}</div></div>
+      <div class="impact-group"><label>Fields (${(r.fields||[]).length})</label><div class="items">${(r.fields||[]).slice(0,8).map(v=>`<span class="impact-tag">${escapeHtml(v)}</span>`).join('')}${(r.fields||[]).length>8?`<span style="color:var(--muted);font-size:11px">+${(r.fields||[]).length-8} more</span>`:''}</div></div>
     </div>`;
     item.appendChild(trigger);
     item.appendChild(content);
