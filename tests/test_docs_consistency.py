@@ -13,7 +13,7 @@ def test_readme_tool_table_matches_registered_mcp_tools():
     server_text = SERVER.read_text(encoding="utf-8")
     registered = {
         match.group(1)
-        for match in re.finditer(r"@server\.tool\(\)\s+def\s+(strata_[a-z_]+)\(", server_text)
+        for match in re.finditer(r"@server\.tool\([^\n]*\)\s+def\s+(strata_[a-z_]+)\(", server_text)
     }
 
     readme_text = README.read_text(encoding="utf-8")

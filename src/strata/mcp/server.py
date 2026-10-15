@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 from strata.config import load_repo_path
 from strata.ir.store import cache_age_seconds, load_ir, save_ir
@@ -89,67 +90,77 @@ def load_configured_graph() -> IRGraph:
     return graph
 
 
+# Tool annotations are advisory hints (MCP spec: clients treat them as untrusted unless the
+# server is trusted). Every tool is read-only except the sandboxed chart renderer, which
+# writes one HTML file under ~/.strata/output or /tmp and may overwrite an existing file there.
+# (The IR cache write in load_configured_graph happens at server start, not in a tool call.)
+_READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
+_RENDER_ANNOTATIONS = ToolAnnotations(
+    read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False
+)
+
+
 def create_server(graph: IRGraph | None = None) -> MCPServer:
     ir_graph = graph or load_configured_graph()
     # mcp 2.x: MCPServer replaced FastMCP (removed in 2.0) and takes `version` as a
     # first-class kwarg — retiring the 1.x `_mcp_server.version` workaround from #20.
     server = MCPServer("strata", version=_server_version())
 
-    @server.tool()
+    @server.tool(title="Query Field", annotations=_READ_ONLY)
     def strata_query_field(view: str, field: str) -> dict[str, Any]:
         return query_field(ir_graph, view, field)
 
-    @server.tool()
+    @server.tool(title="List Orphans", annotations=_READ_ONLY)
     def strata_list_orphans(kind: str = "all") -> list[dict[str, Any]]:
         return query_list_orphans(ir_graph, kind)
 
-    @server.tool()
+    @server.tool(title="Explore Dependencies", annotations=_READ_ONLY)
     def strata_explore_deps(explore: str, model: str) -> dict[str, Any]:
         return query_explore_deps(ir_graph, explore, model)
 
-    @server.tool()
+    @server.tool(title="IR Status", annotations=_READ_ONLY)
     def strata_ir_status() -> dict[str, Any]:
         return query_ir_status(ir_graph)
 
-    @server.tool()
+    @server.tool(title="Usage Summary", annotations=_READ_ONLY)
     def strata_usage_summary() -> dict[str, Any]:
         return query_usage_summary(ir_graph)
 
-    @server.tool()
+    @server.tool(title="Dead Code Register", annotations=_READ_ONLY)
     def strata_dead_code_register() -> list[dict[str, Any]]:
         return query_dead_code_register(ir_graph)
 
-    @server.tool()
+    @server.tool(title="PDT Costs", annotations=_READ_ONLY)
     def strata_pdt_costs() -> list[dict[str, Any]]:
         return query_pdt_costs(ir_graph)
 
-    @server.tool()
+    @server.tool(title="Schema Drift", annotations=_READ_ONLY)
     def strata_schema_drift() -> list[dict[str, Any]]:
         return query_schema_drift(ir_graph)
 
-    @server.tool()
+    @server.tool(title="Validation Scope", annotations=_READ_ONLY)
     def strata_validation_scope(changed: list[str | dict[str, Any]]) -> dict[str, Any]:
         """Determine blast radius for changes (impacted_views, impacted_explores, impacted_fields)."""
         return query_validation_scope(ir_graph, changed)
 
-    @server.tool()
+    @server.tool(title="Table Impact", annotations=_READ_ONLY)
     def strata_impact(physical_table: str) -> dict[str, Any]:
         """Get the downstream impact of a physical table (physical_table, views, explores, fields)."""
         return query_impact(ir_graph, physical_table)
 
-    @server.tool()
+    @server.tool(title="Find Field", annotations=_READ_ONLY)
     def strata_find_field(
         query: str, kind: Literal["all", "dimension", "measure", "filter", "parameter"] = "all"
     ) -> dict[str, Any]:
         """Search for fields matching a query string across all views (query, kind, matches, count)."""
         return query_find_field(ir_graph, query, kind)
 
-    @server.tool()
+    @server.tool(title="View Sources", annotations=_READ_ONLY)
     def strata_view_sources(model: str | None = None) -> dict[str, Any]:
         """List views and their resolved physical tables (model_filter, views, count)."""
         return query_view_sources(ir_graph, model)
 
-    @server.tool()
+    @server.tool(title="Navigate Ticket Anchor", annotations=_READ_ONLY)
     def strata_navigate(
         anchor: str, model: str | None = None, ticket: str | None = None
     ) -> dict[str, Any]:
@@ -164,29 +175,29 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
     skills_dir = _skills_dir()
     conductor_dir = _conductor_dir()
 
-    @server.tool()
+    @server.tool(title="List Skills", annotations=_READ_ONLY)
     def strata_list_skills() -> list[dict[str, str]]:
         """List available skills (name, domain, mode, complexity, trigger)."""
         return query_list_skills(skills_dir)
 
-    @server.tool()
+    @server.tool(title="Get Skill", annotations=_READ_ONLY)
     def strata_skill(name: str) -> str:
         """Get the full SKILL.md content for a specific skill."""
         return query_skill(skills_dir, name)
 
-    @server.tool()
+    @server.tool(title="Conductor Status", annotations=_READ_ONLY)
     def strata_conductor_status() -> dict[str, Any]:
         """Get the current Conductor workflow status (active_slice, next_steps, latest_handoff)."""
         return query_conductor_status(conductor_dir)
 
     charts_dir = _charts_dir()
 
-    @server.tool()
+    @server.tool(title="Chart Templates", annotations=_READ_ONLY)
     def strata_chart_templates() -> list[dict[str, str]]:
         """List available Vega-Lite chart templates (name, mark)."""
         return query_chart_templates(charts_dir)
 
-    @server.tool()
+    @server.tool(title="Render Chart", annotations=_RENDER_ANNOTATIONS)
     def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[str, str]:
         """Render a chart using a Vega-Lite template and JSON data (path, status)."""
         return query_render_chart(spec_yaml, data_json, out_path)
