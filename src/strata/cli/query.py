@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -473,23 +474,24 @@ def _render_navigate_chart(anchor: str, brief: dict[str, Any], open_browser: boo
         click.secho("No field count data available for chart.", fg="yellow", err=True)
         return
 
-    spec = f"""title: "Navigator — {anchor}"
-mark: bar
-encoding:
-  x:
-    field: view
-    type: nominal
-    sort: "-y"
-    title: View
-  y:
-    field: fields
-    type: quantitative
-    title: Field Count
-show_labels: true
-width: 640
-height: 400"""
+    # Built as data, not an f-string: anchor is raw CLI input and quotes/braces/newlines in it
+    # produced invalid YAML. JSON is valid YAML, so strata_render_chart parses it unchanged.
+    spec = json.dumps(
+        {
+            "title": f"Navigator — {anchor}",
+            "mark": "bar",
+            "encoding": {
+                "x": {"field": "view", "type": "nominal", "sort": "-y", "title": "View"},
+                "y": {"field": "fields", "type": "quantitative", "title": "Field Count"},
+            },
+            "show_labels": True,
+            "width": 640,
+            "height": 400,
+        }
+    )
 
-    out_path = str(Path(tempfile.gettempdir()) / f"strata_navigate_{anchor.replace('.', '_')}.html")
+    safe_anchor = re.sub(r"[^A-Za-z0-9_-]", "_", anchor)
+    out_path = str(Path(tempfile.gettempdir()) / f"strata_navigate_{safe_anchor}.html")
     result = strata_render_chart(spec, json.dumps(rows), out_path)
     click.secho(f"Chart: {result['path']}", fg="green")
     if open_browser:
