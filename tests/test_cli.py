@@ -263,3 +263,24 @@ def test_generate_schema_dry_run(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "dry-run" in result.stdout.lower() or "dry" in result.stdout.lower()
     assert not (tmp_path / "schema_facts.json").exists()
+
+
+def test_navigate_chart_writes_under_guarded_output_root(tmp_path, monkeypatch):
+    # Regression: the chart went to tempfile.gettempdir() (/var/folders/... on macOS), which
+    # strata_render_chart's path guard rejects. It must land under the guard's own root.
+    import tempfile
+
+    from strata.cli.query import _render_navigate_chart
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    outside = tmp_path / "var-folders"  # a non-/tmp tempdir, like macOS
+    outside.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(outside))
+
+    brief = {"views": [{"name": "orders", "field_count": 3}]}
+    _render_navigate_chart("analytics.orders", brief, open_browser=False)
+
+    assert (home / ".strata" / "output" / "strata_navigate_analytics_orders.html").exists()
+    assert not list(outside.iterdir())
