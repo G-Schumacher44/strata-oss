@@ -49,7 +49,7 @@ def clean(repo: str | None) -> None:
         db.unlink()
         removed.append(str(db))
 
-    for cache in Path(".").rglob("__pycache__"):
+    for cache in search_root.rglob("__pycache__"):
         shutil.rmtree(cache, ignore_errors=True)
     removed.append("__pycache__ dirs")
 
