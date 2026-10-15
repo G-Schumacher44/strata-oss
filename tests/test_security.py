@@ -141,3 +141,17 @@ def test_render_chart_rejects_adjacent_directory_prefix_collision():
     data_json = '[{"category": "A", "value": 1}]'
     with pytest.raises(ValueError, match="out_path must be within"):
         strata_render_chart(spec_yaml, data_json, "/tmp-evil/strata_pwned.html")
+
+
+def test_render_chart_html_cannot_break_out_of_script_block(tmp_path):
+    # Regression: json.dumps leaves "<" raw, so a "</script>" in a data value ended the
+    # embed <script> and the remainder parsed as markup.
+    from strata.viz.render import render_chart
+
+    out = render_chart(
+        {"mark": "bar"}, [{"k": "</script><img src=x onerror=alert(1)>"}], tmp_path / "c.html"
+    )
+    html = out.read_text(encoding="utf-8")
+    embed = html.split("vegaEmbed(", 1)[1]
+    assert "</script><img" not in html
+    assert "\\u003c/script>\\u003cimg" in embed
