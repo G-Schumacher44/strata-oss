@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -107,10 +108,26 @@ def _float(value: Any) -> float:
     return float(value)
 
 
+def _instant(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
 def _latest_iso(current: str | None, candidate: Any) -> str | None:
+    """Return the chronologically later of two ISO-8601 timestamps.
+
+    String comparison is wrong across suffix styles ("...Z" sorts after "...+00:00" for the
+    same instant), so compare parsed instants; fall back to string order only when a value
+    does not parse.
+    """
     if not candidate:
         return current
     candidate_str = str(candidate)
-    if current is None or candidate_str > current:
+    if current is None:
         return candidate_str
-    return current
+    a, b = _instant(candidate_str), _instant(current)
+    is_later = a > b if a is not None and b is not None else candidate_str > current
+    return candidate_str if is_later else current
