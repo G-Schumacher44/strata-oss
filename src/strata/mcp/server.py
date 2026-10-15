@@ -93,7 +93,8 @@ def load_configured_graph() -> IRGraph:
 # Tool annotations are advisory hints (MCP spec: clients treat them as untrusted unless the
 # server is trusted). Every tool is read-only except the sandboxed chart renderer, which
 # writes one HTML file under ~/.strata/output or /tmp and may overwrite an existing file there.
-_READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+# (The IR cache write in load_configured_graph happens at server start, not in a tool call.)
+_READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
 _RENDER_ANNOTATIONS = ToolAnnotations(
     read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False
 )

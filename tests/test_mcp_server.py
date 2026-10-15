@@ -51,8 +51,8 @@ def test_every_tool_has_title_and_explicit_read_only_stance():
         assert tool.annotations.read_only_hint is not None, f"{tool.name}: readOnlyHint unset"
         expected_read_only = tool.name not in WRITE_TOOLS
         assert tool.annotations.read_only_hint is expected_read_only, tool.name
-        if not expected_read_only:
-            assert tool.annotations.destructive_hint is not None, f"{tool.name}: destructiveHint"
+        assert tool.annotations.destructive_hint is not None, f"{tool.name}: destructiveHint"
+        assert tool.annotations.destructive_hint is (not expected_read_only), tool.name
 
 
 def test_registry_manifest_matches_package_and_readme():
@@ -72,7 +72,8 @@ def test_registry_manifest_matches_package_and_readme():
     )
     pkg = manifest["packages"][0]
     assert pkg["registryType"] == "pypi" and pkg["identifier"] == project["name"]
-    assert manifest["version"] == pkg["version"] == project["version"]
+    mcpb = json.loads((root / "mcpb" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["version"] == pkg["version"] == project["version"] == mcpb["version"]
     # `uvx <identifier>` must resolve to an executable of that name.
     assert pkg["identifier"] in project["scripts"]
     assert len(manifest["description"]) <= 100
