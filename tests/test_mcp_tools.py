@@ -19,7 +19,7 @@ from strata.mcp.tools import (
     strata_validation_scope,
     strata_view_sources,
 )
-from strata.navigate import build_navigate_brief
+from strata.navigate import _classify_anchor, build_navigate_brief
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = REPO_ROOT / "src" / "strata" / "skills"
@@ -299,3 +299,22 @@ def test_strata_find_field_truncated_flag_false_at_exactly_fifty_matches():
     result = strata_find_field(graph, "metric")
     assert result["count"] == 50
     assert result["truncated"] is False
+
+
+def test_navigate_two_part_anchor_resolves_to_physical_table_when_in_ir():
+    # Regression: `dataset.table` was always classified as a field and substring-searched.
+    from strata.ir.types import IRGraph, IRNode
+
+    graph = IRGraph(repo_path="", built_at="")
+    graph.add_node(
+        IRNode(
+            id="physical_table:analytics.orders",
+            kind="physical_table",
+            name="analytics.orders",
+            source_file="",
+        )
+    )
+    brief = build_navigate_brief(graph, "analytics.orders")
+    assert brief["anchor_type"] == "bq_table"
+    # A two-part anchor that is not a known table still falls through to field lookup.
+    assert _classify_anchor("orders.id", graph) == "field"

@@ -38,7 +38,7 @@ def build_navigate_brief(
     time) for each target so a downstream agent or developer can act without exploring the
     repo blind.
     """
-    anchor_type = _classify_anchor(anchor)
+    anchor_type = _classify_anchor(anchor, graph)
     brief: dict[str, Any] = {"anchor": anchor, "anchor_type": anchor_type}
 
     views_hit: list[str] = []
@@ -140,13 +140,17 @@ def _match_explores(graph: IRGraph, name: str) -> list[str]:
     return hits
 
 
-def _classify_anchor(anchor: str) -> str:
+def _classify_anchor(anchor: str, graph: IRGraph) -> str:
     if anchor.endswith((".view.lkml", ".model.lkml", ".explore.lkml")):
         return "file"
     parts = anchor.split(".")
     if len(parts) >= 3 and not anchor.endswith(".lkml"):
         return "bq_table"
     if len(parts) == 2:
+        # `dataset.table` (no project prefix) has the same shape as `view.field`; the IR
+        # knows which one it is.
+        if f"physical_table:{anchor}" in graph.nodes:
+            return "bq_table"
         return "field"
     return "view"
 
