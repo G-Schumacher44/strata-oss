@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.G-Schumacher44/strata-oss",
+  "title": "Strata",
+  "description": "Read-only LookML governance for Looker and BigQuery: dead code, PDT cost, drift, impact.",
+  "repository": {
+    "url": "https://github.com/G-Schumacher44/strata-oss",
+    "source": "github"
+  },
+  "version": "0.1.8",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "strata-lookml",
+      "version": "0.1.8",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
