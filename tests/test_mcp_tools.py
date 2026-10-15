@@ -299,3 +299,14 @@ def test_strata_find_field_truncated_flag_false_at_exactly_fifty_matches():
     result = strata_find_field(graph, "metric")
     assert result["count"] == 50
     assert result["truncated"] is False
+
+
+def test_load_ir_missing_cache_raises_without_creating_a_file(tmp_path):
+    import pytest
+
+    from strata.ir.store import load_ir
+
+    missing = tmp_path / "strata_ir.db"
+    with pytest.raises(FileNotFoundError, match="IR cache not found"):
+        load_ir(missing)
+    assert not missing.exists()
