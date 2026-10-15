@@ -299,3 +299,17 @@ def test_strata_find_field_truncated_flag_false_at_exactly_fifty_matches():
     result = strata_find_field(graph, "metric")
     assert result["count"] == 50
     assert result["truncated"] is False
+
+
+def test_rebuild_picks_up_edited_source_lines(tmp_path):
+    # Regression: _scan_file's process-wide lru_cache served the first build's line numbers
+    # to every later build in the same process.
+    (tmp_path / "v.view.lkml").write_text(
+        "view: orders {\n  dimension: id {\n    type: number\n  }\n}\n", encoding="utf-8"
+    )
+    first = build_resolved_graph(tmp_path).nodes["view:orders"].attrs["source_line"]
+    (tmp_path / "v.view.lkml").write_text(
+        "# header\n# header\n" + (tmp_path / "v.view.lkml").read_text()
+    )
+    second = build_resolved_graph(tmp_path).nodes["view:orders"].attrs["source_line"]
+    assert (first, second) == (1, 3)
