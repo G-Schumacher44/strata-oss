@@ -263,3 +263,19 @@ def test_generate_schema_dry_run(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "dry-run" in result.stdout.lower() or "dry" in result.stdout.lower()
     assert not (tmp_path / "schema_facts.json").exists()
+
+
+def test_clean_output_dir_follows_repo_not_cwd(tmp_path, monkeypatch):
+    # Regression: --repo scoped strata_ir.db and __pycache__ but output/ was always cwd's.
+    from click.testing import CliRunner
+
+    from strata.cli.main import strata_cli
+
+    cwd, repo = tmp_path / "cwd", tmp_path / "repo"
+    (cwd / "output").mkdir(parents=True)
+    (repo / "output").mkdir(parents=True)
+    monkeypatch.chdir(cwd)
+    result = CliRunner().invoke(strata_cli, ["clean", "--repo", str(repo)])
+    assert result.exit_code == 0, result.output
+    assert not (repo / "output").exists()
+    assert (cwd / "output").exists()
