@@ -39,12 +39,12 @@ def clean(repo: str | None) -> None:
 
     removed = []
 
-    out_dir = Path("output")
+    search_root = Path(repo).expanduser().resolve() if repo else Path.cwd()
+    out_dir = search_root / "output"
     if out_dir.exists():
         shutil.rmtree(out_dir)
         removed.append("output/")
 
-    search_root = Path(repo).expanduser().resolve() if repo else Path.cwd()
     for db in search_root.rglob("strata_ir.db"):
         db.unlink()
         removed.append(str(db))
