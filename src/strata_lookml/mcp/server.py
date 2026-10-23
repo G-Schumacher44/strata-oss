@@ -97,34 +97,42 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
 
     @server.tool()
     def strata_query_field(view: str, field: str) -> dict[str, Any]:
+        """Get one field's resolved definition (sql, type, tags, source_file, resolution_chain); errors if absent."""
         return query_field(ir_graph, view, field)
 
     @server.tool()
     def strata_list_orphans(kind: str = "all") -> list[dict[str, Any]]:
+        """List orphan views (no explore uses them as base, join, or extends ancestor); only views are detected."""
         return query_list_orphans(ir_graph, kind)
 
     @server.tool()
     def strata_explore_deps(explore: str, model: str) -> dict[str, Any]:
+        """Get an explore's base view, joins (name, view, type), resolution_chain, and total field_count."""
         return query_explore_deps(ir_graph, explore, model)
 
     @server.tool()
     def strata_ir_status() -> dict[str, Any]:
+        """Summarize the loaded IR (repo_path, built_at, node_counts, edge_count, cache_path)."""
         return query_ir_status(ir_graph)
 
     @server.tool()
     def strata_usage_summary() -> dict[str, Any]:
+        """Summarize L1 usage facts: has_l1, period, query totals, dead-code/PDT/zombie/drift counts."""
         return query_usage_summary(ir_graph)
 
     @server.tool()
     def strata_dead_code_register() -> list[dict[str, Any]]:
+        """List dead explores (zero queries, no content refs) and dead views (orphan, or every consumer dead); needs usage facts."""
         return query_dead_code_register(ir_graph)
 
     @server.tool()
     def strata_pdt_costs() -> list[dict[str, Any]]:
+        """List PDT builds, bytes, estimated USD cost, consumers, and status (used/unused/zombie/missing_build_facts)."""
         return query_pdt_costs(ir_graph)
 
     @server.tool()
     def strata_schema_drift() -> list[dict[str, Any]]:
+        """List tables and field-referenced columns missing from BigQuery schema facts; needs schema facts."""
         return query_schema_drift(ir_graph)
 
     @server.tool()
@@ -194,8 +202,31 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
     return server
 
 
-def main() -> None:
+_USAGE = """\
+usage: strata-mcp [-h]
+
+Strata's MCP server over stdio: read-only LookML analysis tools plus a sandboxed chart
+renderer. An MCP client (Claude, Cursor, VS Code, ...) launches this command; it speaks
+JSON-RPC on stdin/stdout and takes no arguments.
+
+Configuration (environment):
+  STRATA_REPO_PATH        LookML repo to analyze (else ~/.strata/config.json, else cwd)
+  STRATA_USAGE_FIXTURE    usage facts JSON for offline L1 enrichment
+  STRATA_SCHEMA_FIXTURE   BigQuery schema facts JSON for drift checks
+  STRATA_CACHE_PATH       IR cache file (default: <repo>/strata_ir.db)
+
+Check the setup first with `strata mcp validate`; print client config with `strata mcp config`.
+"""
+
+
+def main(argv: list[str] | None = None) -> None:
     import sys
+
+    args = sys.argv[1:] if argv is None else argv
+    if any(arg in ("-h", "--help") for arg in args):
+        # Print usage and exit before building the graph or opening the stdio transport.
+        sys.stdout.write(_USAGE)
+        return
 
     sys.stderr.write("Starting Strata MCP server...\n")
     server = create_server()

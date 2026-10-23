@@ -7,7 +7,7 @@
 <div align="center">
 
 [![CI](https://github.com/G-Schumacher44/strata-oss/actions/workflows/strata-ci.yml/badge.svg?branch=main)](https://github.com/G-Schumacher44/strata-oss/actions/workflows/strata-ci.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/G-Schumacher44/strata-oss/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed.svg)](https://modelcontextprotocol.io)
 [![Offline First](https://img.shields.io/badge/offline--first-no%20cloud%20required-22c55e.svg)](#quick-start)
@@ -25,9 +25,9 @@ semantic-layer change is safe:
 > **Naming, in short:**
 > - The tool is **Strata**. The PyPI package is [`strata-lookml`](https://pypi.org/project/strata-lookml/) — the PyPI names `strata` and `strata-mcp` belong to unrelated projects.
 > - The commands you type are unchanged: `strata`, `strata-mcp`, `strata-chart`.
-> - The Python import package is `strata_lookml` (renamed from `strata` after 0.1.8, so it can be installed alongside the unrelated PyPI `strata`). Only code that does `import strata` needs updating.
-> - **Upgrading from 0.1.8 in an environment that also has the unrelated `strata` or `strata-mcp` package:** uninstalling 0.1.8 removes the `strata/` files the two shared, so reinstall that package afterwards (`pip install --force-reinstall --no-deps strata`, or `strata-mcp`).
-> - **`pipx` users:** one of those unrelated packages also installs a command named `strata`. If it's on your machine, `pipx install strata-lookml` will refuse the duplicate name.
+> - The Python import package is `strata_lookml`. Through 0.1.8 it was `strata`, the same top-level name the unrelated `strata` and `strata-mcp` wheels ship, so installing either beside it overwrote files. Only code that does `import strata` needs updating; the commands are unaffected.
+> - **Upgrading from 0.1.8 in an environment that also has the unrelated `strata` or `strata-mcp` package:** uninstalling 0.1.8 removes the `strata/` files they shared, so reinstall that package afterwards (`pip install --force-reinstall --no-deps strata`, or `strata-mcp`).
+> - **`pipx` users:** the unrelated `strata-mcp` package also installs a command named `strata`. If it's on your machine, pipx will not link Strata's `strata` over it.
 > - The `uvx` form below sidesteps this entirely — it runs in an ephemeral environment, so nothing collides.
 
 ## What Strata Is
@@ -76,15 +76,17 @@ Wire it into an MCP client — the server entry point is `strata-mcp`, resolved 
 </p>
 
 Both badges embed the same `uvx --from strata-lookml strata-mcp` config above; edit
-`STRATA_REPO_PATH` to your repo after installing. A prebuilt `.mcpb` bundle for one-click
+`STRATA_REPO_PATH` to your repo after installing. The badges are editor deep links that work
+from GitHub; PyPI strips `cursor://` and `vscode:` links, so the JSON block above is the
+portable path. A prebuilt `.mcpb` bundle for one-click
 install in Claude Desktop is attached to each [GitHub Release](https://github.com/G-Schumacher44/strata-oss/releases).
 
 
 ## Quick Start
 
 ```bash
-# Install
-pip install -e ".[dev]"
+# Install the CLI + MCP server (or prefix each command with `uvx --from strata-lookml`)
+pipx install strata-lookml
 
 # Bootstrap your repo — creates conductor/, .mcp.json, and config
 strata bootstrap --repo /path/to/your/lookml
@@ -113,10 +115,24 @@ STRATA_REPO_PATH=/path/to/your/lookml strata mcp validate
 Live Looker enrichment is opt-in — start with offline fixtures, add `strata auth login` when ready.
 See [Looker OAuth and Token Management](#looker-oauth-and-token-management).
 
+**Your own LookML repo, no credentials.** Structural analysis needs only the `.lkml` files:
+
+```bash
+uvx --from strata-lookml strata query status  --repo /path/to/your/lookml   # parse + node counts
+uvx --from strata-lookml strata query orphans --repo /path/to/your/lookml   # unreferenced explores/views/fields
+uvx --from strata-lookml strata outputs       --repo /path/to/your/lookml --out strata-out   # JSON artifacts
+```
+
+Usage-based findings (zero-query explores, PDT cost) need usage facts: pass a fixture with
+`--usage-fixture usage.json`, or run `strata auth login` and then
+`strata outputs --repo /path/to/your/lookml --looker-url https://your.looker.instance` for live
+enrichment. Logging in alone does not change what the `query` commands return.
+
 <details>
 <summary>Try it now with bundled playgrounds</summary>
 
-Three LookML repos and matching fixture JSON ship in the repo. Run the full
+Three LookML repos and matching fixture JSON ship in the repo (not in the PyPI package).
+Clone it and install in editable mode — this is also the contributor setup — to run the full
 analysis stack offline in under a minute:
 
 ```bash
@@ -193,12 +209,12 @@ pre-commit install
 ```
 
 Every PR is gated by:
-- `ruff check src/ tests/`
-- `ruff format --check src/ tests/`
+- `ruff check src/ tests/ scripts/`
+- `ruff format --check src/ tests/ scripts/`
 - `mypy src/strata_lookml --ignore-missing-imports`
 - `python -m pytest`
 
-See [`.github/workflows/strata-ci.yml`](.github/workflows/strata-ci.yml) for details.
+See [`.github/workflows/strata-ci.yml`](https://github.com/G-Schumacher44/strata-oss/blob/main/.github/workflows/strata-ci.yml) for details.
 
 </details>
 
@@ -216,7 +232,7 @@ fields, PDTs, and physical tables. Cross-reference against 30 days of Looker Sys
 and content usage data, and you get exact dead code with dual evidence: the explore exists in
 the resolved IR *and* has zero queries with no dashboard references. Dual evidence is designed to
 eliminate false positives before you deprecate — see
-[`docs/testing-findings.md`](docs/testing-findings.md) for the false-positive classes caught
+[`docs/testing-findings.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing-findings.md) for the false-positive classes caught
 and fixed during testing (CTE names misread as physical tables, zombie views invisible to the
 orphan-only check).
 
@@ -460,7 +476,7 @@ Token stored at `~/.strata/tokens.json` (0600 permissions, 0700 parent directory
 loose permissions surface a warning before any tool call.
 
 For enterprise: ADC, OIDC for GitHub Actions, and Google Workspace IAM path in
-[`docs/enterprise-deployment.md`](docs/enterprise-deployment.md).
+[`docs/enterprise-deployment.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/enterprise-deployment.md).
 
 ### Skills — Structured Investigation Procedures
 
@@ -529,7 +545,7 @@ checks the log format and verifies the referenced commit exists in git — catch
 handoffs before they compound.
 
 For the full investigation workflow — gate verification, findings format, stop conditions,
-live enrichment options — see the **[Governance Runbook](docs/runbook.md)**.
+live enrichment options — see the **[Governance Runbook](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/runbook.md)**.
 
 ### Vega-Lite Charts — Built In
 
@@ -558,7 +574,7 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 
 ## CLI
 
-15 commands. Full reference: [`docs/cli-guide.md`](docs/cli-guide.md).
+15 commands. Full reference: [`docs/cli-guide.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/cli-guide.md).
 
 | Command | What it does |
 |---|---|
@@ -600,8 +616,8 @@ on:
   pull_request:
 ```
 
-See [`.github/workflows/strata-pr.yml`](.github/workflows/strata-pr.yml) and
-[`scripts/pr_comment.py`](scripts/pr_comment.py) for the full workflow.
+See [`.github/workflows/strata-pr.yml`](https://github.com/G-Schumacher44/strata-oss/blob/main/.github/workflows/strata-pr.yml) and
+[`scripts/pr_comment.py`](https://github.com/G-Schumacher44/strata-oss/blob/main/scripts/pr_comment.py) for the full workflow.
 
 </details>
 
@@ -638,7 +654,7 @@ consume them in your AI client via the MCP layer.
 ## How We Validated
 
 Three offline playgrounds, all findings sourced from actual output artifacts.
-Full breakdown: [`docs/testing.md`](docs/testing.md).
+Full breakdown: [`docs/testing.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing.md).
 
 <details>
 <summary>Playground findings — enterprise_mono · gcs_analytics · thelook</summary>
@@ -671,20 +687,20 @@ Looker System Activity API responses — so the full analysis runs offline with 
 
 ## Docs
 
-Full index: [**docs/README.md**](docs/README.md)
+Full index: [**docs/README.md**](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/README.md)
 
 <details>
 <summary>Quick links</summary>
 
 | | |
 |---|---|
-| [`docs/runbook.md`](docs/runbook.md) | Governance investigation playbook — gate, workflow patterns, findings format |
-| [`docs/cli-guide.md`](docs/cli-guide.md) | Full CLI reference — all commands, env vars, output artifacts |
-| [`docs/testing.md`](docs/testing.md) | Playgrounds, scenarios, how to run them |
-| [`docs/testing-findings.md`](docs/testing-findings.md) | Full findings — real numbers, drift breakdowns, agentic benchmarks |
-| [`docs/security-hardening.md`](docs/security-hardening.md) | Read-only enforcement, credential handling, MCP security model |
-| [`docs/enterprise-deployment.md`](docs/enterprise-deployment.md) | IAM, ADC, OIDC for GH Actions, Google Workspace path |
-| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Contribution guide |
+| [`docs/runbook.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/runbook.md) | Governance investigation playbook — gate, workflow patterns, findings format |
+| [`docs/cli-guide.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/cli-guide.md) | Full CLI reference — all commands, env vars, output artifacts |
+| [`docs/testing.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing.md) | Playgrounds, scenarios, how to run them |
+| [`docs/testing-findings.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing-findings.md) | Full findings — real numbers, drift breakdowns, agentic benchmarks |
+| [`docs/security-hardening.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md) | Read-only enforcement, credential handling, MCP security model |
+| [`docs/enterprise-deployment.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/enterprise-deployment.md) | IAM, ADC, OIDC for GH Actions, Google Workspace path |
+| [`docs/CONTRIBUTING.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/CONTRIBUTING.md) | Contribution guide |
 
 </details>
 
@@ -692,7 +708,7 @@ Full index: [**docs/README.md**](docs/README.md)
 
 ## License
 
-[Apache 2.0](LICENSE) — © 2026 Garrett Schumacher
+[Apache 2.0](https://github.com/G-Schumacher44/strata-oss/blob/main/LICENSE) — © 2026 Garrett Schumacher
 
 <!-- MCP registry identity — verified at publish time by the official registry -->
 

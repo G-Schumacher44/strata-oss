@@ -784,7 +784,7 @@ function openHashTarget() {
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   // Plain string equality on dataset — no selector-escaping regex. The escaped-regex
   // version died at parse time in the GENERATED page (non-raw Python string collapsed a
-  // backslash layer: /["\]/g → unterminated class), killing every script on the page.
+  // backslash layer: /["\\]/g → unterminated class), killing every script on the page.
   // Caught only by the live browser pass — Python tests never execute the JS.
   const chips = Array.from(row.querySelectorAll('.ev-chip'));
   const chip = chips.find(c => c.dataset.evId === id) || chips[0] || null;

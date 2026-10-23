@@ -1,5 +1,6 @@
 [build-system]
-requires = ["hatchling"]
+# PEP 639 SPDX `license` + `license-files` need core metadata 2.4 (hatchling >= 1.27).
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,15 +8,30 @@ name = "strata-lookml"
 version = "0.1.8"
 requires-python = ">=3.11"
 description = "Agentic BI toolkit for Looker and BigQuery — MCP server, LookML governance analysis, and BI engineering skills"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 readme = "README.md"
+keywords = [
+  "lookml",
+  "looker",
+  "bigquery",
+  "mcp",
+  "model-context-protocol",
+  "semantic-layer",
+  "governance",
+  "dead-code",
+  "bi",
+]
 classifiers = [
   "Development Status :: 4 - Beta",
+  "Environment :: Console",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Topic :: Database",
   "Topic :: Software Development :: Quality Assurance",
 ]
 authors = [{name = "Garrett Schumacher", email = "me@garrettschumacher.com"}]
@@ -67,6 +83,8 @@ python_files = ["test_*.py"]
 Homepage = "https://github.com/G-Schumacher44/strata-oss"
 Repository = "https://github.com/G-Schumacher44/strata-oss"
 Issues = "https://github.com/G-Schumacher44/strata-oss/issues"
+Documentation = "https://github.com/G-Schumacher44/strata-oss/tree/main/docs"
+Changelog = "https://github.com/G-Schumacher44/strata-oss/blob/main/CHANGELOG.md"
 
 [project.scripts]
 strata       = "strata_lookml.cli.main:strata_cli"
