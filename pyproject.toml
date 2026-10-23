@@ -56,8 +56,8 @@ check_untyped_defs = true
 warn_return_any = false
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/strata"]
-include = ["src/strata/skills/**", "src/strata/viz/charts/**", "src/strata/bootstrap/templates/**", "src/strata/assets/**"]
+packages = ["src/strata_lookml"]
+include = ["src/strata_lookml/skills/**", "src/strata_lookml/viz/charts/**", "src/strata_lookml/bootstrap/templates/**", "src/strata_lookml/assets/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -69,9 +69,9 @@ Repository = "https://github.com/G-Schumacher44/strata-oss"
 Issues = "https://github.com/G-Schumacher44/strata-oss/issues"
 
 [project.scripts]
-strata       = "strata.cli.main:strata_cli"
-strata-mcp   = "strata.mcp.server:main"
-strata-chart = "strata.viz.render:main"
+strata       = "strata_lookml.cli.main:strata_cli"
+strata-mcp   = "strata_lookml.mcp.server:main"
+strata-chart = "strata_lookml.viz.render:main"
 
 [tool.hatch.envs.default]
 python = "3.11"

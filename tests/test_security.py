@@ -10,39 +10,39 @@ import pytest
 
 
 def test_normalize_url_rejects_http_non_localhost():
-    from strata.l1.looker import _normalize_url
+    from strata_lookml.l1.looker import _normalize_url
 
     with pytest.raises(ValueError, match="https://"):
         _normalize_url("http://looker.example.com")
 
 
 def test_normalize_url_allows_https():
-    from strata.l1.looker import _normalize_url
+    from strata_lookml.l1.looker import _normalize_url
 
     assert _normalize_url("https://looker.example.com") == "https://looker.example.com"
 
 
 def test_normalize_url_allows_http_localhost():
-    from strata.l1.looker import _normalize_url
+    from strata_lookml.l1.looker import _normalize_url
 
     assert _normalize_url("http://localhost:8765") == "http://localhost:8765"
 
 
 def test_normalize_url_allows_http_127():
-    from strata.l1.looker import _normalize_url
+    from strata_lookml.l1.looker import _normalize_url
 
     assert _normalize_url("http://127.0.0.1:8765") == "http://127.0.0.1:8765"
 
 
 def test_normalize_url_rejects_bare_hostname():
-    from strata.l1.looker import _normalize_url
+    from strata_lookml.l1.looker import _normalize_url
 
     with pytest.raises(ValueError):
         _normalize_url("looker.example.com")
 
 
 def test_normalize_url_strips_trailing_slash():
-    from strata.l1.looker import _normalize_url
+    from strata_lookml.l1.looker import _normalize_url
 
     assert _normalize_url("https://looker.example.com/") == "https://looker.example.com"
 
@@ -57,7 +57,7 @@ def test_l0_no_network_imports():
             sys.executable,
             "-c",
             (
-                "import strata.ir.parser, strata.ir.types, strata.pipeline; "
+                "import strata_lookml.ir.parser, strata_lookml.ir.types, strata_lookml.pipeline; "
                 "import sys; "
                 "bad = [m for m in sys.modules "
                 "       if any(x in m for x in "
@@ -77,7 +77,7 @@ def test_l0_no_network_imports():
 
 
 def _make_graph():
-    from strata.pipeline import build_graph
+    from strata_lookml.pipeline import build_graph
 
     lookml_dir = Path(__file__).parent / "lookml" / "thelook"
     fixtures_dir = Path(__file__).parent / "fixtures"
@@ -89,7 +89,7 @@ def _make_graph():
 
 
 def test_mcp_query_field_unknown_returns_error():
-    from strata.mcp.tools import strata_query_field
+    from strata_lookml.mcp.tools import strata_query_field
 
     graph = _make_graph()
     result = strata_query_field(graph, "nonexistent_view", "nonexistent_field")
@@ -97,7 +97,7 @@ def test_mcp_query_field_unknown_returns_error():
 
 
 def test_mcp_explore_deps_unknown_returns_error():
-    from strata.mcp.tools import strata_explore_deps
+    from strata_lookml.mcp.tools import strata_explore_deps
 
     graph = _make_graph()
     result = strata_explore_deps(graph, "nonexistent_explore", "nonexistent_model")
@@ -105,7 +105,7 @@ def test_mcp_explore_deps_unknown_returns_error():
 
 
 def test_mcp_impact_unknown_table_returns_error():
-    from strata.mcp.tools import strata_impact
+    from strata_lookml.mcp.tools import strata_impact
 
     graph = _make_graph()
     result = strata_impact(graph, "nonexistent_table")
@@ -113,9 +113,9 @@ def test_mcp_impact_unknown_table_returns_error():
 
 
 def test_mcp_skill_unknown_returns_string_error():
-    from strata.mcp.tools import strata_skill
+    from strata_lookml.mcp.tools import strata_skill
 
-    skills_dir = Path(__file__).resolve().parent.parent / "src" / "strata" / "skills"
+    skills_dir = Path(__file__).resolve().parent.parent / "src" / "strata_lookml" / "skills"
     result = strata_skill(str(skills_dir), "nonexistent_skill_xyz")
     assert "not found" in result
 
@@ -124,7 +124,7 @@ def test_mcp_skill_unknown_returns_string_error():
 
 
 def test_render_chart_rejects_path_escape():
-    from strata.mcp.tools import strata_render_chart
+    from strata_lookml.mcp.tools import strata_render_chart
 
     spec_yaml = "mark: bar\nencoding:\n  x:\n    field: category\n  y:\n    field: value"
     data_json = '[{"category": "A", "value": 1}]'
@@ -135,7 +135,7 @@ def test_render_chart_rejects_path_escape():
 def test_render_chart_rejects_adjacent_directory_prefix_collision():
     # Regression: "/tmp-evil/x.html".startswith("/tmp") is True — startswith must not be used.
     # Path.is_relative_to() correctly rejects adjacent directories sharing a prefix.
-    from strata.mcp.tools import strata_render_chart
+    from strata_lookml.mcp.tools import strata_render_chart
 
     spec_yaml = "mark: bar\nencoding:\n  x:\n    field: category\n  y:\n    field: value"
     data_json = '[{"category": "A", "value": 1}]'

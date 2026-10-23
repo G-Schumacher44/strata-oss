@@ -11,7 +11,7 @@ ENTERPRISE = REPO_ROOT / "tests" / "lookml" / "enterprise_mono"
 ENTERPRISE_USAGE = FIXTURES / "enterprise_usage_facts.json"
 ENTERPRISE_SCHEMA = FIXTURES / "enterprise_schema_facts.json"
 
-CLI = [sys.executable, "-m", "strata.cli.main"]
+CLI = [sys.executable, "-m", "strata_lookml.cli.main"]
 
 
 def run(*args, env_extra=None):
@@ -206,7 +206,7 @@ def test_bootstrap_reprompts_on_nonexistent_repo_path(tmp_path):
     import click
     from click.testing import CliRunner
 
-    from strata.cli.bootstrap import _prompt_repo_path
+    from strata_lookml.cli.bootstrap import _prompt_repo_path
 
     @click.command()
     def harness():
@@ -223,7 +223,7 @@ def test_bootstrap_allows_saving_bad_path_when_confirmed():
     import click
     from click.testing import CliRunner
 
-    from strata.cli.bootstrap import _prompt_repo_path
+    from strata_lookml.cli.bootstrap import _prompt_repo_path
 
     @click.command()
     def harness():

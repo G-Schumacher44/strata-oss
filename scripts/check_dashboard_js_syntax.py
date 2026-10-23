@@ -19,9 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from strata.outputs import build_artifacts  # noqa: E402
-from strata.outputs.dashboard import build_dashboard_html  # noqa: E402
-from strata.pipeline import build_graph  # noqa: E402
+from strata_lookml.outputs import build_artifacts  # noqa: E402
+from strata_lookml.outputs.dashboard import build_dashboard_html  # noqa: E402
+from strata_lookml.pipeline import build_graph  # noqa: E402
 
 FIXTURE_REPO = ROOT / "tests" / "lookml" / "enterprise_mono"
 FIXTURE_USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"

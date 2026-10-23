@@ -11,7 +11,7 @@ The `.mcpb` spec's `uv` server type (v0.4+) requires a local `entry_point`
 file — it does not support pointing directly at a published PyPI package name.
 `src/server.py` is a two-line shim: `uv` installs `strata-lookml` from PyPI
 per `pyproject.toml` in this directory, and the shim just calls its real
-`main()` (`strata.mcp.server:main`, the same function backing the `strata-mcp`
+`main()` (`strata_lookml.mcp.server:main`, the same function backing the `strata-mcp`
 console script). Nothing here duplicates package source.
 
 ## Verification status

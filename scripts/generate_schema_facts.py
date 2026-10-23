@@ -35,7 +35,7 @@ SRC = REPO_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from strata.pipeline import build_graph  # noqa: E402
+from strata_lookml.pipeline import build_graph  # noqa: E402
 
 HEADER = "=== Strata Schema Facts Generator ==="
 SEP = "─" * 52

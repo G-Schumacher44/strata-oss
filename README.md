@@ -25,6 +25,7 @@ semantic-layer change is safe:
 > **Naming, in short:**
 > - The tool is **Strata**. The PyPI package is [`strata-lookml`](https://pypi.org/project/strata-lookml/) — the PyPI names `strata` and `strata-mcp` belong to unrelated projects.
 > - The commands you type are unchanged: `strata`, `strata-mcp`, `strata-chart`.
+> - The Python import package is `strata_lookml` (renamed from `strata` after 0.1.8, so it can be installed alongside the unrelated PyPI `strata`). Only code that does `import strata` needs updating.
 > - **`pipx` users:** one of those unrelated packages also installs a command named `strata`. If it's on your machine, `pipx install strata-lookml` will refuse the duplicate name.
 > - The `uvx` form below sidesteps this entirely — it runs in an ephemeral environment, so nothing collides.
 
@@ -193,7 +194,7 @@ pre-commit install
 Every PR is gated by:
 - `ruff check src/ tests/`
 - `ruff format --check src/ tests/`
-- `mypy src/strata --ignore-missing-imports`
+- `mypy src/strata_lookml --ignore-missing-imports`
 - `python -m pytest`
 
 See [`.github/workflows/strata-ci.yml`](.github/workflows/strata-ci.yml) for details.
@@ -244,7 +245,7 @@ Zombie PDT cost:  ~$63,750/30d  (~$765,000/year)  [estimated]
 > The demo dollar figures above are hand-authored values baked into the `enterprise_mono`
 > fixture (`tests/fixtures/enterprise_usage_facts.json`) for illustration — they are not
 > computed by applying the $5/TB formula to that fixture. The formula itself is real and runs
-> against live BigQuery scan bytes (`src/strata/l1/looker.py`) whenever `strata auth login` is
+> against live BigQuery scan bytes (`src/strata_lookml/l1/looker.py`) whenever `strata auth login` is
 > used against a real Looker/BQ instance.
 
 ### Schema Drift Detection

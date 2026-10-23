@@ -5,7 +5,7 @@ time; this shim exists only because the .mcpb `uv` runtime requires a local
 entry_point file (see mcpb/README.md).
 """
 
-from strata.mcp.server import main
+from strata_lookml.mcp.server import main
 
 if __name__ == "__main__":
     main()

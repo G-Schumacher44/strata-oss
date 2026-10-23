@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from strata.l1.looker import (
+from strata_lookml.l1.looker import (
     LiveLookerNotConfigured,
     LookerSystemActivityProvider,
     LookerToken,
@@ -14,9 +14,9 @@ from strata.l1.looker import (
     load_token,
     save_token,
 )
-from strata.outputs import build_artifacts
-from strata.outputs.dashboard import build_dashboard_html
-from strata.pipeline import build_graph_with_provider
+from strata_lookml.outputs import build_artifacts
+from strata_lookml.outputs.dashboard import build_dashboard_html
+from strata_lookml.pipeline import build_graph_with_provider
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parents[1]
@@ -144,7 +144,15 @@ def test_strata_auth_status_cli(tmp_path):
         LookerToken(access_token="abcdef1234567890", looker_url="https://example.looker.com"), path
     )
     result = subprocess.run(
-        [sys.executable, "-m", "strata.cli.main", "auth", "status", "--token-path", str(path)],
+        [
+            sys.executable,
+            "-m",
+            "strata_lookml.cli.main",
+            "auth",
+            "status",
+            "--token-path",
+            str(path),
+        ],
         cwd=ROOT,
         text=True,
         capture_output=True,
