@@ -9,10 +9,11 @@ install into Claude Desktop. Built by the the `Build MCP Bundle (.mcpb)` step in
 
 The `.mcpb` spec's `uv` server type (v0.4+) requires a local `entry_point`
 file — it does not support pointing directly at a published PyPI package name.
-`src/server.py` is a two-line shim: `uv` installs `strata-lookml` from PyPI
-per `pyproject.toml` in this directory, and the shim just calls its real
-`main()` (`strata_lookml.mcp.server:main`, the same function backing the `strata-mcp`
-console script). Nothing here duplicates package source.
+`src/server.py` is a small shim: `uv` installs `strata-lookml` from PyPI
+per `pyproject.toml` in this directory, and the shim runs that distribution's own
+`strata-mcp` console-script entry point. It resolves the entry point rather than
+importing a module path, so it works with any pin (the import package was `strata`
+through 0.1.8 and is `strata_lookml` after). Nothing here duplicates package source.
 
 ## Verification status
 

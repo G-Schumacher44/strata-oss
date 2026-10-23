@@ -24,8 +24,11 @@
 - The MCP server name `strata`, the `.mcp.json` server key, and `~/.strata/` config paths.
 - Historical conductor docs (handoff-log, handoff-archive, slice specs, templates) still say
   `src/strata`. They are records of past work.
-- mcpb shim pin stays `strata-lookml==0.1.8`. The shim now imports `strata_lookml`, which works with
-  the next release because release.yml requires the pin to equal the tag.
+- mcpb shim pin stays `strata-lookml==0.1.8`. Codex P2 on #45: importing `strata_lookml` directly
+  would break the bundle against that pin. The shim now resolves the installed distribution's
+  `strata-mcp` console-script entry point, so it works with both the 0.1.8 pin (`strata`) and the
+  renamed package. Verified with an MCP stdio round-trip (18 tools) on both. The old direct import
+  fails on the 0.1.8 pin with ModuleNotFoundError.
 
 ## Landing order
 Merge this last, after the open src/strata PRs (#33, #35–#44). Each of them needs a rebase onto
