@@ -202,8 +202,31 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
     return server
 
 
-def main() -> None:
+_USAGE = """\
+usage: strata-mcp [-h]
+
+Strata's MCP server over stdio: read-only LookML analysis tools plus a sandboxed chart
+renderer. An MCP client (Claude, Cursor, VS Code, ...) launches this command; it speaks
+JSON-RPC on stdin/stdout and takes no arguments.
+
+Configuration (environment):
+  STRATA_REPO_PATH        LookML repo to analyze (else ~/.strata/config.json, else cwd)
+  STRATA_USAGE_FIXTURE    usage facts JSON for offline L1 enrichment
+  STRATA_SCHEMA_FIXTURE   BigQuery schema facts JSON for drift checks
+  STRATA_CACHE_PATH       IR cache file (default: <repo>/strata_ir.db)
+
+Check the setup first with `strata mcp validate`; print client config with `strata mcp config`.
+"""
+
+
+def main(argv: list[str] | None = None) -> None:
     import sys
+
+    args = sys.argv[1:] if argv is None else argv
+    if any(arg in ("-h", "--help") for arg in args):
+        # Print usage and exit before building the graph or opening the stdio transport.
+        sys.stdout.write(_USAGE)
+        return
 
     sys.stderr.write("Starting Strata MCP server...\n")
     server = create_server()
