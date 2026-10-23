@@ -97,34 +97,42 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
 
     @server.tool()
     def strata_query_field(view: str, field: str) -> dict[str, Any]:
+        """Get one field's resolved definition (sql, type, tags, source_file, resolution_chain); errors if absent."""
         return query_field(ir_graph, view, field)
 
     @server.tool()
     def strata_list_orphans(kind: str = "all") -> list[dict[str, Any]]:
+        """List views no explore uses as base, join, or extends ancestor (kind: all|view|explore|field)."""
         return query_list_orphans(ir_graph, kind)
 
     @server.tool()
     def strata_explore_deps(explore: str, model: str) -> dict[str, Any]:
+        """Get an explore's base view, joins (name, view, type), resolution_chain, and total field_count."""
         return query_explore_deps(ir_graph, explore, model)
 
     @server.tool()
     def strata_ir_status() -> dict[str, Any]:
+        """Summarize the loaded IR (repo_path, built_at, node_counts, edge_count, cache_path)."""
         return query_ir_status(ir_graph)
 
     @server.tool()
     def strata_usage_summary() -> dict[str, Any]:
+        """Summarize L1 usage facts: has_l1, period, query totals, dead-code/PDT/zombie/drift counts."""
         return query_usage_summary(ir_graph)
 
     @server.tool()
     def strata_dead_code_register() -> list[dict[str, Any]]:
+        """List dead explores (zero queries, no content refs) and orphan views, with evidence; needs usage facts."""
         return query_dead_code_register(ir_graph)
 
     @server.tool()
     def strata_pdt_costs() -> list[dict[str, Any]]:
+        """List PDT builds, bytes, estimated USD cost, consumers, and status (used/unused/zombie/missing)."""
         return query_pdt_costs(ir_graph)
 
     @server.tool()
     def strata_schema_drift() -> list[dict[str, Any]]:
+        """List tables and field-referenced columns missing from BigQuery schema facts; needs schema facts."""
         return query_schema_drift(ir_graph)
 
     @server.tool()

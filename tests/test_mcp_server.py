@@ -11,6 +11,17 @@ def test_server_version_matches_installed_package():
     assert _server_version() == pkg_version("strata-lookml")
 
 
+def test_every_registered_tool_has_a_description():
+    # Over the real registry (list_tools), so a new tool without a docstring fails here:
+    # an empty description gives the client model nothing to choose the tool by.
+    import asyncio
+
+    tools = asyncio.run(create_server(build_resolved_graph(FIXTURES)).list_tools())
+    assert len(tools) >= 18
+    missing = [tool.name for tool in tools if not (tool.description or "").strip()]
+    assert not missing, f"tools without a description: {missing}"
+
+
 def test_server_reports_package_version_not_sdk_version():
     graph = build_resolved_graph(FIXTURES)
     server = create_server(graph)
