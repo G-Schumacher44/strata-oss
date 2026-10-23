@@ -123,7 +123,10 @@ uvx --from strata-lookml strata query orphans --repo /path/to/your/lookml   # un
 uvx --from strata-lookml strata outputs       --repo /path/to/your/lookml --out strata-out   # JSON artifacts
 ```
 
-Usage-based findings (zero-query explores, PDT cost) need usage facts — a fixture JSON or `strata auth login`.
+Usage-based findings (zero-query explores, PDT cost) need usage facts: pass a fixture with
+`--usage-fixture usage.json`, or run `strata auth login` and then
+`strata outputs --repo /path/to/your/lookml --looker-url https://your.looker.instance` for live
+enrichment. Logging in alone does not change what the `query` commands return.
 
 <details>
 <summary>Try it now with bundled playgrounds</summary>

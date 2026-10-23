@@ -2,6 +2,15 @@
 
 **Mode:** Patch (six small, independent changes, one commit each)
 **Date:** 2026-10-23
+Commit: 2aa93bc (last implementation commit of the six; round-1 fixes b6559cc, round-2 fixes on top)
+Conductor Mode: patch — each commit is a single-concern fix or doc/metadata change. None changes a
+  layer boundary, adds a tool, or alters a tool's behavior. Descriptions, `--help`, and an escape inside
+  a comment are all non-functional for existing callers. Codex asked for Full Conductor; this is
+  recorded as a judgment call and answered on the PR thread.
+Context Loaded: AGENTS.md, conductor/index.md, README.md, pyproject.toml, .github/workflows/*,
+  src/strata_lookml/mcp/{server,tools}.py, ir/resolver.py (_mark_orphans), l1/{enrich,schema}.py,
+  outputs/dashboard.py, the #44 diff, `gh release view` v0.1.6–v0.1.8
+Location: per-branch `conductor/handoff/`, matching the open PRs (convention question: #48).
 **Stacked on:** `refactor/import-strata-lookml` (#45). The PR base is that branch, not main.
 
 ## What changed

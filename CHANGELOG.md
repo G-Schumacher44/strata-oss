@@ -14,6 +14,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `import strata` / `from strata.x import y` with `strata_lookml`. The `strata`, `strata-mcp`
   and `strata-chart` commands, the MCP server name, and `~/.strata/` config are unchanged.
   No `strata` compatibility package ships, because it would recreate the collision.
+  **Upgrading in an environment that also has `strata` or `strata-mcp`:** uninstalling 0.1.8
+  removes the `strata/` files it shared with that package, so reinstall it afterwards
+  (`pip install --force-reinstall --no-deps strata`).
   ([#45](https://github.com/G-Schumacher44/strata-oss/pull/45))
 - Package metadata: SPDX `license = "Apache-2.0"` with `license-files` (PEP 639), keywords,
   more classifiers, and Documentation / Changelog project URLs.
