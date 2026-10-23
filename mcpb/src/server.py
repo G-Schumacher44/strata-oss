@@ -6,7 +6,7 @@ entry_point file (see mcpb/README.md).
 
 It runs the installed distribution's own `strata-mcp` console script instead
 of importing a module path, so it works for any pinned version: through
-0.1.8 the import package was `strata`, from 0.1.9 it is `strata_lookml`.
+0.1.8 the import package was `strata`, after that it is `strata_lookml`.
 """
 
 from importlib.metadata import entry_points
