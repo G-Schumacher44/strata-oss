@@ -26,6 +26,7 @@ semantic-layer change is safe:
 > - The tool is **Strata**. The PyPI package is [`strata-lookml`](https://pypi.org/project/strata-lookml/) — the PyPI names `strata` and `strata-mcp` belong to unrelated projects.
 > - The commands you type are unchanged: `strata`, `strata-mcp`, `strata-chart`.
 > - The Python import package is `strata_lookml`. Through 0.1.8 it was `strata`, the same top-level name the unrelated `strata` and `strata-mcp` wheels ship, so installing either beside it overwrote files. Only code that does `import strata` needs updating; the commands are unaffected.
+> - **Upgrading from 0.1.8 in an environment that also has the unrelated `strata` or `strata-mcp` package:** uninstalling 0.1.8 removes the `strata/` files they shared, so reinstall that package afterwards (`pip install --force-reinstall --no-deps strata`, or `strata-mcp`).
 > - **`pipx` users:** the unrelated `strata-mcp` package also installs a command named `strata`. If it's on your machine, pipx will not link Strata's `strata` over it.
 > - The `uvx` form below sidesteps this entirely — it runs in an ephemeral environment, so nothing collides.
 

@@ -2,6 +2,12 @@
 
 **Mode:** Patch (mechanical, repo-wide)
 **Date:** 2026-10-23
+Commit: 55f4ded (the rename; follow-ups 7d63fa1 mcpb shim, plus the upgrade-path note)
+Conductor Mode: patch — a mechanical rename with no behavior change and no new slice
+Context Loaded: AGENTS.md, conductor/index.md, conductor/handoff-log.md, pyproject.toml,
+  .github/workflows/*, mcpb/*, every file referencing the old package path
+Location: per-branch file under `conductor/handoff/`, the convention every open PR (#33, #35–#44)
+  uses. AGENTS.md still names `handoff-log.md` (tracked in #48).
 
 ## What changed
 - `git mv src/strata src/strata_lookml`. The import package name `strata` collided with the
@@ -29,6 +35,12 @@
   `strata-mcp` console-script entry point, so it works with both the 0.1.8 pin (`strata`) and the
   renamed package. Verified with an MCP stdio round-trip (18 tools) on both. The old direct import
   fails on the 0.1.8 pin with ModuleNotFoundError.
+
+## Upgrade path (Codex P2 on #45)
+Upgrading 0.1.8 → the renamed release in an env that also has PyPI `strata` (or `strata-mcp`)
+removes the shared `strata/__init__.py` and `strata/config.py` via 0.1.8's RECORD. Reproduced
+with uv (strata.config then fails to import). Repaired by `--force-reinstall --no-deps strata`.
+The fix is in the README naming note; the CHANGELOG (next PR) carries it too.
 
 ## Landing order
 Merge this last, after the open src/strata PRs (#33, #35–#44). Each of them needs a rebase onto
