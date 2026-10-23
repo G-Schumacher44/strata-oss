@@ -17,3 +17,16 @@ def test_mcp_importable():
     import mcp
 
     assert mcp is not None
+
+
+def test_package_source_compiles_without_syntax_warnings():
+    """Invalid string escapes are a SyntaxWarning today and a SyntaxError under -W error
+    (and in a future Python). Compile every module with that warning promoted to an error."""
+    import warnings
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "src" / "strata_lookml"
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", SyntaxWarning)
+        for path in sorted(src.rglob("*.py")):
+            compile(path.read_text(encoding="utf-8"), str(path), "exec")
