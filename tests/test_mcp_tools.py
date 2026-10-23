@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from strata.ir.resolver import build_resolved_graph
-from strata.mcp.tools import (
+from strata_lookml.ir.resolver import build_resolved_graph
+from strata_lookml.mcp.tools import (
     strata_chart_templates,
     strata_conductor_status,
     strata_dead_code_register,
@@ -19,10 +19,10 @@ from strata.mcp.tools import (
     strata_validation_scope,
     strata_view_sources,
 )
-from strata.navigate import build_navigate_brief
+from strata_lookml.navigate import build_navigate_brief
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SKILLS_DIR = REPO_ROOT / "src" / "strata" / "skills"
+SKILLS_DIR = REPO_ROOT / "src" / "strata_lookml" / "skills"
 
 FIXTURES = Path(__file__).parent / "fixtures"
 # Use a committed fixture, not the live repo conductor/, so the test is
@@ -78,8 +78,8 @@ def test_strata_ir_status():
 
 
 def test_l1_repo_brain_tools():
-    from strata.l1.enrich import enrich_graph
-    from strata.l1.fixtures import load_usage_facts
+    from strata_lookml.l1.enrich import enrich_graph
+    from strata_lookml.l1.fixtures import load_usage_facts
 
     graph = build_resolved_graph(FIXTURES)
     facts = load_usage_facts(FIXTURES / "usage_facts.json")
@@ -126,7 +126,7 @@ def test_strata_conductor_status():
 
 
 def test_strata_schema_drift_tool():
-    from strata.pipeline import build_graph
+    from strata_lookml.pipeline import build_graph
 
     graph = build_graph(
         FIXTURES, FIXTURES / "usage_facts.json", FIXTURES / "schema_facts_drift.json"
@@ -229,7 +229,7 @@ def test_navigate_unknown_single_token_errors():
 
 
 def test_strata_chart_templates():
-    charts_dir = REPO_ROOT / "src" / "strata" / "viz" / "charts"
+    charts_dir = REPO_ROOT / "src" / "strata_lookml" / "viz" / "charts"
     templates = strata_chart_templates(charts_dir)
     assert isinstance(templates, list)
     names = [t["name"] for t in templates]
@@ -247,7 +247,7 @@ def test_strata_find_field_truncated_flag_absent_when_under_cap():
 
 
 def test_strata_find_field_truncated_flag_present_at_cap():
-    from strata.ir.types import IRGraph, IRNode
+    from strata_lookml.ir.types import IRGraph, IRNode
 
     # Build a synthetic graph with 51 matching field nodes to trigger the cap.
     graph = IRGraph(repo_path="/synthetic", built_at="2026-01-01T00:00:00+00:00")
@@ -273,7 +273,7 @@ def test_strata_find_field_truncated_flag_present_at_cap():
 
 
 def test_strata_find_field_truncated_flag_false_at_exactly_fifty_matches():
-    from strata.ir.types import IRGraph, IRNode
+    from strata_lookml.ir.types import IRGraph, IRNode
 
     # Exactly 50 matching field nodes: all 50 are returned, nothing is omitted,
     # so truncated must be False. This is the off-by-one boundary: len(matches)

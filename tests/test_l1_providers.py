@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from strata.l1.fixtures import FixtureUsageProvider
-from strata.l1.provider import UsageFacts
-from strata.l1.replay import ReplayLookerUsageProvider
-from strata.pipeline import build_graph_with_provider
+from strata_lookml.l1.fixtures import FixtureUsageProvider
+from strata_lookml.l1.provider import UsageFacts
+from strata_lookml.l1.replay import ReplayLookerUsageProvider
+from strata_lookml.pipeline import build_graph_with_provider
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,8 +66,8 @@ def test_build_graph_with_replay_provider_matches_l1_contract():
 
 
 def test_check_replay_cli():
-    from strata.l1.provider import UsageFacts
-    from strata.l1.replay import ReplayLookerUsageProvider
+    from strata_lookml.l1.provider import UsageFacts
+    from strata_lookml.l1.replay import ReplayLookerUsageProvider
 
     facts = UsageFacts.from_provider(ReplayLookerUsageProvider(FIXTURES / "replay_facts.json"))
     total = sum(item.query_count for item in facts.explore_usage)

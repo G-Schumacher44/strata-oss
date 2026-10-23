@@ -67,7 +67,7 @@ strata lint
 
 This runs:
 1. **Ruff Check**: Catches style violations, unused imports, and common bugs.
-2. **Mypy**: Validates type safety across `src/strata`.
+2. **Mypy**: Validates type safety across `src/strata_lookml`.
 
 To auto-fix style and format issues:
 
@@ -89,7 +89,7 @@ pre-commit install
 Our GitHub Actions workflow (`strata-ci.yml`) executes the following on every push and PR:
 - `ruff check src/ tests/`
 - `ruff format --check src/ tests/`
-- `mypy src/strata --ignore-missing-imports`
+- `mypy src/strata_lookml --ignore-missing-imports`
 - `pytest`
 
 ---

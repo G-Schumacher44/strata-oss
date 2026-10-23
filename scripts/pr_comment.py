@@ -21,9 +21,9 @@ if str(SRC) not in sys.path:
 # posting a fresh one on every push (one always-current comment per PR).
 BOT_MARKER = "<!-- strata-bot -->"
 
-from strata.mcp.tools import strata_dead_code_register, strata_validation_scope  # noqa: E402
-from strata.outputs.pr_report import build_pr_comment  # noqa: E402
-from strata.pipeline import build_graph  # noqa: E402
+from strata_lookml.mcp.tools import strata_dead_code_register, strata_validation_scope  # noqa: E402
+from strata_lookml.outputs.pr_report import build_pr_comment  # noqa: E402
+from strata_lookml.pipeline import build_graph  # noqa: E402
 
 
 def _files_to_views(graph, changed_files: list[str]) -> dict[str, list[str]]:

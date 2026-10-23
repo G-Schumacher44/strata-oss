@@ -3,9 +3,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from strata.ir.resolver import build_resolved_graph
-from strata.outputs import build_artifacts
-from strata.validation import validation_scope
+from strata_lookml.ir.resolver import build_resolved_graph
+from strata_lookml.outputs import build_artifacts
+from strata_lookml.validation import validation_scope
 
 FIXTURES = Path(__file__).parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +78,7 @@ def test_validation_scope_surfaces_in_artifacts_and_cli(tmp_path):
         [
             sys.executable,
             "-m",
-            "strata.cli.main",
+            "strata_lookml.cli.main",
             "outputs",
             "--repo",
             str(FIXTURES),

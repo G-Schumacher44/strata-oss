@@ -2,10 +2,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from strata.ir.builder import build_raw_graph
-from strata.ir.parser import parse_repo
-from strata.ir.resolver import build_resolved_graph, resolve_graph
-from strata.ir.store import load_ir, save_ir
+from strata_lookml.ir.builder import build_raw_graph
+from strata_lookml.ir.parser import parse_repo
+from strata_lookml.ir.resolver import build_resolved_graph, resolve_graph
+from strata_lookml.ir.store import load_ir, save_ir
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,7 +84,7 @@ def test_build_ir_cli_writes_cache(tmp_path):
         [
             sys.executable,
             "-m",
-            "strata.cli.main",
+            "strata_lookml.cli.main",
             "build",
             "--repo",
             str(FIXTURES),

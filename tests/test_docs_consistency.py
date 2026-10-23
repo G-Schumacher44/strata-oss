@@ -1,12 +1,12 @@
 import re
 from pathlib import Path
 
-from strata.cli.main import strata_cli
+from strata_lookml.cli.main import strata_cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
-SERVER = REPO_ROOT / "src" / "strata" / "mcp" / "server.py"
-SKILLS_DIR = REPO_ROOT / "src" / "strata" / "skills"
+SERVER = REPO_ROOT / "src" / "strata_lookml" / "mcp" / "server.py"
+SKILLS_DIR = REPO_ROOT / "src" / "strata_lookml" / "skills"
 
 
 def test_readme_tool_table_matches_registered_mcp_tools():
@@ -44,7 +44,7 @@ def test_readme_domain_skills_count_matches_filesystem():
     stale = [n for n in mentions if int(n) != skill_count]
     assert stale == [], (
         f"README says {stale} domain skills but the filesystem has {skill_count} "
-        f"(src/strata/skills/**/SKILL.md)"
+        f"(src/strata_lookml/skills/**/SKILL.md)"
     )
 
 
@@ -63,7 +63,7 @@ def test_agent_facing_docs_do_not_contain_stale_counts():
     checked = [
         README,
         REPO_ROOT / "tests" / "README.md",
-        REPO_ROOT / "src" / "strata" / "skills" / "governance" / "strata_workflow.md",
+        REPO_ROOT / "src" / "strata_lookml" / "skills" / "governance" / "strata_workflow.md",
     ]
     stale_phrases = [
         "skills: 13 found",

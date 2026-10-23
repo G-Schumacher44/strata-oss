@@ -4,7 +4,7 @@ import importlib
 
 
 def test_strata_importable():
-    assert importlib.import_module("strata") is not None
+    assert importlib.import_module("strata_lookml") is not None
 
 
 def test_networkx_importable():

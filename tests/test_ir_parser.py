@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from strata.ir.parser import parse_file, parse_repo
+from strata_lookml.ir.parser import parse_file, parse_repo
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
