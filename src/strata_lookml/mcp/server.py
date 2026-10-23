@@ -122,12 +122,12 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
 
     @server.tool()
     def strata_dead_code_register() -> list[dict[str, Any]]:
-        """List dead explores (zero queries, no content refs) and orphan views, with evidence; needs usage facts."""
+        """List dead explores (zero queries, no content refs) and dead views (orphan, or every consumer dead); needs usage facts."""
         return query_dead_code_register(ir_graph)
 
     @server.tool()
     def strata_pdt_costs() -> list[dict[str, Any]]:
-        """List PDT builds, bytes, estimated USD cost, consumers, and status (used/unused/zombie/missing)."""
+        """List PDT builds, bytes, estimated USD cost, consumers, and status (used/unused/zombie/missing_build_facts)."""
         return query_pdt_costs(ir_graph)
 
     @server.tool()

@@ -34,6 +34,10 @@
 - Wheel and sdist built and `twine check --strict` PASSED, at hatchling 1.27.0 (metadata 2.4) and 1.32.4 (metadata 2.5).
 - The MCP stdio `tools/list` returns 18 tools, none with an empty description.
 - New tests have negative controls: each fails on the pre-fix code.
+- Artemis round 1 fixes:
+  - The compile guard now also promotes DeprecationWarning. On 3.11 (CI's interpreter) an invalid escape warns as DeprecationWarning, so the SyntaxWarning-only version could not fail there. The negative control was confirmed on 3.11.14 and 3.12.
+  - The dead-code description now covers zombie views.
+  - The PDT status list now reads `missing_build_facts`.
 
 ## Exact Next Steps
 - Merge after #45 lands (retarget this PR's base to main then), then the 0.1.9 bump PR.
