@@ -320,6 +320,30 @@ def test_navigate_two_part_anchor_resolves_to_physical_table_when_in_ir():
     assert _classify_anchor("orders.id", graph) == "field"
 
 
+def test_navigate_two_part_anchor_prefers_exact_field_over_same_named_table():
+    # Regression (#38 review): with both `physical_table:analytics.orders` and
+    # `field:analytics.orders` in the IR, the field anchor was shadowed by the table.
+    from strata.ir.types import IRGraph, IRNode
+
+    graph = IRGraph(repo_path="", built_at="")
+    graph.add_node(
+        IRNode("physical_table:analytics.orders", "physical_table", "analytics.orders", "")
+    )
+    graph.add_node(
+        IRNode(
+            "field:analytics.orders",
+            "field",
+            "analytics.orders",
+            "",
+            attrs={"view": "analytics", "field_name": "orders", "field_kind": "dimension"},
+        )
+    )
+    brief = build_navigate_brief(graph, "analytics.orders")
+    assert brief["anchor_type"] == "field"
+    assert [m["field"] for m in brief["field_matches"]] == ["orders"]
+    assert "ambiguous_anchor" in brief
+
+
 def test_load_ir_missing_cache_raises_without_creating_a_file(tmp_path):
     import pytest
 
