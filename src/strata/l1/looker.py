@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
+from strata.l1.replay import _latest_iso
 from strata.l1.types import ContentReference, ExploreUsage, PDTBuild
 
 DEFAULT_CLIENT_GUID = "com.gsanalytics.strata.cli"
@@ -375,12 +376,3 @@ def _int(value: Any) -> int:
     if value in {None, ""}:
         return 0
     return int(float(value))
-
-
-def _latest_iso(current: str | None, candidate: Any) -> str | None:
-    if not candidate:
-        return current
-    candidate_str = str(candidate)
-    if current is None or candidate_str > current:
-        return candidate_str
-    return current
