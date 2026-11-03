@@ -263,3 +263,20 @@ def test_generate_schema_dry_run(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "dry-run" in result.stdout.lower() or "dry" in result.stdout.lower()
     assert not (tmp_path / "schema_facts.json").exists()
+
+
+def test_navigate_chart_survives_hostile_anchor(monkeypatch):
+    # Regression: anchor was f-string-interpolated into a YAML spec, so a quote/brace/newline
+    # crashed the CLI with a yaml.YAMLError traceback; it also leaked into the temp filename.
+    import tempfile
+
+    from strata.cli.query import _render_navigate_chart
+
+    brief = {"views": [{"name": "orders", "field_count": 3}]}
+    # strata_render_chart only writes under ~/.strata/output or /tmp, so pin the temp dir there.
+    with tempfile.TemporaryDirectory(dir="/tmp") as d:
+        monkeypatch.setattr(tempfile, "tempdir", d)
+        _render_navigate_chart('proj"id: {x}\n# y/../z', brief, open_browser=False)
+        out = list(Path(d).glob("strata_navigate_*.html"))
+        assert len(out) == 1
+        assert 'proj\\"id' in out[0].read_text(encoding="utf-8")
