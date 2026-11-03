@@ -120,14 +120,18 @@ def _latest_iso(current: str | None, candidate: Any) -> str | None:
     """Return the chronologically later of two ISO-8601 timestamps.
 
     String comparison is wrong across suffix styles ("...Z" sorts after "...+00:00" for the
-    same instant), so compare parsed instants; fall back to string order only when a value
-    does not parse.
+    same instant), so compare parsed instants. The comparison key is a total order so the
+    result never depends on row order: equal instants tie-break on the string, and any
+    parseable timestamp outranks an unparseable value (which fall back to string order).
     """
     if not candidate:
         return current
     candidate_str = str(candidate)
     if current is None:
         return candidate_str
-    a, b = _instant(candidate_str), _instant(current)
-    is_later = a > b if a is not None and b is not None else candidate_str > current
-    return candidate_str if is_later else current
+    return max(current, candidate_str, key=_iso_sort_key)
+
+
+def _iso_sort_key(value: str) -> tuple[Any, ...]:
+    instant = _instant(value)
+    return (0, value) if instant is None else (1, instant, value)
