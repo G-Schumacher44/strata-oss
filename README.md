@@ -19,7 +19,7 @@ and catch broken SQL. They usually do not answer the governance questions that d
 semantic-layer change is safe:
 
 - Which explores had zero queries in the last 30 days?
-- Which PDTs are rebuilding nightly at ~$45,000/month in estimated BQ compute to serve nobody?
+- Which PDTs are rebuilding nightly at ~$45,000/month in estimated BQ compute to serve nobody? (illustrative: that figure is a hand-authored value in the bundled `enterprise_mono` demo fixture, not a measurement of any real warehouse)
 - Which BigQuery column drops will silently break LookML before users find out at query time?
 
 > **Naming, in short:**
@@ -692,6 +692,4 @@ Full index: [**docs/README.md**](docs/README.md)
 
 [Apache 2.0](LICENSE) — © 2026 Garrett Schumacher
 
-<!-- MCP registry identity — verified at publish time by the official registry -->
-
-mcp-name: io.github.g-schumacher44/strata
+<!-- mcp-name: io.github.G-Schumacher44/strata-oss -->
