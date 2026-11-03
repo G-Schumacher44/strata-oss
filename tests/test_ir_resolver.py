@@ -142,3 +142,27 @@ def test_sql_upstreams_backtick_per_part_quoting_and_view_refs():
         JOIN `${customers.SQL_TABLE_NAME}` c ON o.id = c.id
     """
     assert _sql_upstreams(sql) == ["acme-analytics.silver.int_orders"]
+
+
+def test_per_part_quoted_table_mints_one_node_for_view_and_pdt(tmp_path):
+    # Twin review: sql_table_name only trimmed outer backticks while PDT upstreams dropped
+    # them all, so one per-part-quoted table became two physical_table nodes.
+    (tmp_path / "t.view.lkml").write_text(
+        "view: orders {\n"
+        "  sql_table_name: `acme-analytics`.silver.`int_orders` ;;\n"
+        "  dimension: id { sql: ${TABLE}.id ;; }\n"
+        "}\n"
+        "view: orders_pdt {\n"
+        "  derived_table: { sql: SELECT id FROM `acme-analytics`.silver.`int_orders` ;; }\n"
+        "  dimension: id { sql: ${TABLE}.id ;; }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    graph = build_resolved_graph(tmp_path)
+    tables = [n for n in graph.nodes if n.startswith("physical_table:")]
+    assert tables == ["physical_table:acme-analytics.silver.int_orders"]
+
+
+def test_sql_upstreams_backtick_quoted_cte_is_not_a_table():
+    sql = "WITH `ranked` AS (SELECT id FROM analytics.events) SELECT * FROM `ranked`"
+    assert _sql_upstreams(sql) == ["analytics.events"]
