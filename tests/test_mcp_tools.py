@@ -318,3 +318,14 @@ def test_navigate_two_part_anchor_resolves_to_physical_table_when_in_ir():
     assert brief["anchor_type"] == "bq_table"
     # A two-part anchor that is not a known table still falls through to field lookup.
     assert _classify_anchor("orders.id", graph) == "field"
+
+
+def test_load_ir_missing_cache_raises_without_creating_a_file(tmp_path):
+    import pytest
+
+    from strata.ir.store import load_ir
+
+    missing = tmp_path / "strata_ir.db"
+    with pytest.raises(FileNotFoundError, match="IR cache not found"):
+        load_ir(missing)
+    assert not missing.exists()
