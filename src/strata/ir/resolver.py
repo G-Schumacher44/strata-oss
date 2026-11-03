@@ -439,7 +439,15 @@ def _sql_upstreams(sql: str) -> list[str]:
     cte_names = set(re.findall(r"\b(\w+)\s+AS\s*\(", sql, flags=re.IGNORECASE))
     # Unquoted identifiers: project.dataset.table (no hyphens in project name)
     unquoted = set(re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]+)", sql, flags=re.IGNORECASE))
-    # Backtick-quoted BigQuery identifiers: `project-id.dataset.table`
-    backtick = set(re.findall(r"\b(?:from|join)\s+`([^`]+)`", sql, flags=re.IGNORECASE))
+    # Backtick-quoted BigQuery identifiers: `project-id.dataset.table`, including the
+    # per-part form `project-id`.dataset.`table`. Quotes are dropped so the id matches the
+    # backtick-stripped sql_table_name node. `${...}` is a LookML view reference, not a table.
+    backtick = {
+        ref.replace("`", "")
+        for ref in re.findall(
+            r"\b(?:from|join)\s+(`[^`]+`(?:\.(?:`[^`]+`|\w+))*)", sql, flags=re.IGNORECASE
+        )
+        if "${" not in ref
+    }
     tables = unquoted | backtick
     return sorted(tables - cte_names)

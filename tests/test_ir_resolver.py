@@ -132,3 +132,13 @@ def test_sql_upstreams_cte_not_treated_as_upstream():
     result = _sql_upstreams(sql)
     assert "ranked" not in result
     assert "analytics.events" in result
+
+
+def test_sql_upstreams_backtick_per_part_quoting_and_view_refs():
+    # #33 review: per-part quoting yielded only the project, and a backticked ${view} LookML
+    # reference became a phantom physical table.
+    sql = """
+        SELECT * FROM `acme-analytics`.silver.`int_orders` o
+        JOIN `${customers.SQL_TABLE_NAME}` c ON o.id = c.id
+    """
+    assert _sql_upstreams(sql) == ["acme-analytics.silver.int_orders"]
