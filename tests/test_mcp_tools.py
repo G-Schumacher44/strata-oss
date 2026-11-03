@@ -355,6 +355,37 @@ def test_load_ir_missing_cache_raises_without_creating_a_file(tmp_path):
     assert not missing.exists()
 
 
+def test_load_ir_open_cannot_create_the_cache_even_if_exists_check_races(tmp_path, monkeypatch):
+    # Regression (#39 review): exists() then sqlite3.connect raced a concurrent `strata clean`;
+    # the connect recreated the ghost file. Simulate the race by making exists() lie.
+    import os
+    import sqlite3
+
+    import pytest
+
+    from strata.ir.store import cache_age_seconds, load_ir
+
+    missing = tmp_path / "strata_ir.db"
+    monkeypatch.setattr(Path, "exists", lambda self: True)
+    with pytest.raises((FileNotFoundError, sqlite3.OperationalError)):
+        load_ir(missing)
+    with pytest.raises((FileNotFoundError, sqlite3.OperationalError)):
+        cache_age_seconds(missing)
+    assert not os.path.exists(missing)
+
+
+def test_ir_cache_roundtrips_through_a_path_needing_uri_escaping(tmp_path):
+    from strata.ir.store import cache_age_seconds, load_ir, save_ir
+    from strata.ir.types import IRGraph
+
+    cache = tmp_path / "dir with space #1 ?x" / "strata_ir.db"
+    save_ir(IRGraph(repo_path="r", built_at="2026-01-01T00:00:00+00:00"), cache)
+    assert load_ir(cache).repo_path == "r"
+    assert cache_age_seconds(cache) is not None
+    assert cache_age_seconds(tmp_path / "nope.db") is None
+    assert not (tmp_path / "nope.db").exists()
+
+
 def test_rebuild_picks_up_edited_source_lines(tmp_path):
     # Regression: _scan_file's process-wide lru_cache served the first build's line numbers
     # to every later build in the same process.
