@@ -315,3 +315,19 @@ def test_navigate_chart_writes_under_guarded_output_root(tmp_path, monkeypatch):
 
     assert (home / ".strata" / "output" / "strata_navigate_analytics_orders.html").exists()
     assert not list(outside.iterdir())
+
+
+def test_navigate_chart_anchor_cannot_break_out_of_the_script_block(tmp_path, monkeypatch):
+    # #36 review: once the spec is built as JSON, a quote-plus-"</script>" anchor parses and
+    # reaches render_chart's <script>. render_chart's "<" -> \u003c escaping (#35) must hold.
+    from strata.cli.query import _render_navigate_chart
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    payload = 'x"</script><script>alert(1)</script>'
+    _render_navigate_chart(payload, {"views": [{"name": "v", "field_count": 1}]}, False)
+    (out,) = (home / ".strata" / "output").glob("strata_navigate_*.html")
+    html = out.read_text(encoding="utf-8")
+    assert "<script>alert(1)" not in html
+    assert "\\u003c/script>\\u003cscript>alert(1)" in html
