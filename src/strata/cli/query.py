@@ -455,10 +455,9 @@ def _navigate_markdown(anchor: str, brief: dict[str, Any]) -> str:
 
 
 def _render_navigate_chart(anchor: str, brief: dict[str, Any], open_browser: bool) -> None:
-    import tempfile
     import webbrowser
 
-    from strata.mcp.tools import strata_render_chart
+    from strata.mcp.tools import chart_output_dir, strata_render_chart
 
     views = brief.get("views") or brief.get("backing_tables") or []
     if not views:
@@ -491,7 +490,7 @@ def _render_navigate_chart(anchor: str, brief: dict[str, Any], open_browser: boo
     )
 
     safe_anchor = re.sub(r"[^A-Za-z0-9_-]", "_", anchor)
-    out_path = str(Path(tempfile.gettempdir()) / f"strata_navigate_{safe_anchor}.html")
+    out_path = str(chart_output_dir() / f"strata_navigate_{safe_anchor}.html")
     result = strata_render_chart(spec, json.dumps(rows), out_path)
     click.secho(f"Chart: {result['path']}", fg="green")
     if open_browser:

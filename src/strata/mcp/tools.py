@@ -250,13 +250,18 @@ def strata_view_sources(graph: IRGraph, model: str | None = None) -> dict[str, A
     return {"model_filter": model, "views": views, "count": len(views)}
 
 
+def chart_output_dir() -> Path:
+    """The canonical chart output root (allowed by strata_render_chart's path guard)."""
+    return (Path.home() / ".strata" / "output").resolve()
+
+
 def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[str, str]:
     """Render a Vega-Lite spec (YAML or JSON string) + JSON data rows to an HTML file."""
     import json as _json
 
     resolved = Path(out_path).expanduser().resolve()
     allowed_roots = [
-        (Path.home() / ".strata" / "output").resolve(),
+        chart_output_dir(),
         Path("/tmp").resolve(),
     ]
     if not any(resolved.is_relative_to(r) for r in allowed_roots):
