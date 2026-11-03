@@ -331,3 +331,21 @@ def test_navigate_chart_anchor_cannot_break_out_of_the_script_block(tmp_path, mo
     html = out.read_text(encoding="utf-8")
     assert "<script>alert(1)" not in html
     assert "\\u003c/script>\\u003cscript>alert(1)" in html
+
+
+def test_clean_repo_never_deletes_output_inside_the_lookml_repo(tmp_path, monkeypatch):
+    # #43 was dropped: Strata writes output/ under the cwd (dashboard default), never under
+    # --repo, so a repo's own output/ is user data clean cannot prove it owns.
+    from click.testing import CliRunner
+
+    from strata.cli.main import strata_cli
+
+    cwd, repo = tmp_path / "cwd", tmp_path / "repo"
+    (cwd / "output").mkdir(parents=True)
+    (repo / "output").mkdir(parents=True)
+    (repo / "output" / "keep.txt").write_text("user data", encoding="utf-8")
+    monkeypatch.chdir(cwd)
+    result = CliRunner().invoke(strata_cli, ["clean", "--repo", str(repo)])
+    assert result.exit_code == 0, result.output
+    assert (repo / "output" / "keep.txt").exists()
+    assert not (cwd / "output").exists()
