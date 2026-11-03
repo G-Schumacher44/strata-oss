@@ -265,21 +265,19 @@ def test_generate_schema_dry_run(tmp_path):
     assert not (tmp_path / "schema_facts.json").exists()
 
 
-def test_navigate_chart_survives_hostile_anchor(monkeypatch):
+def test_navigate_chart_survives_hostile_anchor(tmp_path, monkeypatch):
     # Regression: anchor was f-string-interpolated into a YAML spec, so a quote/brace/newline
-    # crashed the CLI with a yaml.YAMLError traceback; it also leaked into the temp filename.
-    import tempfile
-
+    # crashed the CLI with a yaml.YAMLError traceback; it also leaked into the output filename.
     from strata.cli.query import _render_navigate_chart
 
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
     brief = {"views": [{"name": "orders", "field_count": 3}]}
-    # strata_render_chart only writes under ~/.strata/output or /tmp, so pin the temp dir there.
-    with tempfile.TemporaryDirectory(dir="/tmp") as d:
-        monkeypatch.setattr(tempfile, "tempdir", d)
-        _render_navigate_chart('proj"id: {x}\n# y/../z', brief, open_browser=False)
-        out = list(Path(d).glob("strata_navigate_*.html"))
-        assert len(out) == 1
-        assert 'proj\\"id' in out[0].read_text(encoding="utf-8")
+    _render_navigate_chart('proj"id: {x}\n# y/../z', brief, open_browser=False)
+    out = list((home / ".strata" / "output").glob("strata_navigate_*.html"))
+    assert len(out) == 1
+    assert 'proj\\"id' in out[0].read_text(encoding="utf-8")
 
 
 def test_clean_pycache_removal_follows_repo_not_cwd(tmp_path, monkeypatch):
@@ -296,3 +294,24 @@ def test_clean_pycache_removal_follows_repo_not_cwd(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert not (repo / "__pycache__").exists()
     assert (cwd / "__pycache__").exists()
+
+
+def test_navigate_chart_writes_under_guarded_output_root(tmp_path, monkeypatch):
+    # Regression: the chart went to tempfile.gettempdir() (/var/folders/... on macOS), which
+    # strata_render_chart's path guard rejects. It must land under the guard's own root.
+    import tempfile
+
+    from strata.cli.query import _render_navigate_chart
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    outside = tmp_path / "var-folders"  # a non-/tmp tempdir, like macOS
+    outside.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(outside))
+
+    brief = {"views": [{"name": "orders", "field_count": 3}]}
+    _render_navigate_chart("analytics.orders", brief, open_browser=False)
+
+    assert (home / ".strata" / "output" / "strata_navigate_analytics_orders.html").exists()
+    assert not list(outside.iterdir())
