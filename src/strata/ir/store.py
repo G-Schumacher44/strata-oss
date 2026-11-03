@@ -37,6 +37,9 @@ def save_ir(graph: IRGraph, cache_path: str | Path) -> None:
 
 def load_ir(cache_path: str | Path) -> IRGraph:
     path = Path(cache_path)
+    if not path.exists():
+        # sqlite3.connect would create an empty ghost file and fail with "no such table".
+        raise FileNotFoundError(f"IR cache not found: {path}")
     with sqlite3.connect(path) as conn:
         row = conn.execute("SELECT payload FROM ir_cache WHERE id = 1").fetchone()
     if row is None:
