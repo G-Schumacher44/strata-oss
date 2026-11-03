@@ -230,7 +230,7 @@ def _emit_views(graph: IRGraph, views: dict[str, dict[str, Any]]) -> None:
         )
         sql_table = body.get("sql_table_name")
         if sql_table:
-            sql_table = str(sql_table).strip().strip("`")
+            sql_table = _unquote_table_ref(str(sql_table).strip())
             table_id = f"physical_table:{sql_table}"
             if table_id not in graph.nodes:
                 graph.add_node(IRNode(table_id, "physical_table", sql_table, view["source_file"]))
@@ -435,15 +435,25 @@ def _empty_object(name: str, kind: str) -> dict[str, Any]:
     }
 
 
+def _unquote_table_ref(ref: str) -> str:
+    """Canonical physical-table name: every BigQuery backtick dropped, whole or per part."""
+    return ref.replace("`", "")
+
+
 def _sql_upstreams(sql: str) -> list[str]:
-    cte_names = set(re.findall(r"\b(\w+)\s+AS\s*\(", sql, flags=re.IGNORECASE))
+    # CTE names may be backtick-quoted too (`ranked` AS (...)); either way they are not tables.
+    cte_names = {
+        quoted or bare
+        for quoted, bare in re.findall(r"(?:`(\w+)`|\b(\w+))\s+AS\s*\(", sql, flags=re.IGNORECASE)
+    }
     # Unquoted identifiers: project.dataset.table (no hyphens in project name)
     unquoted = set(re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]+)", sql, flags=re.IGNORECASE))
     # Backtick-quoted BigQuery identifiers: `project-id.dataset.table`, including the
-    # per-part form `project-id`.dataset.`table`. Quotes are dropped so the id matches the
-    # backtick-stripped sql_table_name node. `${...}` is a LookML view reference, not a table.
+    # per-part form `project-id`.dataset.`table`. _unquote_table_ref is shared with
+    # sql_table_name so both sides mint the same physical_table id. `${...}` is a LookML view
+    # reference, not a table.
     backtick = {
-        ref.replace("`", "")
+        _unquote_table_ref(ref)
         for ref in re.findall(
             r"\b(?:from|join)\s+(`[^`]+`(?:\.(?:`[^`]+`|\w+))*)", sql, flags=re.IGNORECASE
         )
