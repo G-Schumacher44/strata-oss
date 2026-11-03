@@ -27,11 +27,17 @@ def strata_cli() -> None:
 
 
 @strata_cli.command("clean")
-@click.option("--repo", default=None, help="Repo path — also removes strata_ir.db inside it")
+@click.option(
+    "--repo",
+    default=None,
+    help="Repo path — sweep strata_ir.db and __pycache__ inside it instead of the cwd",
+)
 def clean(repo: str | None) -> None:
     """Remove generated artifacts from the working directory.
 
-    Deletes: output/ directory, strata_ir.db cache files, and __pycache__ dirs.
+    Deletes: output/ in the cwd (where `strata dashboard` writes by default), plus
+    strata_ir.db cache files and __pycache__ dirs under --repo (or the cwd). A repo's own
+    output/ is never touched — Strata does not write there and cannot prove it owns it.
     Safe to run at any time — re-run `strata outputs` or `strata build` to regenerate.
     """
     import shutil
