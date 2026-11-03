@@ -4,9 +4,9 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-03 — fix/batch-2026-11 (batch of ten correctness fixes)
 
-Commit: 1433fc0 (last code commit on the PR branch, pre-merge anchor. This PR is meant to be
+Commit: 669e188 (last code commit on the PR branch, pre-merge anchor. This PR is meant to be
   REBASE-merged so the per-fix commits stay reviewable; rebase rewrites SHAs, so post-merge
-  resolve the landed anchor with `git log --grep "never deletes the LookML repo" origin/main`.)
+  resolve the landed anchor with `git log --grep "one table-ref unquoting rule" origin/main`.)
 Conductor Mode: patch — ten independent bug fixes batched into one PR, plus fixes for the
   unresolved Codex findings on their source PRs; no new slice.
 Context Budget: medium
@@ -51,6 +51,12 @@ Exact Next Steps: review and rebase-merge the batch PR, then close #33 and #35-#
 - #43 `clean --repo` deleting `<repo>/output`: Strata never writes there (dashboard defaults to
   `<cwd>/output/<repo>`, `strata outputs` requires `--out`), so the change is dropped and
   `test_clean_repo_never_deletes_output_inside_the_lookml_repo` fails if it returns.
+- Local twin gate (Artemis P3s): per-part-quoted sql_table_name vs PDT upstream minted two
+  nodes, and backtick-quoted CTEs became phantom tables — one `_unquote_table_ref` rule for
+  both sides (`test_per_part_quoted_table_mints_one_node_for_view_and_pdt`,
+  `test_sql_upstreams_backtick_quoted_cte_is_not_a_table`). Not fixed, pre-existing:
+  load_configured_graph's cache_age_seconds→load_ir window (not a regression) and
+  navigate chart filename collisions/length for sanitized anchors.
 - Handoff-location P1 on every source PR: resolved by this single block.
 
 ### Gates
