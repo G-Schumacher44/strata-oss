@@ -329,3 +329,17 @@ def test_load_ir_missing_cache_raises_without_creating_a_file(tmp_path):
     with pytest.raises(FileNotFoundError, match="IR cache not found"):
         load_ir(missing)
     assert not missing.exists()
+
+
+def test_rebuild_picks_up_edited_source_lines(tmp_path):
+    # Regression: _scan_file's process-wide lru_cache served the first build's line numbers
+    # to every later build in the same process.
+    (tmp_path / "v.view.lkml").write_text(
+        "view: orders {\n  dimension: id {\n    type: number\n  }\n}\n", encoding="utf-8"
+    )
+    first = build_resolved_graph(tmp_path).nodes["view:orders"].attrs["source_line"]
+    (tmp_path / "v.view.lkml").write_text(
+        "# header\n# header\n" + (tmp_path / "v.view.lkml").read_text()
+    )
+    second = build_resolved_graph(tmp_path).nodes["view:orders"].attrs["source_line"]
+    assert (first, second) == (1, 3)
