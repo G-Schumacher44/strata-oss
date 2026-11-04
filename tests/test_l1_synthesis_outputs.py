@@ -8,7 +8,7 @@ import pytest
 
 from strata_lookml.l1.enrich import enrich_graph
 from strata_lookml.l1.fixtures import load_usage_facts
-from strata_lookml.l1.types import ExploreUsage
+from strata_lookml.l1.types import ExploreUsage, PDTBuild
 from strata_lookml.mcp.tools import strata_impact
 from strata_lookml.outputs import build_artifacts, write_artifacts
 from strata_lookml.outputs.dashboard import build_dashboard_html
@@ -36,6 +36,39 @@ def test_l1_enrichment_static_usage_intersection_and_pdt_ledger():
     assert pdt["view"] == "pdt_orders"
     assert pdt["estimated_cost_usd"] == 6.5
     assert pdt["status"] == "unused"
+
+
+def test_pdt_ledger_ghost_pdt_detection():
+    """Build facts for a view no longer in LookML appear as 'ghost' in the ledger.
+
+    If pdt_builds contains a view name that has no matching PDT node in the resolved
+    LookML graph, the tool must surface it as status='ghost' instead of silently
+    dropping it. Ghost PDTs keep rebuilding in the warehouse and accumulating cost
+    even after the LookML definition is deleted.
+    """
+    graph = build_graph(FIXTURES)
+    # pdt_orders is in the FIXTURES LookML; pdt_deleted_view is not.
+    pdt_builds = [
+        PDTBuild("pdt_orders", 10, "2026-11-01T05:00:00Z", 1_000_000_000, 5.0),
+        PDTBuild("pdt_deleted_view", 30, "2026-11-01T05:00:00Z", 500_000_000, 2.5),
+    ]
+    enrich_graph(graph, pdt_builds=pdt_builds)
+    ledger_by_view = {r["view"]: r for r in graph.metadata["l1"]["pdt_ledger"]}
+
+    assert "pdt_deleted_view" in ledger_by_view, (
+        "build facts for a deleted PDT must surface as ghost, not be silently dropped"
+    )
+    ghost = ledger_by_view["pdt_deleted_view"]
+    assert ghost["status"] == "ghost"
+    assert ghost["build_count"] == 30
+    assert ghost["estimated_cost_usd"] == 2.5
+    assert ghost["source_file"] == ""
+    assert ghost["used_by_explores"] == []
+    assert "pdt_build:pdt_deleted_view" in ghost["evidence_ids"]
+
+    # The known PDT is still reported normally.
+    known = ledger_by_view["pdt_orders"]
+    assert known["status"] in {"used", "unused", "zombie", "missing_build_facts"}
 
 
 def test_synthesis_slice_and_evidence_validation():
