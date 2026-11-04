@@ -19,7 +19,7 @@ from strata_lookml.mcp.tools import (
     strata_validation_scope,
     strata_view_sources,
 )
-from strata_lookml.navigate import build_navigate_brief
+from strata_lookml.navigate import _classify_anchor, build_navigate_brief
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = REPO_ROOT / "src" / "strata_lookml" / "skills"
@@ -299,3 +299,102 @@ def test_strata_find_field_truncated_flag_false_at_exactly_fifty_matches():
     result = strata_find_field(graph, "metric")
     assert result["count"] == 50
     assert result["truncated"] is False
+
+
+def test_navigate_two_part_anchor_resolves_to_physical_table_when_in_ir():
+    # Regression: `dataset.table` was always classified as a field and substring-searched.
+    from strata_lookml.ir.types import IRGraph, IRNode
+
+    graph = IRGraph(repo_path="", built_at="")
+    graph.add_node(
+        IRNode(
+            id="physical_table:analytics.orders",
+            kind="physical_table",
+            name="analytics.orders",
+            source_file="",
+        )
+    )
+    brief = build_navigate_brief(graph, "analytics.orders")
+    assert brief["anchor_type"] == "bq_table"
+    # A two-part anchor that is not a known table still falls through to field lookup.
+    assert _classify_anchor("orders.id", graph) == "field"
+
+
+def test_navigate_two_part_anchor_prefers_exact_field_over_same_named_table():
+    # Regression (#38 review): with both `physical_table:analytics.orders` and
+    # `field:analytics.orders` in the IR, the field anchor was shadowed by the table.
+    from strata_lookml.ir.types import IRGraph, IRNode
+
+    graph = IRGraph(repo_path="", built_at="")
+    graph.add_node(
+        IRNode("physical_table:analytics.orders", "physical_table", "analytics.orders", "")
+    )
+    graph.add_node(
+        IRNode(
+            "field:analytics.orders",
+            "field",
+            "analytics.orders",
+            "",
+            attrs={"view": "analytics", "field_name": "orders", "field_kind": "dimension"},
+        )
+    )
+    brief = build_navigate_brief(graph, "analytics.orders")
+    assert brief["anchor_type"] == "field"
+    assert [m["field"] for m in brief["field_matches"]] == ["orders"]
+    assert "ambiguous_anchor" in brief
+
+
+def test_load_ir_missing_cache_raises_without_creating_a_file(tmp_path):
+    import pytest
+
+    from strata_lookml.ir.store import load_ir
+
+    missing = tmp_path / "strata_ir.db"
+    with pytest.raises(FileNotFoundError, match="IR cache not found"):
+        load_ir(missing)
+    assert not missing.exists()
+
+
+def test_load_ir_open_cannot_create_the_cache_even_if_exists_check_races(tmp_path, monkeypatch):
+    # Regression (#39 review): exists() then sqlite3.connect raced a concurrent `strata clean`;
+    # the connect recreated the ghost file. Simulate the race by making exists() lie.
+    import os
+    import sqlite3
+
+    import pytest
+
+    from strata_lookml.ir.store import cache_age_seconds, load_ir
+
+    missing = tmp_path / "strata_ir.db"
+    monkeypatch.setattr(Path, "exists", lambda self: True)
+    with pytest.raises((FileNotFoundError, sqlite3.OperationalError)):
+        load_ir(missing)
+    with pytest.raises((FileNotFoundError, sqlite3.OperationalError)):
+        cache_age_seconds(missing)
+    assert not os.path.exists(missing)
+
+
+def test_ir_cache_roundtrips_through_a_path_needing_uri_escaping(tmp_path):
+    from strata_lookml.ir.store import cache_age_seconds, load_ir, save_ir
+    from strata_lookml.ir.types import IRGraph
+
+    cache = tmp_path / "dir with space #1 ?x" / "strata_ir.db"
+    save_ir(IRGraph(repo_path="r", built_at="2026-01-01T00:00:00+00:00"), cache)
+    assert load_ir(cache).repo_path == "r"
+    assert cache_age_seconds(cache) is not None
+    assert cache_age_seconds(tmp_path / "nope.db") is None
+    assert not (tmp_path / "nope.db").exists()
+
+
+def test_rebuild_picks_up_edited_source_lines(tmp_path):
+    # Regression: _scan_file's process-wide lru_cache served the first build's line numbers
+    # to every later build in the same process.
+    (tmp_path / "v.view.lkml").write_text(
+        "view: orders {\n  dimension: id {\n    type: number\n  }\n}\n", encoding="utf-8"
+    )
+    first = build_resolved_graph(tmp_path).nodes["view:orders"].attrs["source_line"]
+    (tmp_path / "v.view.lkml").write_text(
+        "# header\n# header\n" + (tmp_path / "v.view.lkml").read_text()
+    )
+    second = build_resolved_graph(tmp_path).nodes["view:orders"].attrs["source_line"]
+    assert (first, second) == (1, 3)

@@ -18,7 +18,7 @@ from strata_lookml.mcp.tools import strata_list_skills, strata_skill
 
 
 def _skills_dir() -> Path:
-    # Mirrors strata.mcp.server._skills_dir so the CLI and MCP resolve the same catalog.
+    # Mirrors strata_lookml.mcp.server._skills_dir so the CLI and MCP resolve the same catalog.
     env = os.environ.get("STRATA_SKILLS_PATH")
     if env:
         return Path(env).expanduser().resolve()

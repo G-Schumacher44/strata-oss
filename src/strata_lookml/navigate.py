@@ -38,7 +38,7 @@ def build_navigate_brief(
     time) for each target so a downstream agent or developer can act without exploring the
     repo blind.
     """
-    anchor_type = _classify_anchor(anchor)
+    anchor_type = _classify_anchor(anchor, graph)
     brief: dict[str, Any] = {"anchor": anchor, "anchor_type": anchor_type}
 
     views_hit: list[str] = []
@@ -62,6 +62,11 @@ def build_navigate_brief(
             return {"error": f"No fields matching {anchor!r} found in IR"}
         brief["field_matches"] = matches
         views_hit = list({m["view"] for m in matches})
+        if f"physical_table:{anchor}" in graph.nodes:
+            brief["ambiguous_anchor"] = (
+                f"{anchor!r} is both a view.field and a physical table in the IR; resolved as "
+                "the field. Use strata_impact for the table."
+            )
 
     else:
         name = _anchor_to_name(anchor, anchor_type)
@@ -140,13 +145,18 @@ def _match_explores(graph: IRGraph, name: str) -> list[str]:
     return hits
 
 
-def _classify_anchor(anchor: str) -> str:
+def _classify_anchor(anchor: str, graph: IRGraph) -> str:
     if anchor.endswith((".view.lkml", ".model.lkml", ".explore.lkml")):
         return "file"
     parts = anchor.split(".")
     if len(parts) >= 3 and not anchor.endswith(".lkml"):
         return "bq_table"
     if len(parts) == 2:
+        # `dataset.table` (no project prefix) has the same shape as `view.field`; the IR
+        # knows which one it is. An exact `view.field` wins a collision so a valid field
+        # anchor always stays reachable; the brief flags the shadowed table.
+        if f"physical_table:{anchor}" in graph.nodes and f"field:{anchor}" not in graph.nodes:
+            return "bq_table"
         return "field"
     return "view"
 

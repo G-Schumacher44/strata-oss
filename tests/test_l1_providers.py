@@ -72,3 +72,37 @@ def test_check_replay_cli():
     facts = UsageFacts.from_provider(ReplayLookerUsageProvider(FIXTURES / "replay_facts.json"))
     total = sum(item.query_count for item in facts.explore_usage)
     assert total == 49
+
+
+def test_latest_iso_compares_instants_not_strings():
+    # Regression: lexicographic order is not chronological across UTC offsets/suffixes.
+    from strata_lookml.l1.replay import _latest_iso
+
+    # 12:00+05:00 is 07:00Z, so the 10:00Z candidate is later even though "10" < "12".
+    assert _latest_iso("2026-01-01T12:00:00+05:00", "2026-01-01T10:00:00Z") == (
+        "2026-01-01T10:00:00Z"
+    )
+    assert _latest_iso("2026-01-01T10:00:00Z", "2026-01-01T12:00:00+05:00") == (
+        "2026-01-01T10:00:00Z"
+    )
+    assert _latest_iso(None, "2026-01-01T12:00:00Z") == "2026-01-01T12:00:00Z"
+    assert _latest_iso("2026-01-01", "not-a-date") == "2026-01-01"  # parseable outranks junk
+    assert _latest_iso("not-a-date", "zzz") == "zzz"  # both unparseable: string order
+
+
+def test_latest_iso_is_independent_of_row_order():
+    # Regression (#40 review): equal instants spelled differently ("Z" vs "-05:00") tied, so
+    # whichever row came first won and reordering rows changed last_queried_at.
+    from functools import reduce
+    from itertools import permutations
+
+    from strata_lookml.l1.replay import _latest_iso
+
+    values = [
+        "2026-01-01T10:00:00Z",
+        "2026-01-01T05:00:00-05:00",
+        "2026-01-01T10:00:00+00:00",
+        "2025-12-31T23:00:00Z",
+    ]
+    results = {reduce(_latest_iso, order, None) for order in permutations(values)}
+    assert len(results) == 1

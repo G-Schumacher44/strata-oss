@@ -37,7 +37,7 @@ def save_ir(graph: IRGraph, cache_path: str | Path) -> None:
 
 def load_ir(cache_path: str | Path) -> IRGraph:
     path = Path(cache_path)
-    with sqlite3.connect(path) as conn:
+    with _connect_existing(path) as conn:
         row = conn.execute("SELECT payload FROM ir_cache WHERE id = 1").fetchone()
     if row is None:
         raise FileNotFoundError(f"IR cache has no payload: {path}")
@@ -48,9 +48,11 @@ def load_ir(cache_path: str | Path) -> IRGraph:
 
 def cache_age_seconds(cache_path: str | Path) -> float | None:
     path = Path(cache_path)
-    if not path.exists():
+    try:
+        conn = _connect_existing(path)
+    except FileNotFoundError:
         return None
-    with sqlite3.connect(path) as conn:
+    with conn:
         row = conn.execute("SELECT built_at FROM ir_cache WHERE id = 1").fetchone()
     if row is None:
         return None
@@ -58,3 +60,18 @@ def cache_age_seconds(cache_path: str | Path) -> float | None:
     if built_at.tzinfo is None:
         built_at = built_at.replace(tzinfo=UTC)
     return (datetime.now(UTC) - built_at).total_seconds()
+
+
+def _connect_existing(path: Path) -> sqlite3.Connection:
+    """Open an existing cache read-write without ever creating it.
+
+    A plain sqlite3.connect creates an empty ghost file when the path is missing, and an
+    exists() check before it races a concurrent `strata clean`. mode=rw makes the open
+    itself fail atomically instead.
+    """
+    try:
+        return sqlite3.connect(f"{path.resolve().as_uri()}?mode=rw", uri=True)
+    except sqlite3.OperationalError as exc:
+        if not path.exists():
+            raise FileNotFoundError(f"IR cache not found: {path}") from exc
+        raise

@@ -135,7 +135,8 @@ strata mcp run
 ### Clean up generated artifacts
 ```bash
 strata clean
-strata clean --repo /path/to/your/lookml   # also removes strata_ir.db inside repo
+strata clean --repo /path/to/your/lookml   # strata_ir.db + __pycache__ swept inside the repo;
+                                           # output/ is only ever removed from the cwd
 ```
 
 ---

@@ -263,3 +263,89 @@ def test_generate_schema_dry_run(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "dry-run" in result.stdout.lower() or "dry" in result.stdout.lower()
     assert not (tmp_path / "schema_facts.json").exists()
+
+
+def test_navigate_chart_survives_hostile_anchor(tmp_path, monkeypatch):
+    # Regression: anchor was f-string-interpolated into a YAML spec, so a quote/brace/newline
+    # crashed the CLI with a yaml.YAMLError traceback; it also leaked into the output filename.
+    from strata_lookml.cli.query import _render_navigate_chart
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    brief = {"views": [{"name": "orders", "field_count": 3}]}
+    _render_navigate_chart('proj"id: {x}\n# y/../z', brief, open_browser=False)
+    out = list((home / ".strata" / "output").glob("strata_navigate_*.html"))
+    assert len(out) == 1
+    assert 'proj\\"id' in out[0].read_text(encoding="utf-8")
+
+
+def test_clean_pycache_removal_follows_repo_not_cwd(tmp_path, monkeypatch):
+    # Regression: --repo scoped strata_ir.db cleanup but __pycache__ was always swept from cwd.
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.main import strata_cli
+
+    cwd, repo = tmp_path / "cwd", tmp_path / "repo"
+    (cwd / "__pycache__").mkdir(parents=True)
+    (repo / "__pycache__").mkdir(parents=True)
+    monkeypatch.chdir(cwd)
+    result = CliRunner().invoke(strata_cli, ["clean", "--repo", str(repo)])
+    assert result.exit_code == 0, result.output
+    assert not (repo / "__pycache__").exists()
+    assert (cwd / "__pycache__").exists()
+
+
+def test_navigate_chart_writes_under_guarded_output_root(tmp_path, monkeypatch):
+    # Regression: the chart went to tempfile.gettempdir() (/var/folders/... on macOS), which
+    # strata_render_chart's path guard rejects. It must land under the guard's own root.
+    import tempfile
+
+    from strata_lookml.cli.query import _render_navigate_chart
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    outside = tmp_path / "var-folders"  # a non-/tmp tempdir, like macOS
+    outside.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(outside))
+
+    brief = {"views": [{"name": "orders", "field_count": 3}]}
+    _render_navigate_chart("analytics.orders", brief, open_browser=False)
+
+    assert (home / ".strata" / "output" / "strata_navigate_analytics_orders.html").exists()
+    assert not list(outside.iterdir())
+
+
+def test_navigate_chart_anchor_cannot_break_out_of_the_script_block(tmp_path, monkeypatch):
+    # #36 review: once the spec is built as JSON, a quote-plus-"</script>" anchor parses and
+    # reaches render_chart's <script>. render_chart's "<" -> \u003c escaping (#35) must hold.
+    from strata_lookml.cli.query import _render_navigate_chart
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    payload = 'x"</script><script>alert(1)</script>'
+    _render_navigate_chart(payload, {"views": [{"name": "v", "field_count": 1}]}, False)
+    (out,) = (home / ".strata" / "output").glob("strata_navigate_*.html")
+    html = out.read_text(encoding="utf-8")
+    assert "<script>alert(1)" not in html
+    assert "\\u003c/script>\\u003cscript>alert(1)" in html
+
+
+def test_clean_repo_never_deletes_output_inside_the_lookml_repo(tmp_path, monkeypatch):
+    # #43 was dropped: Strata writes output/ under the cwd (dashboard default), never under
+    # --repo, so a repo's own output/ is user data clean cannot prove it owns.
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.main import strata_cli
+
+    cwd, repo = tmp_path / "cwd", tmp_path / "repo"
+    (cwd / "output").mkdir(parents=True)
+    (repo / "output").mkdir(parents=True)
+    (repo / "output" / "keep.txt").write_text("user data", encoding="utf-8")
+    monkeypatch.chdir(cwd)
+    result = CliRunner().invoke(strata_cli, ["clean", "--repo", str(repo)])
+    assert result.exit_code == 0, result.output
+    assert (repo / "output" / "keep.txt").exists()
+    assert not (cwd / "output").exists()

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from strata_lookml.ir.builder import build_raw_graph
 from strata_lookml.ir.parser import parse_repo
-from strata_lookml.ir.resolver import build_resolved_graph, resolve_graph
+from strata_lookml.ir.resolver import _sql_upstreams, build_resolved_graph, resolve_graph
 from strata_lookml.ir.store import load_ir, save_ir
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -100,3 +100,69 @@ def test_build_ir_cli_writes_cache(tmp_path):
     assert result.returncode == 0, result.stderr
     assert cache.exists()
     assert load_ir(cache).node_counts()["view"] == 9
+
+
+def test_sql_upstreams_backtick_quoted_bq_tables():
+    """Backtick-quoted BigQuery table names (project-id.dataset.table) must be
+    detected as upstreams — the unquoted-identifier regex misses them because
+    hyphens in project names are not word characters."""
+    sql = """
+        SELECT customer_id, COUNT(*) AS cnt
+        FROM `acme-analytics.silver.int_orders` o
+        JOIN `acme-analytics.gold.fct_revenue` r ON o.customer_id = r.customer_id
+        GROUP BY 1
+    """
+    result = _sql_upstreams(sql)
+    assert "acme-analytics.silver.int_orders" in result
+    assert "acme-analytics.gold.fct_revenue" in result
+
+
+def test_sql_upstreams_unquoted_tables_unaffected():
+    """Existing behaviour for unquoted identifiers must not regress."""
+    sql = "SELECT customer_id FROM analytics.orders GROUP BY customer_id"
+    assert _sql_upstreams(sql) == ["analytics.orders"]
+
+
+def test_sql_upstreams_cte_not_treated_as_upstream():
+    """CTE names must not appear as physical upstreams."""
+    sql = """
+        WITH ranked AS (SELECT id FROM analytics.events)
+        SELECT * FROM ranked
+    """
+    result = _sql_upstreams(sql)
+    assert "ranked" not in result
+    assert "analytics.events" in result
+
+
+def test_sql_upstreams_backtick_per_part_quoting_and_view_refs():
+    # #33 review: per-part quoting yielded only the project, and a backticked ${view} LookML
+    # reference became a phantom physical table.
+    sql = """
+        SELECT * FROM `acme-analytics`.silver.`int_orders` o
+        JOIN `${customers.SQL_TABLE_NAME}` c ON o.id = c.id
+    """
+    assert _sql_upstreams(sql) == ["acme-analytics.silver.int_orders"]
+
+
+def test_per_part_quoted_table_mints_one_node_for_view_and_pdt(tmp_path):
+    # Twin review: sql_table_name only trimmed outer backticks while PDT upstreams dropped
+    # them all, so one per-part-quoted table became two physical_table nodes.
+    (tmp_path / "t.view.lkml").write_text(
+        "view: orders {\n"
+        "  sql_table_name: `acme-analytics`.silver.`int_orders` ;;\n"
+        "  dimension: id { sql: ${TABLE}.id ;; }\n"
+        "}\n"
+        "view: orders_pdt {\n"
+        "  derived_table: { sql: SELECT id FROM `acme-analytics`.silver.`int_orders` ;; }\n"
+        "  dimension: id { sql: ${TABLE}.id ;; }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    graph = build_resolved_graph(tmp_path)
+    tables = [n for n in graph.nodes if n.startswith("physical_table:")]
+    assert tables == ["physical_table:acme-analytics.silver.int_orders"]
+
+
+def test_sql_upstreams_backtick_quoted_cte_is_not_a_table():
+    sql = "WITH `ranked` AS (SELECT id FROM analytics.events) SELECT * FROM `ranked`"
+    assert _sql_upstreams(sql) == ["analytics.events"]
