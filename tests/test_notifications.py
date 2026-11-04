@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from strata.outputs.notifications import build_jira_tickets, build_slack_payload
+from strata_lookml.outputs.notifications import build_jira_tickets, build_slack_payload
 
 ROOT = Path(__file__).resolve().parents[1]
 

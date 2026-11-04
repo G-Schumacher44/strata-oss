@@ -11,7 +11,7 @@ ENTERPRISE = REPO_ROOT / "tests" / "lookml" / "enterprise_mono"
 ENTERPRISE_USAGE = FIXTURES / "enterprise_usage_facts.json"
 ENTERPRISE_SCHEMA = FIXTURES / "enterprise_schema_facts.json"
 
-CLI = [sys.executable, "-m", "strata.cli.main"]
+CLI = [sys.executable, "-m", "strata_lookml.cli.main"]
 
 
 def run(*args, env_extra=None):
@@ -206,7 +206,7 @@ def test_bootstrap_reprompts_on_nonexistent_repo_path(tmp_path):
     import click
     from click.testing import CliRunner
 
-    from strata.cli.bootstrap import _prompt_repo_path
+    from strata_lookml.cli.bootstrap import _prompt_repo_path
 
     @click.command()
     def harness():
@@ -223,7 +223,7 @@ def test_bootstrap_allows_saving_bad_path_when_confirmed():
     import click
     from click.testing import CliRunner
 
-    from strata.cli.bootstrap import _prompt_repo_path
+    from strata_lookml.cli.bootstrap import _prompt_repo_path
 
     @click.command()
     def harness():
@@ -268,7 +268,7 @@ def test_generate_schema_dry_run(tmp_path):
 def test_navigate_chart_survives_hostile_anchor(tmp_path, monkeypatch):
     # Regression: anchor was f-string-interpolated into a YAML spec, so a quote/brace/newline
     # crashed the CLI with a yaml.YAMLError traceback; it also leaked into the output filename.
-    from strata.cli.query import _render_navigate_chart
+    from strata_lookml.cli.query import _render_navigate_chart
 
     home = tmp_path / "home"
     home.mkdir()
@@ -284,7 +284,7 @@ def test_clean_pycache_removal_follows_repo_not_cwd(tmp_path, monkeypatch):
     # Regression: --repo scoped strata_ir.db cleanup but __pycache__ was always swept from cwd.
     from click.testing import CliRunner
 
-    from strata.cli.main import strata_cli
+    from strata_lookml.cli.main import strata_cli
 
     cwd, repo = tmp_path / "cwd", tmp_path / "repo"
     (cwd / "__pycache__").mkdir(parents=True)
@@ -301,7 +301,7 @@ def test_navigate_chart_writes_under_guarded_output_root(tmp_path, monkeypatch):
     # strata_render_chart's path guard rejects. It must land under the guard's own root.
     import tempfile
 
-    from strata.cli.query import _render_navigate_chart
+    from strata_lookml.cli.query import _render_navigate_chart
 
     home = tmp_path / "home"
     home.mkdir()
@@ -320,7 +320,7 @@ def test_navigate_chart_writes_under_guarded_output_root(tmp_path, monkeypatch):
 def test_navigate_chart_anchor_cannot_break_out_of_the_script_block(tmp_path, monkeypatch):
     # #36 review: once the spec is built as JSON, a quote-plus-"</script>" anchor parses and
     # reaches render_chart's <script>. render_chart's "<" -> \u003c escaping (#35) must hold.
-    from strata.cli.query import _render_navigate_chart
+    from strata_lookml.cli.query import _render_navigate_chart
 
     home = tmp_path / "home"
     home.mkdir()
@@ -338,7 +338,7 @@ def test_clean_repo_never_deletes_output_inside_the_lookml_repo(tmp_path, monkey
     # --repo, so a repo's own output/ is user data clean cannot prove it owns.
     from click.testing import CliRunner
 
-    from strata.cli.main import strata_cli
+    from strata_lookml.cli.main import strata_cli
 
     cwd, repo = tmp_path / "cwd", tmp_path / "repo"
     (cwd / "output").mkdir(parents=True)

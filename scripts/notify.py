@@ -13,7 +13,7 @@ SRC = REPO_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from strata.outputs.notifications import (  # noqa: E402
+from strata_lookml.outputs.notifications import (  # noqa: E402
     build_jira_tickets,
     build_slack_payload,
     load_artifacts,

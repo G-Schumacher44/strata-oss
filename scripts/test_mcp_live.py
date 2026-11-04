@@ -87,7 +87,7 @@ def main() -> None:
     usage_fixture = ROOT / cfg["usage"]
     schema_fixture = ROOT / cfg["schema"]
 
-    from strata.mcp.tools import (
+    from strata_lookml.mcp.tools import (
         strata_dead_code_register,
         strata_explore_deps,
         strata_impact,
@@ -99,7 +99,7 @@ def main() -> None:
         strata_usage_summary,
         strata_validation_scope,
     )
-    from strata.pipeline import build_graph
+    from strata_lookml.pipeline import build_graph
 
     print(f"\n{'=' * 60}")
     print(f"  Strata MCP Live Test — {args.playground}")

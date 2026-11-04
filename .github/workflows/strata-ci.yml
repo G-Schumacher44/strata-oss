@@ -33,7 +33,7 @@ jobs:
         run: ruff format --check src/ tests/ scripts/
 
       - name: Mypy check
-        run: mypy src/strata --ignore-missing-imports
+        run: mypy src/strata_lookml --ignore-missing-imports
 
       - name: Run tests
         run: python -m pytest
@@ -112,7 +112,7 @@ jobs:
 
       - name: Lint L0 layer constraints
         run: |
-          if grep -rn "import requests\|import httpx\|import anthropic\|import openai\|import google.generativeai" src/strata/ir/ 2>/dev/null | grep -v ".pyc"; then
+          if grep -rn "import requests\|import httpx\|import anthropic\|import openai\|import google.generativeai" src/strata_lookml/ir/ 2>/dev/null | grep -v ".pyc"; then
             echo "FAIL: network or LLM import found in L0 IR layer"
             exit 1
           fi

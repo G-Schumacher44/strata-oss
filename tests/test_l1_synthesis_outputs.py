@@ -6,15 +6,19 @@ from pathlib import Path
 
 import pytest
 
-from strata.l1.enrich import enrich_graph
-from strata.l1.fixtures import load_usage_facts
-from strata.l1.types import ExploreUsage
-from strata.mcp.tools import strata_impact
-from strata.outputs import build_artifacts, write_artifacts
-from strata.outputs.dashboard import build_dashboard_html
-from strata.pipeline import build_graph
-from strata.synthesis.slices import build_explore_slice
-from strata.synthesis.verdicts import SynthesisVerdict, deterministic_verdict, validate_verdict
+from strata_lookml.l1.enrich import enrich_graph
+from strata_lookml.l1.fixtures import load_usage_facts
+from strata_lookml.l1.types import ExploreUsage
+from strata_lookml.mcp.tools import strata_impact
+from strata_lookml.outputs import build_artifacts, write_artifacts
+from strata_lookml.outputs.dashboard import build_dashboard_html
+from strata_lookml.pipeline import build_graph
+from strata_lookml.synthesis.slices import build_explore_slice
+from strata_lookml.synthesis.verdicts import (
+    SynthesisVerdict,
+    deterministic_verdict,
+    validate_verdict,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,7 +162,7 @@ def test_graph_marks_dead_explores_dead():
     """Dead-code register names explores MODEL-QUALIFIED; graph labels are bare. A bare-name
     lookup silently missed every dead explore (rendered green/KEEP — caught regenerating the
     README screenshots, PR #21). Pin the qualified lookup, plus a live-explore negative control."""
-    from strata.outputs.dashboard import _build_graph_data
+    from strata_lookml.outputs.dashboard import _build_graph_data
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -182,7 +186,7 @@ def test_view_status_credits_inherited_consumers():
     own _mark_orphans ancestry walk. In the fixtures, test_model.customer targets
     customer_extended, which extends base_customer: base_customer must show the inherited
     consumer and must NOT read as orphaned."""
-    from strata.outputs.dashboard import _build_graph_data
+    from strata_lookml.outputs.dashboard import _build_graph_data
 
     graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
     data = _build_graph_data(graph)
@@ -202,7 +206,7 @@ def test_physical_table_panel_counts_pdt_upstream_references():
     """Codex r5 (PR #25): derived-table SQL references (pdt→upstream) must appear in the
     physical-table panel's referencing list, mirroring strata_impact()'s mapping — the
     panel must never undercount the references a deletion would break."""
-    from strata.outputs.dashboard import _build_graph_data
+    from strata_lookml.outputs.dashboard import _build_graph_data
 
     graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
     # ground truth: which tables have pdt→upstream edges in the fixture graph
@@ -229,7 +233,7 @@ def test_pdt_consumers_are_direct_not_inherited():
     An explore targeting a CHILD view keeps the parent ALIVE (ancestry map) but does NOT
     consume the parent's own PDT materialization (direct map). Pin both maps' answers for
     the fixture chain (test_model.customer -> customer_extended extends base_customer)."""
-    from strata.l1.enrich import direct_view_consumers, view_consumer_map
+    from strata_lookml.l1.enrich import direct_view_consumers, view_consumer_map
 
     graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
     ancestry = view_consumer_map(graph)
@@ -248,7 +252,7 @@ def test_evidence_facts_aggregates_content_refs_and_schema_columns():
     `evidence_facts()` computes content-reference counts per explore and per-table column
     facts; `dashboard._build_l1_facts()` only reshapes what this function returns into the
     evidence-id-keyed shape the JS looks up (Codex PR #28)."""
-    from strata.l1.enrich import evidence_facts
+    from strata_lookml.l1.enrich import evidence_facts
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -327,7 +331,7 @@ def test_graph_node_detail_carries_pdt_ledger_fields():
     record, not just name/kind/source, so the graph click isn't an anticlimax. Both
     fixture zombies + a negative-control 'used' PDT, since the color/status mapping
     branches on status."""
-    from strata.outputs.dashboard import _build_graph_data
+    from strata_lookml.outputs.dashboard import _build_graph_data
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -362,7 +366,7 @@ def test_graph_node_detail_status_vocabulary_per_kind():
     """Status vocabulary (dashboard PR #23) — PDT/explore/view nodes carry the honest
     three-way zombie vocabulary instead of a flattened DEAD/ORPHAN flag, with colors
     matching the legend."""
-    from strata.outputs.dashboard import _build_graph_data
+    from strata_lookml.outputs.dashboard import _build_graph_data
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -405,7 +409,7 @@ def test_graph_node_detail_status_vocabulary_per_kind():
 def test_graph_node_pdt_dependencies_and_table_references():
     """Explore -> PDT dependency and physical-table -> referencing-view data (dashboard
     PR #23), derived from the graph edges rather than invented."""
-    from strata.outputs.dashboard import _build_graph_data
+    from strata_lookml.outputs.dashboard import _build_graph_data
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -459,7 +463,7 @@ def test_l1_facts_inlines_usage_pdt_build_and_schema_table_facts():
     the dashboard data block Python-side, keyed to match the evidence-id suffixes the JS
     looks them up by, so evidence sentences never re-derive a number the L1 layer already
     computed."""
-    from strata.outputs.dashboard import _build_l1_facts
+    from strata_lookml.outputs.dashboard import _build_l1_facts
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -495,7 +499,7 @@ def test_l1_facts_covers_explores_without_usage_rows():
     need evidence. Every explore node must get a usage entry; row absence is itself the
     zero-usage fact and is flagged so the sentence states it rather than implying a
     serialized row existed."""
-    from strata.outputs.dashboard import _build_l1_facts
+    from strata_lookml.outputs.dashboard import _build_l1_facts
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -507,7 +511,7 @@ def test_l1_facts_covers_explores_without_usage_rows():
     del graph.metadata["l1"]["explore_usage"][removed]
 
     # The backfill is an L1 derivation (r7): pin it at the seam, not just the reshape.
-    from strata.l1.enrich import evidence_facts
+    from strata_lookml.l1.enrich import evidence_facts
 
     l1_entry = evidence_facts(graph)["explore_usage_evidence"][removed]
     assert l1_entry["no_usage_row"] is True
@@ -533,7 +537,7 @@ def test_unique_anchor_suffixes_collisions_deterministically():
     valid) and suffixes each later collision in render order."""
     import re
 
-    from strata.outputs.dashboard import build_dashboard_html
+    from strata_lookml.outputs.dashboard import build_dashboard_html
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -565,7 +569,7 @@ def test_copy_link_fragment_round_trips_percent_escapes():
     physical table like 'foo%20bar') decoded to 'foo bar' on open and matched nothing. The
     writer now encodes; the reader decodes first and falls back to the raw hash so links
     copied from an older build still resolve."""
-    from strata.outputs.dashboard import build_dashboard_html
+    from strata_lookml.outputs.dashboard import build_dashboard_html
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -591,7 +595,7 @@ def test_fact_lookups_are_prototype_safe():
     'constructor' or 'toString' would resolve to an inherited member and report a missing
     table as PRESENT, contradicting the drift verdict. Every L1 fact lookup routes through
     ownFact(); NODE_BY_ID is prototype-free so it also can't be poisoned on assignment."""
-    from strata.outputs.dashboard import build_dashboard_html
+    from strata_lookml.outputs.dashboard import build_dashboard_html
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -623,7 +627,7 @@ def test_data_derived_fields_are_escaped_in_innerhtml_templates():
     `_safe_vars_for_scope`) resolves to one of the above. Allowlist of safe *shapes*, not a
     blocklist of bad field names — a new unescaped field is exactly the regression this is here
     to catch, and a fixed list would not see it."""
-    from strata.outputs.dashboard import build_dashboard_html
+    from strata_lookml.outputs.dashboard import build_dashboard_html
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -1154,7 +1158,7 @@ def test_embedded_json_cannot_break_out_of_script_block():
     `</script>` would terminate the inline script element and hand the rest of the
     payload to the HTML parser as live markup. Every JSON embed goes through
     `_embed_json`, which encodes `<` as `\\u003c` (identical after JS string parsing)."""
-    from strata.outputs.dashboard import _embed_json, build_dashboard_html  # noqa: F401
+    from strata_lookml.outputs.dashboard import _embed_json, build_dashboard_html  # noqa: F401
 
     hostile = {"period": {"start": "</script><b>x</b>"}, "col": "a<b"}
     embedded = _embed_json(hostile)
@@ -1185,7 +1189,7 @@ def test_evidence_namespaces_all_have_sentence_handling():
     no-ops for the user. Enumerate the REAL enterprise_mono artifacts (not a synthetic
     list) and pin them against dashboard.py's documented namespace set, then confirm the
     generated JS actually carries a case for each one."""
-    from strata.outputs.dashboard import KNOWN_EVIDENCE_NAMESPACES, build_dashboard_html
+    from strata_lookml.outputs.dashboard import KNOWN_EVIDENCE_NAMESPACES, build_dashboard_html
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -1388,7 +1392,7 @@ def test_strata_gate_script_and_output_cli(tmp_path):
         [
             sys.executable,
             "-m",
-            "strata.cli.main",
+            "strata_lookml.cli.main",
             "check",
             "--repo",
             str(FIXTURES),
@@ -1409,7 +1413,7 @@ def test_strata_gate_script_and_output_cli(tmp_path):
         [
             sys.executable,
             "-m",
-            "strata.cli.main",
+            "strata_lookml.cli.main",
             "outputs",
             "--repo",
             str(FIXTURES),

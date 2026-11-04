@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from strata.ir.resolver import build_resolved_graph
-from strata.l1.schema import FixtureSchemaProvider, enrich_schema_drift, load_schema_facts
-from strata.mcp.tools import strata_schema_drift, strata_usage_summary
-from strata.outputs import build_artifacts
-from strata.pipeline import build_graph
+from strata_lookml.ir.resolver import build_resolved_graph
+from strata_lookml.l1.schema import FixtureSchemaProvider, enrich_schema_drift, load_schema_facts
+from strata_lookml.mcp.tools import strata_schema_drift, strata_usage_summary
+from strata_lookml.outputs import build_artifacts
+from strata_lookml.pipeline import build_graph
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

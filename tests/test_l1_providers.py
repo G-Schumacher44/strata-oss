@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from strata.l1.fixtures import FixtureUsageProvider
-from strata.l1.provider import UsageFacts
-from strata.l1.replay import ReplayLookerUsageProvider
-from strata.pipeline import build_graph_with_provider
+from strata_lookml.l1.fixtures import FixtureUsageProvider
+from strata_lookml.l1.provider import UsageFacts
+from strata_lookml.l1.replay import ReplayLookerUsageProvider
+from strata_lookml.pipeline import build_graph_with_provider
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,8 +66,8 @@ def test_build_graph_with_replay_provider_matches_l1_contract():
 
 
 def test_check_replay_cli():
-    from strata.l1.provider import UsageFacts
-    from strata.l1.replay import ReplayLookerUsageProvider
+    from strata_lookml.l1.provider import UsageFacts
+    from strata_lookml.l1.replay import ReplayLookerUsageProvider
 
     facts = UsageFacts.from_provider(ReplayLookerUsageProvider(FIXTURES / "replay_facts.json"))
     total = sum(item.query_count for item in facts.explore_usage)
@@ -76,7 +76,7 @@ def test_check_replay_cli():
 
 def test_latest_iso_compares_instants_not_strings():
     # Regression: lexicographic order is not chronological across UTC offsets/suffixes.
-    from strata.l1.replay import _latest_iso
+    from strata_lookml.l1.replay import _latest_iso
 
     # 12:00+05:00 is 07:00Z, so the 10:00Z candidate is later even though "10" < "12".
     assert _latest_iso("2026-01-01T12:00:00+05:00", "2026-01-01T10:00:00Z") == (
@@ -96,7 +96,7 @@ def test_latest_iso_is_independent_of_row_order():
     from functools import reduce
     from itertools import permutations
 
-    from strata.l1.replay import _latest_iso
+    from strata_lookml.l1.replay import _latest_iso
 
     values = [
         "2026-01-01T10:00:00Z",

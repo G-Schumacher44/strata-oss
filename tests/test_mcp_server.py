@@ -1,8 +1,8 @@
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 
-from strata.ir.resolver import build_resolved_graph
-from strata.mcp.server import _server_version, create_server
+from strata_lookml.ir.resolver import build_resolved_graph
+from strata_lookml.mcp.server import _server_version, create_server
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

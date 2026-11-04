@@ -2,65 +2,69 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-03 — fix/batch-2026-11 (batch of ten correctness fixes)
+## Date: 2026-11-03 — refactor/import-strata-lookml (PR #45, import rename strata -> strata_lookml)
 
-Commit: 669e188 (last code commit on the PR branch, pre-merge anchor. This PR is meant to be
-  REBASE-merged so the per-fix commits stay reviewable; rebase rewrites SHAs, so post-merge
-  resolve the landed anchor with `git log --grep "one table-ref unquoting rule" origin/main`.)
-Conductor Mode: patch — ten independent bug fixes batched into one PR, plus fixes for the
-  unresolved Codex findings on their source PRs; no new slice.
+Commit: 55f4ded (the rename; follow-ups 7d63fa1 mcpb shim, 29a9c5d, 75d5bae upgrade-path note,
+  then a merge of origin/main 63cab83 carrying #44 + the #50 batch across the rename. The PR
+  squash-merges; post-merge resolve the landed anchor with `gh pr view 45 --json mergeCommit`.)
+Conductor Mode: patch — a mechanical, repo-wide rename with no behavior change and no new slice.
 Context Budget: medium
-Context Loaded: AGENTS.md, conductor/AGENTS.md, conductor/CONDUCTOR_MODES.md, handoff-log latest
-  block, source PRs #33 #35-#43 (diffs + unresolved review threads), src/strata/cli/{main,
-  query,dashboard,outputs,conductor}.py, navigate.py, ir/{store,resolver,source_lines}.py,
-  l1/{replay,looker}.py, viz/render.py, mcp/tools.py.
-Context Skipped: handoff-archive.md beyond prepending the previous block; slices.
+Context Loaded: AGENTS.md, conductor/index.md, handoff-log latest block, pyproject.toml,
+  .github/workflows/*, mcpb/*, server.json, every file referencing the old package path, and the
+  #44/#50 diffs merged in from main.
+Context Skipped: slice specs; historical handoff blocks (records of past work keep `src/strata`).
 Stage/DUOS: not used; not required.
 Ledger: not applicable.
-Tag Posture: no version bump — fixes only, no release trigger.
-Exact Next Steps: review and rebase-merge the batch PR, then close #33 and #35-#43 as
-  superseded; next, reconcile the two handoff-log readers (`strata conductor status` splits on
-  "##" while strata_conductor_status only reads "## Date:" headers) — file an issue for it (the batch agent was not permitted to).
+Tag Posture: no version bump here — 0.1.9 rides `chore/release-0.1.9` (stacked on #46).
+Exact Next Steps: merge #45, retarget #46 to main and merge it, retarget and merge the 0.1.9 bump
+  PR, then tag v0.1.9.
 
-### What landed (one commit per source PR, handoff files dropped)
+### What changed
 
-- #33 backtick-quoted BigQuery tables in PDT upstream SQL (Bug Hunt draft, reviewed fresh).
-- #35 `<` escaped in chart HTML so data cannot close the script block.
-- #36 navigate chart spec built as data (JSON), not an f-string YAML template.
-- #37 `strata clean` sweeps `__pycache__` under `--repo`, not the cwd.
-- #38 `dataset.table` anchors classify as physical tables when the IR has them.
-- #39 `load_ir` raises FileNotFoundError instead of creating a ghost cache file.
-- #40 ISO timestamps compared as instants; one shared `_latest_iso`.
-- #41 source-line scan cache cleared on every build.
-- #42 navigate chart written under the guarded output root (`~/.strata/output`).
-- #43 DROPPED (see below).
+- `git mv src/strata src/strata_lookml`. The import package `strata` collided with the unrelated
+  PyPI project `strata` (26.0.0 ships `strata/__init__.py` and `strata/config.py`); installing
+  both in one environment overwrote files.
+- Every importer rewritten (src, tests, scripts, mcpb shim, `-m strata.cli.main` subprocess calls,
+  the L0 offline-import probe, `src/strata/...` paths in pyproject, CI, GOVERNANCE.md, AGENTS.md,
+  docs, README). No `strata` compatibility shim (it would recreate the collision).
+- `[project.scripts]` targets moved to `strata_lookml.*`; the names `strata`, `strata-mcp`,
+  `strata-chart` and #44's `strata-lookml` are unchanged.
+- schema-refresh skill: `python -m strata --help` (never worked, no `__main__`) is now
+  `.venv/bin/strata --help`.
+- mcpb shim resolves the installed distribution's `strata-mcp` console-script entry point instead
+  of importing a module path, so it works against both the 0.1.8 pin and the renamed package
+  (Codex P2 on #45).
+- Not changed on purpose: the `client_guid=com.gsanalytics.strata.cli` OAuth identifier, the MCP
+  server name `strata`, the `.mcp.json` key, `~/.strata/` paths, historical conductor docs.
 
-### Review findings resolved (each its own commit with a test that fails without it)
+### Merge of origin/main (#44 + #50 batch)
 
-- #36 `</script>` anchor in the chart: #35's escaping already neutralizes it once both land;
-  pinned end-to-end by `test_navigate_chart_anchor_cannot_break_out_of_the_script_block`.
-- #38 field/table collision: an exact `view.field` wins and the brief carries
-  `ambiguous_anchor` (`test_navigate_two_part_anchor_prefers_exact_field_over_same_named_table`).
-- #39 exists()/connect race: load_ir and cache_age_seconds open through one helper with
-  `file:<abs>?mode=rw` (`test_load_ir_open_cannot_create_the_cache_even_if_exists_check_races`,
-  `test_ir_cache_roundtrips_through_a_path_needing_uri_escaping`).
-- #40 equal-instant ties: `_latest_iso` is a total order (parsed, instant, string)
-  (`test_latest_iso_is_independent_of_row_order`).
-- #33 own review: per-part backtick quoting and `${view}` refs
-  (`test_sql_upstreams_backtick_per_part_quoting_and_view_refs`).
-- #43 `clean --repo` deleting `<repo>/output`: Strata never writes there (dashboard defaults to
-  `<cwd>/output/<repo>`, `strata outputs` requires `--out`), so the change is dropped and
-  `test_clean_repo_never_deletes_output_inside_the_lookml_repo` fails if it returns.
-- Local twin gate (Artemis P3s): per-part-quoted sql_table_name vs PDT upstream minted two
-  nodes, and backtick-quoted CTEs became phantom tables — one `_unquote_table_ref` rule for
-  both sides (`test_per_part_quoted_table_mints_one_node_for_view_and_pdt`,
-  `test_sql_upstreams_backtick_quoted_cte_is_not_a_table`). Not fixed, pre-existing:
-  load_configured_graph's cache_age_seconds→load_ir window (not a regression) and
-  navigate chart filename collisions/length for sanitized anchors.
-- Handoff-location P1 on every source PR: resolved by this single block.
+- Git's rename detection carried every #44/#50 hunk to `src/strata_lookml/`; nothing landed at
+  the old path. Five textual conflicts (pyproject scripts, cli/query.py, l1/looker.py,
+  tests/test_ir_resolver.py, tests/test_mcp_tools.py) were all new import lines: resolved to
+  main's content with `strata.` rewritten to `strata_lookml.`. #44's `strata-lookml` script
+  targets `strata_lookml.mcp.server:main`.
+- New `from strata...` lines main added in non-conflicting hunks (tests/test_cli.py,
+  test_l1_providers.py, test_mcp_tools.py, test_security.py) rewritten by hand; one stale
+  comment in cli/skill.py too.
+- Handoffs: this repo keeps ONLY handoff-log.md. #45's per-branch file is replaced by this block;
+  #44's `conductor/handoff/feat-registry-readiness.md` is folded into handoff-archive.md and
+  deleted; the #50 batch block moved to the archive.
+
+### Upgrade path (Codex P2 on #45)
+
+Upgrading 0.1.8 -> the renamed release in an env that also has PyPI `strata` (or `strata-mcp`)
+removes the shared `strata/__init__.py` and `strata/config.py` via 0.1.8's RECORD. Repaired by
+`pip install --force-reinstall --no-deps strata`. The README naming note carries it; the 0.1.9
+CHANGELOG entry carries it too.
 
 ### Gates
 
-Re-run on the final code commit 669e188 (handoff-only commits after it): ruff check
-  "All checks passed!", ruff format --check "211 files already formatted", mypy src "Success: no
-  issues found in 87 source files", pytest "154 passed".
+Final tree after the origin/main merge (706d1ed): ruff check "All checks passed!", ruff format
+  --check "210 files already formatted", mypy src "Success: no issues found in 87 source files",
+  pytest -q "154 passed" (132 on the pre-merge branch; the rename adds no tests).
+Wheel re-proof: 0 entries under `strata/`, 166 under `strata_lookml/`; installed in a fresh venv
+  beside `strata==26.0.0`: both import, `strata`/`strata-chart`/`strata-lookml`/`strata-mcp --help`
+  exit 0, MCP stdio initialize + tools/list = 18 tools via strata-mcp, strata-lookml and the mcpb
+  shim. Local twins: Apollo PASS, Artemis PASS (two P3s fixed: live starter-prompt template paths,
+  this gate block).

@@ -55,11 +55,11 @@ These are hard boundaries. Never cross them.
 
 | Layer | Location | Rule |
 |---|---|---|
-| **L0 — IR** | `src/strata/ir/` | Pure Python. Zero tokens. No LLM. No network. No external calls of any kind. |
-| **L1 — Usage enrichment** | `src/strata/l1/` (Phase 2) | Deterministic. Read-only Looker API/MCP only. No LLM. |
-| **L2 — Synthesis** | `src/strata/synthesis/` (Phase 3) | The only LLM layer. Cheapest model. One explore = one slice. Evidence required for every verdict. |
+| **L0 — IR** | `src/strata_lookml/ir/` | Pure Python. Zero tokens. No LLM. No network. No external calls of any kind. |
+| **L1 — Usage enrichment** | `src/strata_lookml/l1/` (Phase 2) | Deterministic. Read-only Looker API/MCP only. No LLM. |
+| **L2 — Synthesis** | `src/strata_lookml/synthesis/` (Phase 3) | The only LLM layer. Cheapest model. One explore = one slice. Evidence required for every verdict. |
 | **L3 — Governance** | `conductor/`, `strata validate` | Conductor wraps L2. No verdict ships without its evidence trail. |
-| **MCP server** | `src/strata/mcp/` | Exposes L0–L1 as read-only tools. stdio only. No HTTP. Never calls write operations. |
+| **MCP server** | `src/strata_lookml/mcp/` | Exposes L0–L1 as read-only tools. stdio only. No HTTP. Never calls write operations. |
 | **Vendor** | `src/vendor/` | Frozen. Do not modify. Cherry-pick from upstream only. |
 
 ---
@@ -109,7 +109,7 @@ These are hard boundaries. Never cross them.
 - **The hard problem first.** The three-level extends chain test must pass before any
   orphan-detection verdict is trusted. This is the correctness oracle for the whole system.
 - **Bug-driven tests.** Write a regression test for every bug after it occurs.
-- **Test colocation.** Keep `test_*.py` files in `tests/` mirroring `src/strata/` structure.
+- **Test colocation.** Keep `test_*.py` files in `tests/` mirroring `src/strata_lookml/` structure.
 - **No mocking the graph.** IR graph tests must use real parsed fixtures, not mocked
   NetworkX objects. The mock/real divergence is exactly the class of bug Strata is
   designed to catch in LookML repos.
