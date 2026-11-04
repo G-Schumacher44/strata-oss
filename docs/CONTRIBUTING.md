@@ -22,6 +22,8 @@ strata check \
   --schema-fixture tests/fixtures/enterprise_schema_facts.json
 ```
 
+Licensing of contributions (Apache-2.0 inbound = outbound, DCO sign-off via `git commit -s`) is described in the root [CONTRIBUTING.md](../CONTRIBUTING.md#licensing-of-contributions).
+
 ---
 
 [← Strata README](../README.md) · [Docs index](./README.md)

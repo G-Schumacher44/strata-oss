@@ -77,9 +77,17 @@ Three LookML repos with matching fixture JSON ship in `tests/`:
 |---|---|
 | `enterprise_mono` | 19 models, 34 explores, cross-model extends, 3 legacy clusters |
 | `gcs_analytics` | Gold/silver BQ layer, mixed active and legacy |
-| `thelook` | Looker's public demo repo — structural baseline |
+| `thelook` | Fork of Google's public, archived `looker-open-source/thelook` demo repo, extended with Strata playground files — structural baseline. Test fixture only (git submodule); not redistributed in the package, and no license to its upstream contents is claimed |
 
-Fixture JSON in `tests/fixtures/` simulates Looker System Activity API responses so the full analysis stack runs offline.
+Fixture JSON in `tests/fixtures/` simulates Looker System Activity API responses so the full analysis stack runs offline. `enterprise_mono` and `gcs_analytics` are synthetic fixtures authored for Strata.
+
+## Licensing of contributions
+
+Contributions are submitted under the project's Apache-2.0 license (inbound = outbound, per
+Apache-2.0 section 5). Sign off each commit with `git commit -s` to certify the
+[Developer Certificate of Origin](https://developercertificate.org/).
+
+Portions of this codebase were developed with AI coding assistants under the author's direction and review.
 
 ## Questions
 

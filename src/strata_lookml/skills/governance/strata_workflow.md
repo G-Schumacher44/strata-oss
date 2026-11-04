@@ -224,7 +224,7 @@ A zombie PDT is one that:
 Cross-reference zombie PDT's `used_by_explores` list with `strata_dead_code_register`
 output to confirm the backing explore has zero queries before recommending deletion.
 
-enterprise_mono example: $63,750/30d → ~$765K/yr in zombie compute from 2 PDTs
+enterprise_mono example (synthetic demo fixture): $63,750/30d → ~$765K/yr in zombie compute from 2 PDTs
 (`pdt_attribution_full_funnel` backed by `dead_finance_v2`,
 `pdt_customer_value_score` backed by `dead_orders_v2`).
 
@@ -265,7 +265,7 @@ Three reference repos in `tests/lookml/` with matching fixtures in `tests/fixtur
 |---|---|---|---|
 | `thelook` | 1 | 3 | Basic extends, dead explore, active PDT |
 | `gcs_analytics` | 2 | 7 | Gold/silver layer, legacy explores, PDT cost |
-| `enterprise_mono` | 19 | 34 | Cross-model extends, zombie PDTs ($765K/yr), 3 legacy connections, schema drift |
+| `enterprise_mono` | 19 | 34 | Cross-model extends, zombie PDTs ($765K/yr, synthetic), 3 legacy connections, schema drift |
 
 Run any playground:
 
@@ -284,4 +284,5 @@ make ci REPO=tests/lookml/enterprise_mono \
 
 The enterprise_mono playground demonstrates the G4 scenario: two PDTs
 (`pdt_customer_value_score` + `pdt_attribution_full_funnel`) running at $63,750/month
-backed only by explores with zero queries — $765K/year in zombie compute surfaced.
+backed only by explores with zero queries — $765K/year in zombie compute surfaced
+(synthetic demo fixture; illustrative figures).

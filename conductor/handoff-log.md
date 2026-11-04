@@ -2,24 +2,30 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-04 — ci/release-mcp-registry-oidc (MCP Registry publish in release.yml)
+## Date: 2026-11-04 — docs/legal-0.1.9 (legal-readiness docs + shipped third-party notices)
 
-Commit: eb8ebee (implementation commit; the PR squash-merges, resolve the landed anchor with
-  `gh pr view <this PR> --json mergeCommit`.)
-Conductor Mode: patch — CI only, no src/ change, no version bump.
+Commit: e6da3ab (implementation commit; the PR squash-merges, resolve the landed anchor with
+  `gh pr view 55 --json mergeCommit`.)
+Conductor Mode: patch — docs + packaging metadata only, no src/ Python change, no version bump.
 Context Budget: low
-Context Loaded: AGENTS.md, handoff-log latest block, .github/workflows/release.yml,
-  .github/WORKFLOWS.md, the registry's github-actions.mdx.
-Context Skipped: slices; src/.
+Context Loaded: AGENTS.md, handoff-log latest block, pyproject.toml, README.md, CONTRIBUTING.md,
+  docs/testing.md, docs/testing-findings.md, docs/runbook.md, src/strata_lookml/assets/js/.
+Context Skipped: slices; src/ Python.
 Stage/DUOS: not used; not required.
 Ledger: not applicable.
-Tag Posture: unchanged — the v0.1.9 tag push now also runs `publish-mcp-registry`
-  (needs publish-pypi; OIDC login, mcp-publisher v1.8.7 pinned + cosign-verified).
-Exact Next Steps: merge, tag v0.1.9 as already planned, then verify the registry listing for
-  `io.github.G-Schumacher44/strata-oss` (registry search or API) instead of running
-  `mcp-publisher` by hand. The OIDC publish is only exercised by the real tag run; if it fails
-  after PyPI is live, fix forward and re-run the failed job.
+Tag Posture: unchanged — v0.1.9 is tagged only after the security-hardening PR also lands.
+Changes: THIRD_PARTY_LICENSES (repo root + src/strata_lookml/assets/, so it ships in the wheel;
+  `/THIRD_PARTY_LICENSES` added to the sdist include) covering the 7 vendored JS bundles plus
+  graphlib/lodash inside dagre; README non-affiliation disclaimer + AI-assistance line;
+  "synthetic demo fixture" labels on dollar figures (README, docs, skills); fixture provenance
+  (thelook = fork of the archived, unlicensed looker-open-source/thelook, test-only, not shipped);
+  CONTRIBUTING licensing of contributions (Apache-2.0 inbound=outbound, DCO sign-off).
+Exact Next Steps: merge; after the security PR lands, tag v0.1.9 and confirm the built wheel and
+  sdist on PyPI contain THIRD_PARTY_LICENSES. Open follow-up: the Vega bundles' smaller
+  permissive sub-components (d3-*, vega-themes, vega-tooltip, semver) are noted, not enumerated.
 
 ### Gates
 
-actionlint on release.yml clean; YAML parse OK; PR CI (test, pr-analysis, review) green.
+`python -m build` OK — wheel has strata_lookml/assets/THIRD_PARTY_LICENSES, sdist has both
+copies and no tests/ fixtures; tests/test_docs_consistency.py 5 passed; README fences balanced;
+PR CI (test, pr-analysis, review) green.

@@ -2,6 +2,9 @@
 
 Verified: 2026-06-06. All numbers sourced from actual output artifacts.
 
+> **Synthetic data:** all dollar figures in this document come from the synthetic `gcs_analytics` and
+> `enterprise_mono` demo fixtures. They are illustrative, not measurements of any real warehouse.
+
 ---
 
 ## Playground Matrix
@@ -99,6 +102,8 @@ Period: 2026-05-07 → 2026-06-06 (30 days)
 
 ### PDT Ledger
 
+*Synthetic demo fixture (gcs_analytics).*
+
 | PDT | Builds/30d | Cost/30d | Status | Backed by |
 |---|---|---|---|---|
 | pdt_customer_ltv | 30 | $28.00 | active | gcs_analytics.customers |
@@ -137,6 +142,8 @@ Period: 2026-05-07 → 2026-06-06 (30 days)
 
 ### PDT Ledger
 
+*Synthetic demo fixture (enterprise_mono).*
+
 | PDT | Builds/30d | Bytes | Cost/30d | Status | Backed by |
 |---|---|---|---|---|---|
 | pdt_attribution_full_funnel | 180 | 7.2 PB | **$45,000.00** | zombie | dead_finance_v2 |
@@ -163,7 +170,7 @@ Views referenced exclusively by dead explores. Structurally connected to the IR 
 | legacy_customer_profile | migration_orders, legacy_customers | 2 schema drift hits on dropped columns |
 | legacy_inventory_snapshot | legacy_inventory | 2 schema drift hits on dropped columns |
 | legacy_order_detail | migration_orders, legacy_orders | 1 schema drift hit |
-| pdt_attribution_full_funnel | dead_finance_v2 | Also zombie PDT — $45,000/30d rebuild cost |
+| pdt_attribution_full_funnel | dead_finance_v2 | Also zombie PDT — $45,000/30d rebuild cost (synthetic demo fixture) |
 | pdt_customer_value_score | dead_orders_v2 | Also zombie PDT — $18,750/30d rebuild cost |
 
 **Total dead code surface (enterprise_mono): 11 items** — 6 dead explores + 5 zombie views (3 legacy view files + 2 zombie PDTs cross-listed).
