@@ -184,6 +184,8 @@ def _capture(outcome: list[BaseException], fn, *args) -> None:
 def test_loopback_receiver_refuses_non_loopback_redirect():
     with pytest.raises(OAuthCallbackError, match="loopback"):
         LoopbackReceiver("https://app.example.com/callback", "s")
+    with pytest.raises(OAuthCallbackError, match="127.0.0.1"):
+        LoopbackReceiver("http://localhost:48765/oauth/callback", "s")  # may resolve to ::1
 
 
 def test_login_no_browser_reads_redirect_from_stdin(tmp_path, monkeypatch):

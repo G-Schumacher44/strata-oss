@@ -55,7 +55,9 @@ Implemented from Looker's OAuth guide,
   `/api/token` on the Looker API host (`--api-url`, defaulting to `--looker-url`).
 - The redirect is captured by a one-shot listener on `127.0.0.1` (RFC 8252 §7.3). Looker matches
   redirect URIs exactly against those registered on the client app, so the port is fixed:
-  default `http://127.0.0.1:48765/oauth/callback`, configurable with `--redirect-uri`.
+  default `http://127.0.0.1:48765/oauth/callback`, configurable with `--redirect-uri`. The
+  receiver accepts only `http://127.0.0.1:<port>/...` redirect URIs (not `localhost`, which can
+  resolve to `::1`); any other redirect URI needs `--no-browser`.
 - `--no-browser` prints the URL and reads the full redirect URL from stdin (hidden input), so the
   code never appears in shell history or the process list.
 

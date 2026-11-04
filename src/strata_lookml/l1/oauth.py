@@ -21,7 +21,9 @@ import time
 import urllib.parse
 from typing import Any
 
-LOOPBACK_HOSTS = ("127.0.0.1", "localhost")
+# The IP literal only (RFC 8252 §8.3): "localhost" may resolve to ::1 first, and the browser's
+# redirect would then never reach the IPv4 listener.
+LOOPBACK_HOST = "127.0.0.1"
 
 
 class OAuthCallbackError(RuntimeError):
@@ -73,7 +75,7 @@ def code_from_callback(query: str, expected_state: str) -> str:
 def loopback_address(redirect_uri: str) -> tuple[int, str]:
     """(port, path) for a loopback redirect URI; raises for anything the receiver can't serve."""
     parts = urllib.parse.urlsplit(redirect_uri)
-    if parts.scheme != "http" or parts.hostname not in LOOPBACK_HOSTS or parts.port is None:
+    if parts.scheme != "http" or parts.hostname != LOOPBACK_HOST or parts.port is None:
         raise OAuthCallbackError(
             "the loopback receiver needs a redirect URI of the form "
             f"http://127.0.0.1:<port>/<path>; got {redirect_uri!r} (use --no-browser to paste "
@@ -138,8 +140,7 @@ class LoopbackReceiver:
                 pass
 
         self._captured = captured
-        # Always the IPv4 loopback literal, even if the registered URI says "localhost".
-        self._server = _ExclusiveServer(("127.0.0.1", port), _Handler)
+        self._server = _ExclusiveServer((LOOPBACK_HOST, port), _Handler)
 
     def wait(self, timeout: float = 300.0) -> str:
         deadline = time.monotonic() + timeout

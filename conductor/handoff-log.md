@@ -60,5 +60,14 @@ Exact Next Steps: operator merges after twins pass -> tag v0.1.9 per the previou
 
 ### Gates
 
-See the PR body for verbatim gate lines (ruff check, ruff format --check, mypy, pytest, dashboard
-  JS check) and the mutation-control table.
+Final tree (head of this branch; also in the PR body):
+  ruff check src/ tests/ scripts/ -> "All checks passed!"
+  ruff format --check src/ tests/ scripts/ -> "176 files already formatted"
+  mypy src/strata_lookml --ignore-missing-imports -> "Success: no issues found in 88 source files"
+  python -m pytest -> "181 passed" (157 before this branch)
+  python scripts/check_dashboard_js_syntax.py -> "5 generated <script> block(s) passed node --check"
+Negative controls: every security guard reverted one at a time -> its test fails (18/18, plus
+  the POSIX reuse-address and localhost-refusal controls added in review).
+CI round 2 (e701a84): Artemis SHIP (one should_fix: `localhost` redirect vs IPv4-only listener ->
+  fixed, receiver now accepts only 127.0.0.1); Apollo ACCEPT (note: gate lines not visible to it
+  -> now inlined here); Codex P2 (POSIX SO_REUSEADDR) fixed + resolved.

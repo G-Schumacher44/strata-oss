@@ -47,7 +47,7 @@ LookML repository or warehouse control plane.
     with `com.looker.`).
   - `redirect_uris`: `http://127.0.0.1:48765/oauth/callback` (Strata's default
     `--redirect-uri`). Looker matches it exactly, so register precisely the URI users
-    will pass, including the port.
+    will pass, including the port. Use the `127.0.0.1` literal, not `localhost`.
   - `group_id`: the numeric ID of the Looker group allowed to authorize the app — set
     it to the smallest practical group.
 - Looker OAuth support is implemented from that guide but **not yet validated against
