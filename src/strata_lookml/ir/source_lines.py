@@ -22,6 +22,9 @@ _FIELD_KW = "dimension|dimension_group|measure|filter|parameter"
 def attach_source_lines(graph: IRGraph) -> None:
     """Populate `node.attrs['source_line']` for view / field / explore nodes (in place)."""
     repo_path = graph.repo_path
+    # The scan cache only de-duplicates reads within one build; a long-lived process
+    # (the MCP server) rebuilds after files change, so never carry lines across builds.
+    _scan_file.cache_clear()
     for node_id, node in graph.nodes.items():
         if not node.source_file:
             continue

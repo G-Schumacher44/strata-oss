@@ -84,7 +84,9 @@ def render_chart(
         f"<script>{_read_js(f)}</script>"
         for f in ("vega.min.js", "vega-lite.min.js", "vega-embed.min.js")
     )
-    html = _HTML.format(title=title, scripts=scripts, spec_json=json.dumps(spec, indent=2))
+    # `<` as \u003c keeps a "</script>" inside any spec/data string from ending the script block.
+    spec_json = json.dumps(spec, indent=2).replace("<", "\\u003c")
+    html = _HTML.format(title=title, scripts=scripts, spec_json=spec_json)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -71,6 +71,9 @@ Issues = "https://github.com/G-Schumacher44/strata-oss/issues"
 [project.scripts]
 strata       = "strata_lookml.cli.main:strata_cli"
 strata-mcp   = "strata_lookml.mcp.server:main"
+# Same server under the distribution name: `uvx strata-lookml` (what the MCP registry runs,
+# per server.json) resolves its executable by package name.
+strata-lookml = "strata_lookml.mcp.server:main"
 strata-chart = "strata_lookml.viz.render:main"
 
 [tool.hatch.envs.default]
