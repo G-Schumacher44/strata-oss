@@ -36,7 +36,7 @@ Install with `pip install strata-lookml` (or run any command as `uvx --from stra
 
 ### First-time setup on a new repo
 ```bash
-pip install strata-lookml    # or, from a clone: pip install -e ".[dev]"
+pip install "strata-lookml[dev]"    # includes ruff/mypy for `strata lint`; from a clone: pip install -e ".[dev]"
 strata bootstrap --repo /path/to/your/lookml
 strata lint            # Run initial lint/type checks
 strata mcp validate

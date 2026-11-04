@@ -1,7 +1,7 @@
 # Strata MCP Bundle (.mcpb)
 
 Source for the `.mcpb` bundle attached to each GitHub Release, for one-click
-install into Claude Desktop. Built by the `Build MCP Bundle (.mcpb)` step of the `build-and-release` job in
+install into Claude Desktop. Built by the `Build MCP Bundle (.mcpb)` step of the `build` job in
 `.github/workflows/release.yml` using Anthropic's `mcpb` CLI
 (`@anthropic-ai/mcpb`, spec: <https://github.com/modelcontextprotocol/mcpb>).
 
