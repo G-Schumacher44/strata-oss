@@ -60,4 +60,11 @@ CHANGELOG entry carries it too.
 
 ### Gates
 
-Final tree (post-merge): see the PR comment trail for the verbatim lines.
+Final tree after the origin/main merge (706d1ed): ruff check "All checks passed!", ruff format
+  --check "210 files already formatted", mypy src "Success: no issues found in 87 source files",
+  pytest -q "154 passed" (132 on the pre-merge branch; the rename adds no tests).
+Wheel re-proof: 0 entries under `strata/`, 166 under `strata_lookml/`; installed in a fresh venv
+  beside `strata==26.0.0`: both import, `strata`/`strata-chart`/`strata-lookml`/`strata-mcp --help`
+  exit 0, MCP stdio initialize + tools/list = 18 tools via strata-mcp, strata-lookml and the mcpb
+  shim. Local twins: Apollo PASS, Artemis PASS (two P3s fixed: live starter-prompt template paths,
+  this gate block).
