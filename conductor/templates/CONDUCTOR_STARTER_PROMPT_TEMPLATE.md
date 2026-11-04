@@ -31,8 +31,8 @@ Read more only when the selected mode or active slice requires it.
 
 Before modifying any layer, read its AGENTS.md:
 
-- `src/strata/ir/AGENTS.md` — L0: zero tokens, no network, vendored lkml only
-- `src/strata/mcp/AGENTS.md` — stdio only, read-only tools, no LLM
+- `src/strata_lookml/ir/AGENTS.md` — L0: zero tokens, no network, vendored lkml only
+- `src/strata_lookml/mcp/AGENTS.md` — stdio only, read-only tools, no LLM
 - `src/vendor/AGENTS.md` — frozen; exact vendoring steps; no submodule
 
 ## Vendoring (if required)
