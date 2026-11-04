@@ -10,7 +10,6 @@ from strata_lookml.l1.looker import (
     LiveLookerNotConfigured,
     LookerSystemActivityProvider,
     LookerToken,
-    auth_url,
     load_token,
     save_token,
 )
@@ -125,17 +124,7 @@ def test_token_status_redacts_secret(tmp_path):
 
     token = load_token(path)
     assert token.access_token == "abcdef1234567890"
-    assert token.redacted()["access_token"] == "abcd...7890"
-
-
-def test_auth_url_uses_registered_client_guid_and_redirect():
-    url = auth_url(
-        "https://example.looker.com/", redirect_uri="http://localhost:8765/oauth/callback"
-    )
-
-    assert url.startswith("https://example.looker.com/auth?")
-    assert "client_guid=com.gsanalytics.strata.cli" in url
-    assert "redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Foauth%2Fcallback" in url
+    assert token.redacted()["access_token"] == "...7890"
 
 
 def test_strata_auth_status_cli(tmp_path):
@@ -161,4 +150,4 @@ def test_strata_auth_status_cli(tmp_path):
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["access_token"] == "abcd...7890"
+    assert payload["access_token"] == "...7890"

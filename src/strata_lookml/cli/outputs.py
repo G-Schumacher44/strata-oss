@@ -4,8 +4,23 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+
+if TYPE_CHECKING:
+    from strata_lookml.ir.types import IRGraph
+
+
+def live_looker_graph(repo: str, looker_url: str, days: int, schema_fixture: str | None) -> IRGraph:
+    """Live-enriched graph; token/API refusals surface as CLI errors, not tracebacks."""
+    from strata_lookml.l1.looker import LiveLookerNotConfigured, LookerAPIError
+    from strata_lookml.pipeline import build_graph_from_looker
+
+    try:
+        return build_graph_from_looker(repo, looker_url, days, schema_fixture)
+    except (LiveLookerNotConfigured, LookerAPIError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @click.command("outputs")
@@ -31,7 +46,7 @@ import click
 @click.option(
     "--looker-url",
     default=None,
-    help="Looker instance URL for live L1 enrichment (requires `strata auth login`)",
+    help="Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)",
 )
 @click.option(
     "--days",
@@ -59,10 +74,10 @@ def outputs(
     `strata dashboard` or feed them directly to your reporting pipeline.
     """
     from strata_lookml.outputs import write_artifacts
-    from strata_lookml.pipeline import build_graph, build_graph_from_looker
+    from strata_lookml.pipeline import build_graph
 
     if looker_url:
-        graph = build_graph_from_looker(repo, looker_url, days, schema_fixture)
+        graph = live_looker_graph(repo, looker_url, days, schema_fixture)
     else:
         graph = build_graph(repo, usage_fixture, schema_fixture)
 

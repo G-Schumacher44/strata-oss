@@ -3,12 +3,53 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 
 import click
+
+# Table names come from LookML `sql_table_name` / derived-table SQL, i.e. repo-controlled text.
+# Only the dataset path is interpolated into the query (BigQuery cannot parameterize an
+# identifier); table names travel as a query parameter. Every part is still checked against a
+# strict allowlist so a hostile name is skipped and reported, never sent to `bq`.
+# Charsets: project IDs are lowercase letters, digits and hyphens; dataset names are letters,
+# digits and underscores; table names are restricted here to ASCII letters, digits, underscores
+# and hyphens (BigQuery allows more, but nothing outside this set reaches the CLI).
+_PROJECT_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
+_DATASET_RE = re.compile(r"[A-Za-z0-9_]{1,1024}")
+_TABLE_RE = re.compile(r"[A-Za-z0-9_-]{1,1024}")
+
+# `bq query` returns only 100 rows unless told otherwise; INFORMATION_SCHEMA.COLUMNS has one row
+# per column, so the default silently truncates wide datasets.
+BQ_MAX_ROWS = 1_000_000
+# Metadata queries bill a small fixed minimum; 1 GB is a generous ceiling that still fails closed
+# if the query is ever pointed at something larger.
+BQ_MAXIMUM_BYTES_BILLED = 1_000_000_000
+
+COLUMNS_SQL = (
+    "SELECT table_name, column_name "
+    "FROM `{dataset}.INFORMATION_SCHEMA.COLUMNS` "
+    "WHERE table_name IN UNNEST(@names) "
+    "ORDER BY table_name, ordinal_position"
+)
+
+
+def valid_dataset_path(dataset: str) -> bool:
+    """True when `dataset` is exactly `project.dataset` with both parts in the allowlist."""
+    parts = dataset.split(".")
+    return (
+        len(parts) == 2
+        and _PROJECT_RE.fullmatch(parts[0]) is not None
+        and _DATASET_RE.fullmatch(parts[1]) is not None
+    )
+
+
+def valid_table_name(name: str) -> bool:
+    return _TABLE_RE.fullmatch(name) is not None
 
 
 def _parse_table(name: str, bq_project: str | None) -> tuple[str, str] | None:
@@ -24,26 +65,49 @@ def _parse_table(name: str, bq_project: str | None) -> tuple[str, str] | None:
 
 def _group_tables(
     table_names: list[str], bq_project: str | None
-) -> tuple[dict[str, list[tuple[str, str]]], list[str]]:
+) -> tuple[dict[str, list[tuple[str, str]]], list[str], list[str]]:
+    """Group tables by `project.dataset`.
+
+    Returns (grouped, skipped, rejected): `skipped` names have no resolvable dataset (likely
+    CTEs); `rejected` names resolve but contain characters outside the identifier allowlist and
+    are never queried.
+    """
     grouped: dict[str, list[tuple[str, str]]] = defaultdict(list)
     skipped: list[str] = []
+    rejected: list[str] = []
     for name in sorted(table_names):
         parsed = _parse_table(name, bq_project)
-        if parsed:
+        if not parsed:
+            skipped.append(name)
+        elif valid_dataset_path(parsed[0]) and valid_table_name(parsed[1]):
             grouped[parsed[0]].append((name, parsed[1]))
         else:
-            skipped.append(name)
-    return dict(grouped), skipped
+            rejected.append(name)
+    return dict(grouped), skipped, rejected
 
 
-def _bq_query(sql: str) -> list[dict]:
+def build_columns_query(dataset: str, short_names: list[str]) -> list[str]:
+    """The full `bq query` argv for one dataset; refuses any identifier outside the allowlist."""
+    if not valid_dataset_path(dataset):
+        raise ValueError(f"invalid BigQuery dataset path: {dataset!r}")
+    bad = [n for n in short_names if not valid_table_name(n)]
+    if bad:
+        raise ValueError(f"invalid BigQuery table name(s): {bad!r}")
+    return [
+        "bq",
+        "query",
+        "--format=json",
+        "--nouse_legacy_sql",
+        f"--max_rows={BQ_MAX_ROWS}",
+        f"--maximum_bytes_billed={BQ_MAXIMUM_BYTES_BILLED}",
+        f"--parameter=names:ARRAY<STRING>:{json.dumps(short_names)}",
+        COLUMNS_SQL.format(dataset=dataset),
+    ]
+
+
+def _bq_query(argv: list[str]) -> list[dict]:
     try:
-        result = subprocess.run(
-            ["bq", "query", "--format=json", "--nouse_legacy_sql", sql],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        result = subprocess.run(argv, capture_output=True, text=True, check=True)
     except FileNotFoundError:
         click.echo("ERROR: `bq` CLI not found. Install Google Cloud SDK and run:", err=True)
         click.echo("  gcloud auth application-default login", err=True)
@@ -57,14 +121,7 @@ def _bq_query(sql: str) -> list[dict]:
 
 def _pull_dataset(dataset: str, table_entries: list[tuple[str, str]]) -> dict[str, list[str]]:
     short_names = [short for _, short in table_entries]
-    names_sql = ", ".join(f"'{n}'" for n in short_names)
-    sql = (
-        f"SELECT table_name, column_name "
-        f"FROM `{dataset}.INFORMATION_SCHEMA.COLUMNS` "
-        f"WHERE table_name IN ({names_sql}) "
-        f"ORDER BY table_name, ordinal_position"
-    )
-    rows = _bq_query(sql)
+    rows = _bq_query(build_columns_query(dataset, short_names))
     result: dict[str, list[str]] = {}
     for row in rows:
         full = next(
@@ -73,6 +130,23 @@ def _pull_dataset(dataset: str, table_entries: list[tuple[str, str]]) -> dict[st
         )
         result.setdefault(full, []).append(row["column_name"])
     return result
+
+
+def describe_query(dataset: str, short_names: list[str]) -> list[str]:
+    """Dry-run rendering of the query plan for one dataset (shared by the CLI and the script)."""
+    return [
+        "  SELECT table_name, column_name",
+        f"  FROM `{dataset}.INFORMATION_SCHEMA.COLUMNS`",
+        "  WHERE table_name IN UNNEST(@names)",
+        f"  @names = {json.dumps(short_names)}",
+    ]
+
+
+def report_rejected(rejected: list[str], echo: Callable[[str], None]) -> None:
+    if rejected:
+        echo(f"  Rejected (invalid BigQuery identifier, not queried): {len(rejected)}")
+        for name in rejected:
+            echo(f"    {name!r}")
 
 
 def _load_existing(path: Path) -> dict[str, list[str]]:
@@ -133,7 +207,7 @@ def generate_schema(
 
     graph = build_graph(str(repo_path))
     table_names = sorted({n.name for n in graph.nodes_by_kind("physical_table")})
-    grouped, skipped = _group_tables(table_names, bq_project)
+    grouped, skipped, rejected = _group_tables(table_names, bq_project)
 
     total = sum(len(v) for v in grouped.values())
     click.echo(f"Physical tables in IR: {len(table_names)}")
@@ -142,6 +216,7 @@ def generate_schema(
         click.echo(f"  Skipped (no dataset prefix — likely CTEs): {len(skipped)}")
         for s in skipped:
             click.echo(f"    {s}")
+    report_rejected(rejected, click.echo)
     click.echo()
 
     if grouped:
@@ -153,10 +228,8 @@ def generate_schema(
     if dry_run:
         click.echo(f"Queries that would run ({len(grouped)} datasets):")
         for dataset, entries in sorted(grouped.items()):
-            names_sql = ", ".join(f"'{short}'" for _, short in entries)
-            click.echo("  SELECT table_name, column_name")
-            click.echo(f"  FROM `{dataset}.INFORMATION_SCHEMA.COLUMNS`")
-            click.echo(f"  WHERE table_name IN ({names_sql})")
+            for line in describe_query(dataset, [short for _, short in entries]):
+                click.echo(line)
             click.echo()
         if existing and Path(existing).exists():
             old = _load_existing(Path(existing))

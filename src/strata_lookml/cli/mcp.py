@@ -118,7 +118,9 @@ def mcp_validate() -> None:
         )
 
     # Looker token
-    token_path = Path.home() / ".strata" / "looker_token.json"
+    from strata_lookml.l1.looker import DEFAULT_TOKEN_PATH
+
+    token_path = DEFAULT_TOKEN_PATH
     if token_path.exists():
         click.secho("  ✓ Looker token present", fg="green")
     else:

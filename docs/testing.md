@@ -168,8 +168,9 @@ strata auth login --looker-url https://your-instance.looker.com
 strata outputs --repo /path/to/your/lookml --looker-url https://your-instance.looker.com
 ```
 
-Token stored at `~/.strata/tokens.json` (0600 permissions). HTTPS enforced — `http://` rejected
-except for `localhost` OAuth callback.
+Token stored at `~/.strata/tokens.json` (file 0600, directory 0700). Looker URLs must be
+`https://`; `http://` is accepted only for `localhost`/`127.0.0.1`. Looker OAuth is not yet
+validated against a live instance — see [Security Hardening](./security-hardening.md#looker-oauth).
 
 ---
 

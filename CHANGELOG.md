@@ -8,6 +8,46 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [0.1.9] - 2026-11-03
 
+### Security
+
+- `strata generate-schema` (and `scripts/generate_schema_facts.py`, which now shares its code)
+  validates every project, dataset, and table identifier taken from LookML against an allowlist
+  and skips + reports any that fail (e.g. names containing quotes, backticks, semicolons, or
+  whitespace). Table names are now sent as a BigQuery query parameter (`IN UNNEST(@names)`),
+  and each query runs with `--maximum_bytes_billed` and `--max_rows` (the `bq` default of 100
+  rows had been truncating wide datasets).
+- Looker OAuth (`strata auth login`): PKCE (S256) and a verified `state`; the redirect is
+  captured by a one-shot `127.0.0.1` listener instead of a `--code` argument (removed —
+  codes no longer land in shell history or the process list); `--no-browser` reads the pasted
+  redirect URL from stdin. The flow now follows Looker's documented endpoints and parameters
+  (`client_id` on `/auth`; JSON POST to `/api/token` on the API host, new `--api-url`).
+  **BREAKING:** the default redirect URI is now `http://127.0.0.1:48765/oauth/callback` (it no
+  longer shares the dashboard's port 8765) — update the OAuth client app's registered redirect
+  URIs, or pass `--redirect-uri`. Not yet validated against a live Looker instance.
+- Looker token handling: the token is bound to the origin that issued it and refused for any
+  other `--looker-url`; HTTP redirects are not followed (so the `Authorization` header cannot be
+  forwarded); expiry is checked before each request; the refresh token is no longer stored
+  (Looker documents no refresh request). A token file without `looker_url` is refused; run
+  `strata auth login` again.
+- Token storage: written via an exclusive-create 0600 temp file and atomic rename; a missing
+  token directory is created 0700 and `~/.strata` is kept 0700, while a custom `--token-path`
+  in a directory shared with group/others is refused before the login starts. A
+  group/world-accessible token file is now refused on read (POSIX) instead of warned about. `auth status` shows at most the last four characters;
+  API errors no longer echo the response body. `auth logout` states that it is local-only.
+- `strata mcp validate` checks the real token path (`~/.strata/tokens.json`), not
+  `looker_token.json`.
+- MCP server: an IR cache whose `built_at` is in the future (or unparseable) is rebuilt instead
+  of being treated as fresh; `strata_render_chart` writes its path to stderr (stdout is the
+  JSON-RPC channel) and requires an `.html` output path.
+- `strata dashboard` binds `127.0.0.1` explicitly. `strata outputs` / `strata dashboard`
+  report token and Looker API refusals as CLI errors instead of tracebacks.
+- The LookML parser skips symlinks that resolve outside the repo root.
+- Security docs (README, SECURITY.md, `docs/security-hardening.md`,
+  `docs/enterprise-deployment.md`) now state exactly what Strata writes and where, which local
+  ports it listens on, how the Looker OAuth client is registered and restricted (there is no
+  read-only OAuth client mode in Looker), and how LookML/skill text is handled (returned to the
+  model as data; never executed).
+
 ### Changed
 
 - **BREAKING (Python importers only):** the import package is now `strata_lookml`; through 0.1.8

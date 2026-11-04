@@ -25,9 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,103 +33,20 @@ SRC = REPO_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+# Query construction and identifier validation live in one place — the `strata generate-schema`
+# CLI module — so this script cannot drift from it.
+from strata_lookml.cli.generate_schema import (  # noqa: E402
+    _diff,
+    _group_tables,
+    _load_existing,
+    _pull_dataset,
+    describe_query,
+    report_rejected,
+)
 from strata_lookml.pipeline import build_graph  # noqa: E402
 
 HEADER = "=== Strata Schema Facts Generator ==="
 SEP = "─" * 52
-
-
-def _parse_table(name: str, bq_project: str | None) -> tuple[str, str] | None:
-    """Return (dataset_key, table_short_name) or None if ungroupable."""
-    parts = name.split(".")
-    if len(parts) == 3:
-        return f"{parts[0]}.{parts[1]}", parts[2]
-    if len(parts) == 2:
-        if bq_project:
-            return f"{bq_project}.{parts[0]}", parts[1]
-        return None  # can't resolve dataset without --bq-project
-    return None  # single-part name — likely a CTE, not a real table
-
-
-def _group_tables(
-    table_names: list[str], bq_project: str | None
-) -> tuple[dict[str, list[tuple[str, str]]], list[str]]:
-    """Group tables by dataset. Returns (grouped, skipped)."""
-    grouped: dict[str, list[tuple[str, str]]] = defaultdict(list)
-    skipped: list[str] = []
-    for name in sorted(table_names):
-        parsed = _parse_table(name, bq_project)
-        if parsed:
-            dataset, short = parsed
-            grouped[dataset].append((name, short))
-        else:
-            skipped.append(name)
-    return dict(grouped), skipped
-
-
-def _bq_query(sql: str) -> list[dict]:
-    """Run a bq CLI query and return parsed JSON rows."""
-    try:
-        result = subprocess.run(
-            ["bq", "query", "--format=json", "--nouse_legacy_sql", sql],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except FileNotFoundError:
-        print("ERROR: `bq` CLI not found. Install Google Cloud SDK and run:", file=sys.stderr)
-        print("  gcloud auth application-default login", file=sys.stderr)
-        sys.exit(1)
-    except subprocess.CalledProcessError as exc:
-        print(f"ERROR: bq query failed:\n{exc.stderr}", file=sys.stderr)
-        sys.exit(1)
-    text = result.stdout.strip()
-    if not text or text == "[]":
-        return []
-    return json.loads(text)
-
-
-def _pull_dataset(dataset: str, table_entries: list[tuple[str, str]]) -> dict[str, list[str]]:
-    """Query INFORMATION_SCHEMA for a dataset, return {full_table_name: [columns]}."""
-    short_names = [short for _, short in table_entries]
-    names_sql = ", ".join(f"'{n}'" for n in short_names)
-    sql = (
-        f"SELECT table_name, column_name "
-        f"FROM `{dataset}.INFORMATION_SCHEMA.COLUMNS` "
-        f"WHERE table_name IN ({names_sql}) "
-        f"ORDER BY table_name, ordinal_position"
-    )
-    rows = _bq_query(sql)
-    result: dict[str, list[str]] = {}
-    for row in rows:
-        tbl = row["table_name"]
-        col = row["column_name"]
-        # Reconstruct full name by looking up in table_entries
-        full = next((full for full, short in table_entries if short == tbl), f"{dataset}.{tbl}")
-        result.setdefault(full, []).append(col)
-    return result
-
-
-def _load_existing(path: Path) -> dict[str, list[str]]:
-    """Load existing schema_facts.json → {table_name: [columns]}."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {item["name"]: list(item.get("columns", [])) for item in data.get("tables", [])}
-
-
-def _diff(old: dict[str, list[str]], new: dict[str, list[str]]) -> dict[str, list[str]]:
-    """Compute delta between old and new column inventories."""
-    all_tables = set(old) | set(new)
-    unchanged, updated, added, missing = [], [], [], []
-    for t in sorted(all_tables):
-        if t not in old:
-            added.append(t)
-        elif t not in new:
-            missing.append(t)
-        elif set(old[t]) != set(new[t]):
-            updated.append(t)
-        else:
-            unchanged.append(t)
-    return {"unchanged": unchanged, "updated": updated, "added": added, "missing": missing}
 
 
 def main() -> int:
@@ -155,7 +70,7 @@ def main() -> int:
 
     graph = build_graph(args.repo)
     table_names = sorted({n.name for n in graph.nodes_by_kind("physical_table")})
-    grouped, skipped = _group_tables(table_names, args.bq_project)
+    grouped, skipped, rejected = _group_tables(table_names, args.bq_project)
 
     total = sum(len(v) for v in grouped.values())
     print(f"Physical tables in IR: {len(table_names)}")
@@ -164,6 +79,7 @@ def main() -> int:
         print(f"  Skipped (no dataset prefix — likely CTEs): {len(skipped)}")
         for s in skipped:
             print(f"    {s}")
+    report_rejected(rejected, print)
     print()
 
     if grouped:
@@ -175,10 +91,8 @@ def main() -> int:
     if args.dry_run:
         print(f"Queries that would run ({len(grouped)} datasets):")
         for dataset, entries in sorted(grouped.items()):
-            names_sql = ", ".join(f"'{short}'" for _, short in entries)
-            print("  SELECT table_name, column_name")
-            print(f"  FROM `{dataset}.INFORMATION_SCHEMA.COLUMNS`")
-            print(f"  WHERE table_name IN ({names_sql})")
+            for line in describe_query(dataset, [short for _, short in entries]):
+                print(line)
             print()
         if args.existing and Path(args.existing).exists():
             old = _load_existing(Path(args.existing))
