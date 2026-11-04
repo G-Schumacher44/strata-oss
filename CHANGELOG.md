@@ -42,7 +42,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Fixed
 
-Ten correctness fixes ([#50](https://github.com/G-Schumacher44/strata-oss/pull/50)):
+Ten correctness fixes, grouped by area ([#50](https://github.com/G-Schumacher44/strata-oss/pull/50)):
 
 - PDT upstream SQL: backtick-quoted BigQuery tables are detected, including per-part quoting;
   `${view}` refs and backtick-quoted CTEs are no longer read as tables, and a per-part-quoted

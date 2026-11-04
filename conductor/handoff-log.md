@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-03 — chore/release-0.1.9 (version bump, stacked on #46)
 
-Commit: de7af40 (#46 head this bump sits on; the bump itself is the next commit on this branch.
+Commit: 553889b (the bump commit, on top of #46 head de7af40; review P3 fixes follow it.
   The PR squash-merges; post-merge resolve the landed anchor with `gh pr view <this PR> --json
   mergeCommit`.)
 Conductor Mode: patch — version bump + release-guard hardening, no new slice.
