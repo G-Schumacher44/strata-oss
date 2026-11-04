@@ -61,4 +61,6 @@ Exact Next Steps: review and rebase-merge the batch PR, then close #33 and #35-#
 
 ### Gates
 
-ruff check, ruff format --check, mypy src, pytest — all green on the branch (counts in the PR).
+Re-run on the final code commit 669e188 (handoff-only commits after it): ruff check
+  "All checks passed!", ruff format --check "211 files already formatted", mypy src "Success: no
+  issues found in 87 source files", pytest "154 passed".
