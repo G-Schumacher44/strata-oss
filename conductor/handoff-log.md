@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-04 — fix/security-0.1.9 (security hardening before the 0.1.9 tag)
 
-Commit: fc954cd (first commit; follow-ups on the branch. The PR squash-merges; post-merge resolve
+Commit: 39be7b8 (the fix commit; the docs commit and any review fixes follow it. The PR squash-merges; post-merge resolve
   the landed anchor with `gh pr view <this PR> --json mergeCommit`.)
 Conductor Mode: patch — security fixes from a read-only audit at origin/main 9d19e42, plus the
   docs that describe them. No new MCP tool, no layer-boundary change.
