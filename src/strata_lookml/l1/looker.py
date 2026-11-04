@@ -1,8 +1,17 @@
-"""Read-only Looker/System Activity provider for live L1 enrichment."""
+"""Read-only Looker/System Activity provider for live L1 enrichment.
+
+OAuth follows Looker's guide at https://docs.cloud.google.com/looker/docs/api-cors: the browser
+goes to `/auth` on the Looker UI host; the code is redeemed with a JSON POST to `/api/token` on
+the Looker API host ("The `/token` endpoint exists only on the Looker API host, and the `/auth`
+endpoint exists only on the Looker UI host."). Not yet validated against a live instance.
+"""
 
 from __future__ import annotations
 
 import json
+import os
+import secrets
+import stat
 import time
 import urllib.error
 import urllib.parse
@@ -15,10 +24,16 @@ from typing import Any, Protocol
 from strata_lookml.l1.replay import _latest_iso
 from strata_lookml.l1.types import ContentReference, ExploreUsage, PDTBuild
 
-DEFAULT_CLIENT_GUID = "com.gsanalytics.strata.cli"
-DEFAULT_REDIRECT_URI = "http://localhost:8765/oauth/callback"
+# The `client_guid` the OAuth client app is registered under; sent as `client_id` in the flow.
+DEFAULT_CLIENT_ID = "com.gsanalytics.strata.cli"
+# Loopback redirect (RFC 8252 §7.3). Looker matches redirect URIs exactly against the ones
+# registered on the client app, so the port is fixed; it is deliberately not the dashboard's 8765.
+DEFAULT_REDIRECT_URI = "http://127.0.0.1:48765/oauth/callback"
 DEFAULT_TOKEN_PATH = Path.home() / ".strata" / "tokens.json"
 API_VERSION = "4.0"
+OAUTH_SCOPE = "cors_api"
+# Treat a token this close to expiry as expired, so a request never starts with a dying token.
+EXPIRY_SKEW_SECONDS = 30
 
 
 class LookerUsageAdapter(Protocol):
@@ -54,12 +69,17 @@ class DisabledLookerAdapter:
 
 @dataclass(frozen=True)
 class LookerToken:
+    """A stored access token, bound to the Looker API origin that issued it (`looker_url`).
+
+    Looker also returns a refresh token, but its guide documents no refresh request, so Strata
+    does not persist it: an expired access token means `strata auth login` again.
+    """
+
     access_token: str
+    looker_url: str
     token_type: str = "Bearer"
     expires_at: float | None = None
-    refresh_token: str | None = None
-    looker_url: str | None = None
-    client_guid: str = DEFAULT_CLIENT_GUID
+    client_id: str = DEFAULT_CLIENT_ID
     redirect_uri: str = DEFAULT_REDIRECT_URI
 
     @classmethod
@@ -67,100 +87,161 @@ class LookerToken:
         token = data.get("access_token")
         if not token:
             raise LiveLookerNotConfigured("Looker token file is missing access_token")
+        if not data.get("looker_url"):
+            raise LiveLookerNotConfigured(
+                "Looker token file has no looker_url, so it cannot be bound to an instance; "
+                "run `strata auth login` again"
+            )
         return cls(
             access_token=str(token),
+            looker_url=_normalize_url(str(data["looker_url"])),
             token_type=str(data.get("token_type", "Bearer")),
             expires_at=float(data["expires_at"]) if data.get("expires_at") else None,
-            refresh_token=str(data["refresh_token"]) if data.get("refresh_token") else None,
-            looker_url=str(data["looker_url"]) if data.get("looker_url") else None,
-            client_guid=str(data.get("client_guid", DEFAULT_CLIENT_GUID)),
+            client_id=str(data.get("client_id") or data.get("client_guid") or DEFAULT_CLIENT_ID),
             redirect_uri=str(data.get("redirect_uri", DEFAULT_REDIRECT_URI)),
         )
 
     def redacted(self) -> dict[str, Any]:
         data = asdict(self)
         data["access_token"] = _redact(self.access_token)
-        if self.refresh_token:
-            data["refresh_token"] = _redact(self.refresh_token)
         return data
+
+    def ensure_usable_for(self, url: str) -> None:
+        """Refuse to present this token anywhere but its own origin, or after it expires."""
+        if _origin(url) != _origin(self.looker_url):
+            raise LiveLookerNotConfigured(
+                f"refusing to send the Looker token for {self.looker_url} to {_origin(url)}; "
+                "run `strata auth login --looker-url` for that instance"
+            )
+        if self.expires_at is not None and time.time() >= self.expires_at - EXPIRY_SKEW_SECONDS:
+            raise LiveLookerNotConfigured("Looker token has expired; run `strata auth login` again")
 
 
 def load_token(path: str | Path = DEFAULT_TOKEN_PATH) -> LookerToken:
+    """Read the token file. On POSIX a file readable or writable by group/others is refused.
+
+    Windows has no POSIX mode bits to check (Python reports synthetic ones), so the check is
+    skipped there; rely on the user profile's ACLs.
+    """
     token_path = Path(path).expanduser()
     if not token_path.exists():
         raise LiveLookerNotConfigured(f"Looker token file not found: {token_path}")
-    mode = token_path.stat().st_mode & 0o177
-    if mode != 0:
-        import warnings
-
-        warnings.warn(
-            f"Token file {token_path} has loose permissions ({oct(token_path.stat().st_mode)[-4:]}). "
-            "Expected 0600. Run: chmod 600 " + str(token_path),
-            stacklevel=2,
-        )
+    if os.name == "posix":
+        mode = stat.S_IMODE(token_path.stat().st_mode)
+        if mode & 0o077:
+            raise LiveLookerNotConfigured(
+                f"refusing to read {token_path}: permissions {oct(mode)} allow group/other "
+                f"access. Run: chmod 600 {token_path}"
+            )
     return LookerToken.from_mapping(json.loads(token_path.read_text(encoding="utf-8")))
 
 
 def save_token(token: LookerToken, path: str | Path = DEFAULT_TOKEN_PATH) -> None:
+    """Write the token as 0600 in a 0700 directory, atomically.
+
+    The file is created fresh with O_EXCL at mode 0600 (never briefly wider), then renamed over
+    the target. The parent directory is chmod-ed to 0700 on every save, so point `--token-path`
+    at a dedicated directory.
+    """
     token_path = Path(path).expanduser()
-    token_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-    token_path.write_text(
-        json.dumps(asdict(token), indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    token_path.chmod(0o600)
+    parent = token_path.parent
+    parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    if os.name == "posix":
+        os.chmod(parent, 0o700)
+    tmp = parent / f".{token_path.name}.{secrets.token_hex(8)}.tmp"
+    flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(tmp, flags, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(asdict(token), indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, token_path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def auth_url(
     looker_url: str,
-    client_guid: str = DEFAULT_CLIENT_GUID,
+    state: str,
+    code_challenge: str,
+    client_id: str = DEFAULT_CLIENT_ID,
     redirect_uri: str = DEFAULT_REDIRECT_URI,
 ) -> str:
+    """The `/auth` URL on the Looker UI host, with `state` and an S256 PKCE challenge."""
     base = _normalize_url(looker_url)
     query = urllib.parse.urlencode(
-        {"client_guid": client_guid, "redirect_uri": redirect_uri, "response_type": "code"}
+        {
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": OAUTH_SCOPE,
+            "state": state,
+            "code_challenge_method": "S256",
+            "code_challenge": code_challenge,
+        }
     )
     return f"{base}/auth?{query}"
 
 
 def exchange_code(
-    looker_url: str,
+    api_url: str,
     code: str,
-    client_guid: str = DEFAULT_CLIENT_GUID,
+    code_verifier: str,
+    client_id: str = DEFAULT_CLIENT_ID,
     redirect_uri: str = DEFAULT_REDIRECT_URI,
     runner: LookerQueryRunner | None = None,
 ) -> LookerToken:
-    api = runner or LookerQueryRunner(looker_url)
-    payload = api.post_form(
-        "/token",
+    """Redeem the code at `/api/token` on the Looker API host (JSON body, per the Looker guide)."""
+    api = runner or LookerQueryRunner(api_url)
+    payload = api.post_json(
+        "/api/token",
         {
             "grant_type": "authorization_code",
-            "code": code,
-            "client_guid": client_guid,
+            "client_id": client_id,
             "redirect_uri": redirect_uri,
+            "code": code,
+            "code_verifier": code_verifier,
         },
-        auth_token=None,
+        content_type="application/json;charset=UTF-8",
     )
+    if not isinstance(payload, dict) or not payload.get("access_token"):
+        raise LookerAPIError("Looker token response had no access_token")
     expires_in = payload.get("expires_in")
     return LookerToken(
         access_token=str(payload["access_token"]),
+        looker_url=api.looker_url,
         token_type=str(payload.get("token_type", "Bearer")),
         expires_at=time.time() + float(expires_in) if expires_in else None,
-        refresh_token=str(payload["refresh_token"]) if payload.get("refresh_token") else None,
-        looker_url=_normalize_url(looker_url),
-        client_guid=client_guid,
+        client_id=client_id,
         redirect_uri=redirect_uri,
     )
+
+
+class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    """urllib would re-send the Authorization header to a redirect target on any host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        return None
+
+
+_OPENER = urllib.request.build_opener(_RefuseRedirects)
 
 
 class LookerQueryRunner:
     """Small stdlib HTTP runner for read-only Looker API calls."""
 
-    def __init__(self, looker_url: str, access_token: str | None = None, timeout: int = 30) -> None:
+    def __init__(
+        self, looker_url: str, token: LookerToken | None = None, timeout: int = 30
+    ) -> None:
         if not looker_url:
             raise LiveLookerNotConfigured("--looker-url is required for live Looker access")
         self.looker_url = _normalize_url(looker_url)
-        self.access_token = access_token
+        self.token = token
         self.timeout = timeout
+        if token is not None:
+            token.ensure_usable_for(self.looker_url)
 
     def run_inline_query(
         self, model: str, explore: str, fields: list[str], filters: dict[str, Any] | None = None
@@ -174,34 +255,30 @@ class LookerQueryRunner:
         }
         return self.post_json(f"/api/{API_VERSION}/queries/run/json", payload)
 
-    def post_json(self, path: str, payload: dict[str, Any], auth_token: str | None = None) -> Any:
-        body = json.dumps(payload).encode("utf-8")
-        return self._request(path, body, "application/json", auth_token)
-
-    def post_form(
-        self, path: str, payload: dict[str, Any], auth_token: str | None = None
-    ) -> dict[str, Any]:
-        body = urllib.parse.urlencode(payload).encode("utf-8")
-        return self._request(path, body, "application/x-www-form-urlencoded", auth_token)
-
-    def _request(
-        self, path: str, body: bytes, content_type: str, auth_token: str | None = None
+    def post_json(
+        self, path: str, payload: dict[str, Any], content_type: str = "application/json"
     ) -> Any:
-        token = self.access_token if auth_token is None else auth_token
+        url = f"{self.looker_url}{path}"
         headers = {"Content-Type": content_type, "Accept": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        if self.token is not None:
+            # Re-checked per request: origin binding and expiry hold for every call, not just
+            # at construction.
+            self.token.ensure_usable_for(url)
+            headers["Authorization"] = f"Bearer {self.token.access_token}"
         request = urllib.request.Request(
-            f"{self.looker_url}{path}", data=body, headers=headers, method="POST"
+            url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with _OPENER.open(request, timeout=self.timeout) as response:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:500]
-            raise LookerAPIError(f"Looker API request failed: HTTP {exc.code} {detail}") from exc
+            # The response body is deliberately not echoed: on /api/token it can carry the code
+            # or token material back.
+            raise LookerAPIError(
+                f"Looker API request to {path} failed: HTTP {exc.code} {exc.reason}"
+            ) from exc
         except urllib.error.URLError as exc:
-            raise LookerAPIError(f"Looker API request failed: {exc.reason}") from exc
+            raise LookerAPIError(f"Looker API request to {path} failed: {exc.reason}") from exc
         return json.loads(raw) if raw else {}
 
 
@@ -222,12 +299,9 @@ class LookerSystemActivityProvider:
         days: int = 30,
     ) -> LookerSystemActivityProvider:
         token = load_token(token_path)
-        url = looker_url or token.looker_url
-        if not url:
-            raise LiveLookerNotConfigured(
-                "--looker-url is required and token file has no looker_url"
-            )
-        return cls(LookerQueryRunner(url, token.access_token), days=days)
+        # The token is bound to the origin it was issued for; a different --looker-url is
+        # refused by the runner rather than sent the token.
+        return cls(LookerQueryRunner(looker_url or token.looker_url, token), days=days)
 
     def period(self) -> dict[str, Any]:
         """The actual window `self.days` queries — same `{start, end, days}` shape the
@@ -360,8 +434,17 @@ def _normalize_url(value: str) -> str:
     return value
 
 
+def _origin(url: str) -> tuple[str, str, int]:
+    """(scheme, host, effective port) — the unit a token is bound to."""
+    parts = urllib.parse.urlsplit(url)
+    scheme = parts.scheme.lower()
+    port = parts.port or (443 if scheme == "https" else 80)
+    return scheme, (parts.hostname or "").lower(), port
+
+
 def _redact(value: str) -> str:
-    return f"{value[:4]}...{value[-4:]}" if len(value) > 8 else "***"
+    """At most the last four characters of a secret, and none of a short one."""
+    return f"...{value[-4:]}" if len(value) >= 16 else "***"
 
 
 def _first(row: dict[str, Any], *keys: str) -> str | None:

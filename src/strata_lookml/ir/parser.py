@@ -229,7 +229,10 @@ def parse_file(path: str | Path, repo_root: str | Path | None = None) -> ParsedF
 
 def parse_repo(repo_path: str | Path) -> list[ParsedFile]:
     root = Path(repo_path)
-    paths = sorted(root.rglob("*.lkml"))
+    real_root = root.resolve()
+    # A symlinked .lkml that resolves outside the repo would pull arbitrary local files into
+    # the IR (and into MCP answers); skip it.
+    paths = sorted(p for p in root.rglob("*.lkml") if p.resolve().is_relative_to(real_root))
     return [parse_file(path, root) for path in paths]
 
 

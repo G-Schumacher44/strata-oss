@@ -56,10 +56,16 @@ def cache_age_seconds(cache_path: str | Path) -> float | None:
         row = conn.execute("SELECT built_at FROM ir_cache WHERE id = 1").fetchone()
     if row is None:
         return None
-    built_at = datetime.fromisoformat(row[0])
+    try:
+        built_at = datetime.fromisoformat(row[0])
+    except (TypeError, ValueError):
+        return None
     if built_at.tzinfo is None:
         built_at = built_at.replace(tzinfo=UTC)
-    return (datetime.now(UTC) - built_at).total_seconds()
+    age = (datetime.now(UTC) - built_at).total_seconds()
+    # A future built_at (clock skew or a hand-edited cache) would read as "fresh" forever;
+    # report no usable age so the caller rebuilds.
+    return age if age >= 0 else None
 
 
 def _connect_existing(path: Path) -> sqlite3.Connection:

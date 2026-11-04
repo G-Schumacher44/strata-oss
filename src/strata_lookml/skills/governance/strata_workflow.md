@@ -42,7 +42,7 @@ strata dashboard \
   --schema-fixture tests/fixtures/gcs_schema_facts.json
 ```
 
-Opens `http://localhost:8765/dashboard.html` in your browser. The dashboard is
+Opens `http://127.0.0.1:8765/dashboard.html` in your browser. The dashboard is
 self-contained HTML — you can also open `output/gcs_analytics/dashboard.html`
 directly without the server.
 

@@ -266,6 +266,8 @@ def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[s
     ]
     if not any(resolved.is_relative_to(r) for r in allowed_roots):
         raise ValueError(f"out_path must be within ~/.strata/output/ or /tmp/. Got: {out_path!r}")
+    if resolved.suffix.lower() != ".html":
+        raise ValueError(f"out_path must end in .html. Got: {out_path!r}")
 
     try:
         import yaml as _yaml

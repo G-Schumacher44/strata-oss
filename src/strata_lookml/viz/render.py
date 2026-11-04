@@ -7,6 +7,7 @@ import csv
 import html as _html_module
 import json
 import os
+import sys
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -91,7 +92,9 @@ def render_chart(
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
-    print(out_path)
+    # stderr, not stdout: render_chart also runs inside the stdio MCP server, where stdout is
+    # the JSON-RPC channel.
+    print(out_path, file=sys.stderr)
 
     if open_browser:
         webbrowser.open(out_path.as_uri())

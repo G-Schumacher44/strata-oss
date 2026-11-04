@@ -84,7 +84,7 @@ def dashboard(
     dashboard_path.write_text(html, encoding="utf-8")
     click.secho(f"Dashboard: {dashboard_path}", fg="green")
 
-    url = f"http://localhost:{port}/dashboard.html"
+    url = f"http://127.0.0.1:{port}/dashboard.html"
     click.echo(f"\nServing at {url}  (Ctrl+C to stop)\n")
 
     import os
@@ -96,7 +96,8 @@ def dashboard(
             pass
 
     socketserver.TCPServer.allow_reuse_address = True
-    server = http.server.HTTPServer(("localhost", port), QuietHandler)
+    # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
+    server = http.server.HTTPServer(("127.0.0.1", port), QuietHandler)
 
     if not no_browser:
         threading.Timer(0.4, webbrowser.open, args=[url]).start()
