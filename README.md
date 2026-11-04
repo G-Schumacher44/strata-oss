@@ -119,7 +119,7 @@ See [Looker OAuth and Token Management](#looker-oauth-and-token-management).
 
 ```bash
 uvx --from strata-lookml strata query status  --repo /path/to/your/lookml   # parse + node counts
-uvx --from strata-lookml strata query orphans --repo /path/to/your/lookml   # unreferenced explores/views/fields
+uvx --from strata-lookml strata query orphans --repo /path/to/your/lookml   # views no explore uses
 uvx --from strata-lookml strata outputs       --repo /path/to/your/lookml --out strata-out   # JSON artifacts
 ```
 
@@ -431,7 +431,7 @@ Agent calls: strata_validation_scope(["views/orders.view.lkml"])
 | `strata_schema_drift` | Column-level drift: field exists in LookML, missing in warehouse |
 | `strata_explore_deps` | Full join graph for an explore |
 | `strata_query_field` | Field definition: type, SQL, tags, usage |
-| `strata_list_orphans` | Orphaned views, explores, and fields by kind |
+| `strata_list_orphans` | Orphaned views (only views are detected; `kind` filters the result) |
 | `strata_usage_summary` | Query counts, top explores, usage gaps |
 | `strata_validation_scope` | Impact set for a set of changed .lkml files |
 | `strata_impact` | Views, explores, and fields affected by a physical table change |
