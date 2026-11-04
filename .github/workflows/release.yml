@@ -24,8 +24,9 @@ jobs:
           python-version: '3.11'
 
       # Fail closed BEFORE anything is built or published if the tag disagrees with any
-      # of the three duplicated version fields (PR #18, Codex P2): pyproject.toml,
-      # mcpb/manifest.json, and the mcpb shim's exact pin. A v0.1.7 tag pushed after a
+      # of the duplicated version fields (PR #18, Codex P2): pyproject.toml,
+      # mcpb/manifest.json, the mcpb shim's exact pin, and server.json (top-level and every
+      # packages[].version; the MCP registry reads it). A v0.1.7 tag pushed after a
       # missed bump would otherwise publish the WRONG immutable version to PyPI.
       - name: Verify tag matches all version fields
         run: |
@@ -45,11 +46,20 @@ jobs:
           pin = next((d for d in mcpb_deps if d.startswith("strata-lookml")), "")
           if pin != f"strata-lookml=={tag}":
               errors.append(f"mcpb shim pin {pin!r} != 'strata-lookml=={tag}'")
+          server = json.load(open("server.json"))
+          if server.get("version") != tag:
+              errors.append(f"server.json version {server.get('version')!r} != tag {tag!r}")
+          packages = server.get("packages") or []
+          if not packages:
+              errors.append("server.json has no packages entry")
+          for i, pkg in enumerate(packages):
+              if pkg.get("version") != tag:
+                  errors.append(f"server.json packages[{i}].version {pkg.get('version')!r} != tag {tag!r}")
           if errors:
               print("VERSION MISMATCH — refusing to publish:")
               for e in errors: print(f"  - {e}")
               sys.exit(1)
-          print(f"tag v{tag} matches pyproject, manifest, and shim pin")
+          print(f"tag v{tag} matches pyproject, manifest, shim pin, and server.json")
           PY
 
       - name: Install hatchling

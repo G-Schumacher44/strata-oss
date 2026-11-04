@@ -6,6 +6,8 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-11-03
+
 ### Changed
 
 - **BREAKING (Python importers only):** the import package is now `strata_lookml`; through 0.1.8
@@ -22,13 +24,42 @@ All notable changes to `strata-lookml` are documented here. The format follows
   more classifiers, and Documentation / Changelog project URLs.
 - README: absolute links so it renders correctly on PyPI, Quick Start leads with
   `pipx install strata-lookml`, and a no-credentials path for your own LookML repo.
+  ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
 
 ### Added
 
+- MCP Registry readiness: a `server.json` (registry name `io.github.G-Schumacher44/strata-oss`,
+  PyPI package `strata-lookml`, stdio via `uvx`), the matching `mcp-name` token in the README,
+  and a `strata-lookml` console script (same server as `strata-mcp`) so
+  `uvx strata-lookml` resolves. ([#44](https://github.com/G-Schumacher44/strata-oss/pull/44))
+- Every MCP tool now has a `title` and explicit `ToolAnnotations`: 17 are read-only;
+  `strata_render_chart` is annotated as a destructive, idempotent writer (it writes, and may
+  overwrite, one HTML file under `~/.strata/output` or `/tmp`). ([#44](https://github.com/G-Schumacher44/strata-oss/pull/44))
 - Descriptions for the 8 MCP tools that reported an empty description in `tools/list`.
+  ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
 - `strata-mcp --help` / `-h` prints usage and exits instead of starting the stdio server.
+  ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
 
 ### Fixed
+
+Ten correctness fixes ([#50](https://github.com/G-Schumacher44/strata-oss/pull/50)):
+
+- PDT upstream SQL: backtick-quoted BigQuery tables are detected, including per-part quoting;
+  `${view}` refs and backtick-quoted CTEs are no longer read as tables, and a per-part-quoted
+  `sql_table_name` and the same PDT upstream resolve to one table node.
+- Charts: `<` is escaped in chart HTML so data cannot close the script block.
+- `strata query navigate`: the chart spec is built as data rather than a YAML template, the chart
+  is written under the guarded output root (`~/.strata/output`), `dataset.table` anchors are
+  classified as physical tables when the IR has them, and an exact `view.field` match wins over a
+  same-named table (the brief flags `ambiguous_anchor`).
+- `strata clean --repo` sweeps `__pycache__` under the repo, not the current directory.
+- `load_ir` raises `FileNotFoundError` instead of creating an empty cache file, and opens the
+  cache without ever creating it.
+- ISO timestamps are compared as instants, with one shared, order-independent latest-timestamp
+  rule.
+- The source-line scan cache is cleared on every build.
+
+Also:
 
 - Dashboard: escape the remaining `innerHTML` sinks and harden the escaping guardrail
   ([#30](https://github.com/G-Schumacher44/strata-oss/pull/30)).
@@ -38,7 +69,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
   ([#25](https://github.com/G-Schumacher44/strata-oss/pull/25)).
 - An invalid `\]` escape in the dashboard HTML template (inside a JavaScript comment) raised a
   `SyntaxWarning` when the module was compiled, and a `SyntaxError` under `-W error`. The
-  generated dashboard is byte-identical.
+  generated dashboard is byte-identical. ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
 - README naming note rewritten as bullets
   ([#24](https://github.com/G-Schumacher44/strata-oss/pull/24)).
 
@@ -78,7 +109,8 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - README CI badge and Quick Start point at strata-oss
   ([#17](https://github.com/G-Schumacher44/strata-oss/pull/17)).
 
-[Unreleased]: https://github.com/G-Schumacher44/strata-oss/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/G-Schumacher44/strata-oss/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/G-Schumacher44/strata-oss/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/G-Schumacher44/strata-oss/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/G-Schumacher44/strata-oss/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/G-Schumacher44/strata-oss/releases/tag/v0.1.6
