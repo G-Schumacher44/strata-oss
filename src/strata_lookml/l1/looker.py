@@ -150,7 +150,7 @@ def prepare_token_dir(path: str | Path = DEFAULT_TOKEN_PATH) -> Path:
     if not parent.exists():
         parent.mkdir(parents=True, mode=0o700)
         if os.name == "posix":
-            os.chmod(parent, 0o700)  # mkdir's mode is masked by the umask
+            os.chmod(parent, 0o700)  # umask can only narrow mkdir mode; make it exactly 0700
     elif os.name == "posix":
         if parent.resolve() == DEFAULT_TOKEN_PATH.parent.resolve():
             os.chmod(parent, 0o700)
