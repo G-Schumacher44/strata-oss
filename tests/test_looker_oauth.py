@@ -123,30 +123,54 @@ def test_callback_state_is_verified():
         code_from_callback("code=abc", "s1")
 
 
-def test_loopback_receiver_captures_one_redirect():
+def test_loopback_receiver_ignores_strays_and_captures_the_real_redirect():
+    """Other paths and forged-state callbacks neither end the login nor yield a code."""
     port = _free_port()
-    receiver = LoopbackReceiver(f"http://127.0.0.1:{port}/oauth/callback")
+    receiver = LoopbackReceiver(f"http://127.0.0.1:{port}/oauth/callback", "s")
     replies = []
 
     def browser():
         base = f"http://127.0.0.1:{port}"
-        try:
-            urllib.request.urlopen(f"{base}/other?code=x&state=s", timeout=5)
-        except urllib.error.HTTPError as exc:
-            replies.append(exc.code)
-        with urllib.request.urlopen(f"{base}/oauth/callback?code=c0de&state=s", timeout=5) as r:
+        for url in (f"{base}/other?code=x&state=s", f"{base}/oauth/callback?code=x&state=forged"):
+            try:
+                urllib.request.urlopen(url, timeout=10)
+            except urllib.error.HTTPError as exc:
+                replies.append(exc.code)
+        with urllib.request.urlopen(f"{base}/oauth/callback?code=c0de&state=s", timeout=10) as r:
             replies.append(r.status)
 
     t = threading.Thread(target=browser)
     t.start()
-    assert receiver.wait("s", timeout=10) == "c0de"
+    assert receiver.wait(timeout=20) == "c0de"
     t.join()
-    assert replies == [404, 200]
+    assert replies == [404, 400, 200]
+
+
+def test_loopback_receiver_timeout_holds_against_an_idle_client():
+    port = _free_port()
+    receiver = LoopbackReceiver(f"http://127.0.0.1:{port}/oauth/callback", "s")
+    idle = socket.create_connection(("127.0.0.1", port))  # connects, never sends
+    outcome: list[BaseException] = []
+    waiter = threading.Thread(target=lambda: _capture(outcome, receiver.wait, 1), daemon=True)
+    waiter.start()
+    waiter.join(timeout=10)  # handler socket timeout is 5s, wait timeout 1s
+    stalled = waiter.is_alive()
+    idle.close()
+    waiter.join(timeout=10)
+    assert not stalled, "an idle connection stalled the receiver past its timeout"
+    assert outcome and isinstance(outcome[0], OAuthCallbackError)
+
+
+def _capture(outcome: list[BaseException], fn, *args) -> None:
+    try:
+        fn(*args)
+    except BaseException as exc:  # recorded for the assertion
+        outcome.append(exc)
 
 
 def test_loopback_receiver_refuses_non_loopback_redirect():
     with pytest.raises(OAuthCallbackError, match="loopback"):
-        LoopbackReceiver("https://app.example.com/callback")
+        LoopbackReceiver("https://app.example.com/callback", "s")
 
 
 def test_login_no_browser_reads_redirect_from_stdin(tmp_path, monkeypatch):
@@ -245,16 +269,29 @@ def test_redirect_never_carries_the_token_elsewhere():
 
 
 @posix_only
-def test_save_token_is_0600_in_0700_dir(tmp_path):
-    folder = tmp_path / "strata"
-    folder.mkdir(mode=0o755)
-    os.chmod(folder, 0o755)
+def test_save_token_is_0600_in_0700_dir(tmp_path, monkeypatch):
+    folder = tmp_path / "home" / ".strata"
     path = folder / "tokens.json"
-    save_token(_token(), path)
+    save_token(_token(), path)  # creates the directory 0700 whatever the umask
+    assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+    # Strata's own directory left loose by an older version is tightened on save.
+    monkeypatch.setattr(looker, "DEFAULT_TOKEN_PATH", path)
+    os.chmod(folder, 0o755)
     save_token(_token(), path)  # overwrite path: still atomic, still tight
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(folder.stat().st_mode) == 0o700
     assert [p.name for p in folder.iterdir()] == ["tokens.json"]  # no temp left behind
+
+
+@posix_only
+def test_token_never_lands_in_a_shared_directory(tmp_path):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    os.chmod(shared, 0o755)
+    with pytest.raises(LiveLookerNotConfigured, match="dedicated directory"):
+        save_token(_token(), shared / "tokens.json")
+    assert stat.S_IMODE(shared.stat().st_mode) == 0o755  # never chmod-ed
+    assert list(shared.iterdir()) == []
 
 
 @posix_only
@@ -272,3 +309,8 @@ def test_legacy_token_without_origin_is_refused(tmp_path):
     os.chmod(path, 0o600)
     with pytest.raises(LiveLookerNotConfigured, match="looker_url"):
         load_token(path)
+
+
+def test_callback_with_non_ascii_state_fails_closed():
+    with pytest.raises(OAuthCallbackError, match="state"):
+        code_from_callback("code=abc&state=%C3%A9", "s1")

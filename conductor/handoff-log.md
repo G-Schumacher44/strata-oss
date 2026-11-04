@@ -40,10 +40,22 @@ Exact Next Steps: operator merges after twins pass -> tag v0.1.9 per the previou
 - Fixed loopback port 48765, not ephemeral: Looker matches registered redirect URIs exactly.
   BREAKING for anyone who registered the old 8765 URI; CHANGELOG says so.
 - Refresh token dropped rather than stored unused (no documented refresh grant).
-- Parent dir chmod 0700 on every save, even for a custom `--token-path` (documented: use a
-  dedicated directory).
+- Token directory: create missing dirs 0700 and keep `~/.strata` 0700, but never chmod any other
+  existing directory — a custom `--token-path` in a group/other-accessible directory is refused,
+  checked before the browser opens (a code is single-use).
 - `--max_rows` raised to 1,000,000: the bq default of 100 truncated column inventories — a
   pre-existing correctness bug fixed in passing because the argv was being rebuilt anyway.
+
+### Pre-gate (local Artemis, FIX-FIRST, no blocker) — dispositions
+
+- Fixed: loopback handler socket timeout (idle connection stalled `--timeout`); stray/forged-state
+  callbacks now get 400 and the login keeps waiting; non-ASCII `state` compared as bytes;
+  `SO_REUSEADDR` off + `SO_EXCLUSIVEADDRUSE` on Windows; token-dir rule above; origin-binding
+  error names the API URL to pass; `outputs`/`dashboard` map token/API refusals to CLI errors via
+  one helper (`cli/outputs.py:live_looker_graph`); docs' write table completed (build, chart,
+  query navigate, conductor, validate log, clean deletions) and listener wording made exact.
+- Filed as pre-existing (not this PR): dashboard Host-header / DNS-rebinding; `/tmp` chart writes
+  follow symlinks.
 
 ### Gates
 

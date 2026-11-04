@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import http.server
 import secrets
+import socket
 import time
 import urllib.parse
 from typing import Any
@@ -24,6 +25,10 @@ LOOPBACK_HOSTS = ("127.0.0.1", "localhost")
 
 class OAuthCallbackError(RuntimeError):
     pass
+
+
+class OAuthStateMismatch(OAuthCallbackError):
+    """The redirect's `state` is missing or wrong: not our login's redirect."""
 
 
 def new_pkce_pair() -> tuple[str, str]:
@@ -54,8 +59,8 @@ def code_from_callback(query: str, expected_state: str) -> str:
         query = urllib.parse.urlsplit(query.strip()).query
     params = urllib.parse.parse_qs(query.strip().lstrip("?"))
     state = params.get("state", [""])[0]
-    if not state or not hmac.compare_digest(state, expected_state):
-        raise OAuthCallbackError("OAuth state did not match; refusing the authorization code")
+    if not state or not hmac.compare_digest(state.encode(), expected_state.encode()):
+        raise OAuthStateMismatch("OAuth state did not match; refusing the authorization code")
     if "error" in params:
         raise OAuthCallbackError(f"Looker returned an OAuth error: {params['error'][0]}")
     code = params.get("code", [""])[0]
@@ -76,6 +81,16 @@ def loopback_address(redirect_uri: str) -> tuple[int, str]:
     return parts.port, parts.path or "/"
 
 
+class _ExclusiveServer(http.server.HTTPServer):
+    # http.server sets SO_REUSEADDR, which on Windows lets another process bind the same port.
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows only
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 class LoopbackReceiver:
     """One-shot HTTP listener on 127.0.0.1 that captures a single OAuth redirect.
 
@@ -83,17 +98,31 @@ class LoopbackReceiver:
     Request logging is suppressed so the code never reaches the terminal.
     """
 
-    def __init__(self, redirect_uri: str) -> None:
+    def __init__(self, redirect_uri: str, expected_state: str) -> None:
         port, path = loopback_address(redirect_uri)
         captured: dict[str, str] = {}
 
         class _Handler(http.server.BaseHTTPRequestHandler):
+            # A local client that connects and never sends must not stall the login.
+            timeout = 5
+
             def do_GET(self) -> None:
                 parts = urllib.parse.urlsplit(self.path)
                 if parts.path != path:
                     self.send_error(404)
                     return
-                captured["query"] = parts.query
+                try:
+                    captured["code"] = code_from_callback(parts.query, expected_state)
+                except OAuthStateMismatch:
+                    # A stray or forged request (wrong/missing state) does not end the login:
+                    # refuse it and keep waiting for the real redirect.
+                    self.send_error(400)
+                    return
+                except OAuthCallbackError as exc:
+                    # Our own redirect, carrying an error (e.g. the user denied access).
+                    captured["error"] = str(exc)
+                    self.send_error(400)
+                    return
                 body = b"Strata received the Looker redirect. You can close this tab."
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -107,12 +136,14 @@ class LoopbackReceiver:
 
         self._captured = captured
         # Always the IPv4 loopback literal, even if the registered URI says "localhost".
-        self._server = http.server.HTTPServer(("127.0.0.1", port), _Handler)
+        self._server = _ExclusiveServer(("127.0.0.1", port), _Handler)
 
-    def wait(self, expected_state: str, timeout: float = 300.0) -> str:
+    def wait(self, timeout: float = 300.0) -> str:
         deadline = time.monotonic() + timeout
         try:
-            while "query" not in self._captured:
+            while "code" not in self._captured:
+                if "error" in self._captured:
+                    raise OAuthCallbackError(self._captured["error"])
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise OAuthCallbackError("timed out waiting for the Looker redirect")
@@ -120,7 +151,7 @@ class LoopbackReceiver:
                 self._server.handle_request()
         finally:
             self._server.server_close()
-        return code_from_callback(self._captured["query"], expected_state)
+        return self._captured["code"]
 
     def close(self) -> None:
         self._server.server_close()

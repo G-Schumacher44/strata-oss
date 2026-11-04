@@ -109,9 +109,11 @@ class LookerToken:
     def ensure_usable_for(self, url: str) -> None:
         """Refuse to present this token anywhere but its own origin, or after it expires."""
         if _origin(url) != _origin(self.looker_url):
+            scheme, host, port = _origin(url)
             raise LiveLookerNotConfigured(
-                f"refusing to send the Looker token for {self.looker_url} to {_origin(url)}; "
-                "run `strata auth login --looker-url` for that instance"
+                f"refusing to send the Looker token issued for {self.looker_url} to "
+                f"{scheme}://{host}:{port}. Pass --looker-url {self.looker_url} (the API host "
+                "the token was issued for), or run `strata auth login` for the other instance"
             )
         if self.expires_at is not None and time.time() >= self.expires_at - EXPIRY_SKEW_SECONDS:
             raise LiveLookerNotConfigured("Looker token has expired; run `strata auth login` again")
@@ -136,18 +138,39 @@ def load_token(path: str | Path = DEFAULT_TOKEN_PATH) -> LookerToken:
     return LookerToken.from_mapping(json.loads(token_path.read_text(encoding="utf-8")))
 
 
-def save_token(token: LookerToken, path: str | Path = DEFAULT_TOKEN_PATH) -> None:
-    """Write the token as 0600 in a 0700 directory, atomically.
+def prepare_token_dir(path: str | Path = DEFAULT_TOKEN_PATH) -> Path:
+    """Make sure the token's directory is private before anything is written there (POSIX).
 
-    The file is created fresh with O_EXCL at mode 0600 (never briefly wider), then renamed over
-    the target. The parent directory is chmod-ed to 0700 on every save, so point `--token-path`
-    at a dedicated directory.
+    A missing directory is created 0700. Strata's own `~/.strata` is tightened to 0700. Any
+    other existing directory is never chmod-ed: if group or others can access it, the token
+    path is refused, so pick a dedicated directory.
     """
     token_path = Path(path).expanduser()
     parent = token_path.parent
-    parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-    if os.name == "posix":
-        os.chmod(parent, 0o700)
+    if not parent.exists():
+        parent.mkdir(parents=True, mode=0o700)
+        if os.name == "posix":
+            os.chmod(parent, 0o700)  # mkdir's mode is masked by the umask
+    elif os.name == "posix":
+        if parent.resolve() == DEFAULT_TOKEN_PATH.parent.resolve():
+            os.chmod(parent, 0o700)
+        elif stat.S_IMODE(parent.stat().st_mode) & 0o077:
+            raise LiveLookerNotConfigured(
+                f"refusing to store the token in {parent}: the directory is accessible by "
+                "group/other. Use a dedicated directory with mode 0700 (the default is "
+                f"{DEFAULT_TOKEN_PATH})"
+            )
+    return token_path
+
+
+def save_token(token: LookerToken, path: str | Path = DEFAULT_TOKEN_PATH) -> None:
+    """Write the token as 0600 in a private directory, atomically.
+
+    The file is created fresh with O_EXCL at mode 0600 (never briefly wider), then renamed over
+    the target. The directory rules are `prepare_token_dir`'s.
+    """
+    token_path = prepare_token_dir(path)
+    parent = token_path.parent
     tmp = parent / f".{token_path.name}.{secrets.token_hex(8)}.tmp"
     flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(tmp, flags, 0o600)

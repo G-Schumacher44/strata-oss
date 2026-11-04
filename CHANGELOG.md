@@ -29,16 +29,18 @@ All notable changes to `strata-lookml` are documented here. The format follows
   forwarded); expiry is checked before each request; the refresh token is no longer stored
   (Looker documents no refresh request). A token file without `looker_url` is refused; run
   `strata auth login` again.
-- Token storage: written via an exclusive-create 0600 temp file and atomic rename, with the
-  directory set to 0700 on every save; a group/world-accessible token file is now refused on
-  read (POSIX) instead of warned about. `auth status` shows at most the last four characters;
+- Token storage: written via an exclusive-create 0600 temp file and atomic rename; a missing
+  token directory is created 0700 and `~/.strata` is kept 0700, while a custom `--token-path`
+  in a directory shared with group/others is refused before the login starts. A
+  group/world-accessible token file is now refused on read (POSIX) instead of warned about. `auth status` shows at most the last four characters;
   API errors no longer echo the response body. `auth logout` states that it is local-only.
 - `strata mcp validate` checks the real token path (`~/.strata/tokens.json`), not
   `looker_token.json`.
 - MCP server: an IR cache whose `built_at` is in the future (or unparseable) is rebuilt instead
   of being treated as fresh; `strata_render_chart` writes its path to stderr (stdout is the
   JSON-RPC channel) and requires an `.html` output path.
-- `strata dashboard` binds `127.0.0.1` explicitly.
+- `strata dashboard` binds `127.0.0.1` explicitly. `strata outputs` / `strata dashboard`
+  report token and Looker API refusals as CLI errors instead of tracebacks.
 - The LookML parser skips symlinks that resolve outside the repo root.
 - Security docs (README, SECURITY.md, `docs/security-hardening.md`,
   `docs/enterprise-deployment.md`) now state exactly what Strata writes and where, which local

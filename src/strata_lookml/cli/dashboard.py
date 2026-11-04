@@ -31,7 +31,11 @@ import click
     show_envvar=True,
     help="Schema facts JSON",
 )
-@click.option("--looker-url", default=None, help="Looker URL for live enrichment")
+@click.option(
+    "--looker-url",
+    default=None,
+    help="Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)",
+)
 @click.option("--days", default=30, show_default=True, help="Looker usage window in days")
 @click.option("--out", default=None, help="Output directory (default: output/<repo-name>)")
 @click.option("--port", default=8765, show_default=True, help="Local server port")
@@ -58,9 +62,10 @@ def dashboard(
       --usage-fixture tests/fixtures/enterprise_usage_facts.json \\
       --schema-fixture tests/fixtures/enterprise_schema_facts.json
     """
+    from strata_lookml.cli.outputs import live_looker_graph
     from strata_lookml.outputs import write_artifacts
     from strata_lookml.outputs.dashboard import build_dashboard_html
-    from strata_lookml.pipeline import build_graph, build_graph_from_looker
+    from strata_lookml.pipeline import build_graph
 
     _repo = Path(repo).expanduser().resolve()
     out_dir = Path(out).expanduser().resolve() if out else Path.cwd() / "output" / _repo.name
@@ -68,7 +73,7 @@ def dashboard(
 
     click.echo(f"Building IR for {_repo.name}...")
     if looker_url:
-        graph = build_graph_from_looker(str(_repo), looker_url, days, schema_fixture)
+        graph = live_looker_graph(str(_repo), looker_url, days, schema_fixture)
     else:
         graph = build_graph(str(_repo), usage_fixture, schema_fixture)
 

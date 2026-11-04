@@ -17,6 +17,7 @@ from strata_lookml.l1.looker import (
     auth_url,
     exchange_code,
     load_token,
+    prepare_token_dir,
     save_token,
 )
 from strata_lookml.l1.oauth import (
@@ -88,6 +89,12 @@ def auth_login(
     captures the code itself. With --no-browser, open the printed URL anywhere, then paste
     the full redirect URL when prompted (read from stdin, never from the command line).
     """
+    try:
+        # Checked before the flow starts: a code is single-use, so failing after redeeming it
+        # would force a second login.
+        prepare_token_dir(token_path)
+    except LiveLookerNotConfigured as exc:
+        raise click.ClickException(str(exc)) from exc
     verifier, challenge = new_pkce_pair()
     state = new_state()
     url = auth_url(looker_url, state, challenge, client_id, redirect_uri)
@@ -100,7 +107,7 @@ def auth_login(
             code = code_from_callback(pasted, state)
         else:
             try:
-                receiver = LoopbackReceiver(redirect_uri)
+                receiver = LoopbackReceiver(redirect_uri, state)
             except OSError as exc:
                 raise click.ClickException(
                     f"could not listen on {redirect_uri} ({exc.strerror}); free the port, "
@@ -109,7 +116,7 @@ def auth_login(
             click.echo(f"Opening your browser to authorize Strata:\n{url}\n")
             click.echo(f"Waiting for the redirect on {redirect_uri} ...")
             webbrowser.open(url)
-            code = receiver.wait(state, timeout=timeout)
+            code = receiver.wait(timeout=timeout)
         token = exchange_code(api_url or looker_url, code, verifier, client_id, redirect_uri)
     except (OAuthCallbackError, LookerAPIError, LiveLookerNotConfigured) as exc:
         raise click.ClickException(str(exc)) from exc

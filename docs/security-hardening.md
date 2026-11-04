@@ -3,16 +3,22 @@
 ## What Strata Reads And Writes
 
 Strata never modifies `.lkml` content, and never writes to a Looker instance, BigQuery, Slack,
-or Jira. Its writes are local files, listed here exactly:
+or Jira. Its writes are local files. Every command that writes or deletes files, as of 0.1.9:
 
 | Command | Writes |
 |---|---|
 | MCP server (`strata-mcp`) | The IR cache: `strata_ir.db` in the LookML repo root, or the path in `STRATA_CACHE_PATH`. Rebuilt when older than the cache max age or when its timestamp is missing, unparseable, or in the future. |
 | `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
+| `strata build` | The IR cache: `<repo>/strata_ir.db`, or `--cache`. |
 | `strata outputs` / `strata dashboard` | JSON artifacts and `dashboard.html` under `--out` (dashboard default: `./output/<repo-name>`). |
+| `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default `/tmp/strata_chart.html`); any path the user names. |
+| `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
+| `strata conductor init` / `new-slice` | `conductor/` files in the target repo. |
+| `strata validate` | Appends one row to `<project>/conductor/.validation-log` (or `CONDUCTOR_VALIDATION_LOG`). |
+| `strata clean` | **Deletes** `./output/`, every `strata_ir.db`, and every `__pycache__` directory under `--repo` (default: the current directory). |
 | `strata bootstrap` | In the target repo: `AGENTS.md`, `CLAUDE.md`, `conductor/`, `.mcp.json`, `.cursor/mcp.json` (existing files skipped unless `--force`), and a Strata block appended to `.gitignore`. Outside it: `~/.strata/config.json`. |
 | `strata generate-schema` | `schema_facts.json` at `--out`. |
-| `strata auth login` / `logout` | `~/.strata/tokens.json` (or `--token-path`): created / deleted. |
+| `strata auth login` / `logout` | `~/.strata/tokens.json` (or `--token-path`): created / deleted; `~/.strata/` created 0700 if missing. |
 
 Notification delivery stops at payload generation: `scripts/notify.py` builds Slack/Jira
 payloads and requires `--dry-run` to print them — sending is not implemented and the script
@@ -28,8 +34,13 @@ actual delivery yourself.
 - **Outbound, BigQuery:** `strata generate-schema` shells out to the `bq` CLI with your gcloud
   credentials; it does not use the Looker token.
 - **Listening:** `strata dashboard` serves its output directory on `127.0.0.1` (default port
-  8765) until you stop it. `strata auth login` listens on the loopback redirect port for a single
-  OAuth redirect, then closes. The MCP server is stdio-only and opens no port.
+  8765) until you stop it; it does not check the `Host` header. `strata auth login` listens on
+  `127.0.0.1` at the redirect port until a request with the matching `state` arrives on the
+  redirect path, or `--timeout` passes (each connection gets at most 5 seconds to send its
+  request); requests to other paths get 404 and requests with a wrong `state` get 400 and are
+  ignored. The listener does not set `SO_REUSEADDR`, and on Windows binds with
+  `SO_EXCLUSIVEADDRUSE`, so another process cannot share the port. The MCP server is stdio-only
+  and opens no port.
 
 ## Looker OAuth
 
@@ -50,13 +61,17 @@ Implemented from Looker's OAuth guide,
 ## Token Storage
 
 - Stored at `~/.strata/tokens.json` by default. On POSIX the file is created with mode 0600
-  (exclusive create of a temporary file, then an atomic rename), and its directory is set to
-  0700 on every save — point `--token-path` at a dedicated directory.
+  (exclusive create of a temporary file, then an atomic rename). A missing token directory is
+  created 0700, and `~/.strata` itself is set to 0700 on every save. Strata never changes the
+  mode of any other existing directory: a `--token-path` whose directory is accessible by group
+  or others is refused, before the browser is opened.
 - On read, a token file with any group or other permission bits is **refused** (POSIX). Windows
   has no POSIX mode bits, so this check is skipped there; protection relies on the user
   profile's ACLs.
 - A token is bound to the Looker API origin (scheme, host, port) that issued it. Strata refuses
-  to send it anywhere else, including when `--looker-url` names a different instance.
+  to send it anywhere else, including when `--looker-url` names a different instance. So on
+  `strata outputs` / `strata dashboard`, `--looker-url` is the API host URL — the same as the
+  instance URL unless you passed a separate `--api-url` at login.
 - Expiry is checked before every request. Looker's guide documents a refresh token but no
   refresh request, so Strata does not store the refresh token; an expired token means running
   `strata auth login` again.

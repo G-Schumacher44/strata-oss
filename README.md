@@ -492,7 +492,8 @@ strata auth status
 [OAuth guide](https://docs.cloud.google.com/looker/docs/api-cors); **not yet validated against a
 live Looker instance.**
 
-The access token is stored at `~/.strata/tokens.json`: file 0600, directory 0700 (POSIX). It is
+The access token is stored at `~/.strata/tokens.json`: file 0600, directory 0700 (POSIX; a custom
+`--token-path` must already be in a private directory). It is
 refused on read if group/world accessible, checked for expiry before each request, and sent only
 to the Looker origin that issued it. Looker URLs must be `https://` (`http://` is accepted only
 for `localhost`/`127.0.0.1`), and requests do not follow redirects. The MCP tools never read the
