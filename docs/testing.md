@@ -3,6 +3,10 @@
 Three offline playgrounds ship with the repo. Every finding in the README is sourced from actual
 output artifacts against these playgrounds. No Looker instance, no BigQuery credentials required.
 
+> **Synthetic data:** `gcs_analytics` and `enterprise_mono` are synthetic fixtures authored for
+> Strata, and every dollar figure in these docs comes from those fixtures. The figures are
+> illustrative, not measurements of any real warehouse.
+
 ---
 
 ## The Playgrounds
@@ -19,6 +23,13 @@ output artifacts against these playgrounds. No Looker instance, no BigQuery cred
 
 Each playground ships with matching fixture JSON files in `tests/fixtures/` that simulate
 Looker System Activity API responses.
+
+**Fixture provenance.** `thelook` is a git submodule pointing at a fork of Google's public,
+archived `looker-open-source/thelook` demo repo (which carries no license file), extended with
+Strata playground files. It is used only as a test fixture and is not redistributed in the PyPI
+package (the sdist and wheel include only `src/`, `README.md`, `LICENSE`, `THIRD_PARTY_LICENSES`
+and `pyproject.toml`). No license to its upstream contents is claimed. `gcs_analytics` and
+`enterprise_mono` are synthetic fixtures authored for Strata.
 
 ---
 
@@ -116,7 +127,7 @@ drift, and period metadata without any live dependency.
 
 **Findings:**
 - 6 dead items: 2 dead explores + 2 orphan views + 2 zombie views
-- 1 unused PDT: `pdt_retention_signals` — $156/30d, no explore backer
+- 1 unused PDT: `pdt_retention_signals` — $156/30d (synthetic demo fixture), no explore backer
 - 1 schema drift hit: `fct_demand_forecast` dropped from warehouse
 
 ---
@@ -130,7 +141,7 @@ across legacy views, legacy connection clusters, and dead-explore detection at s
 - 34 explores across 19 models, 0 resolution errors
 - 6 dead explores (3 legacy_redshift + 2 zombie-PDT-backer + 1 broken connection)
 - 5 zombie views
-- 2 zombie PDTs: $63,750/30d (~$765K/year), backed exclusively by dead explores
+- 2 zombie PDTs: $63,750/30d (~$765K/year; synthetic demo fixture), backed exclusively by dead explores
 - 14 real schema drift hits across 3 legacy tables
 
 ---

@@ -195,7 +195,7 @@ $ strata mcp validate
 
 All three included playgrounds (`enterprise_mono`, `gcs_analytics`, `thelook`) have matching
 usage and schema fixture JSON in `tests/fixtures/` — swap `--repo` and `--*-fixture` to run
-against any of them.
+against any of them. See [Fixture provenance](#fixture-provenance) for where each playground comes from.
 
 </details>
 
@@ -248,7 +248,7 @@ eliminate false positives before you deprecate — see
 and fixed during testing (CTE names misread as physical tables, zombie views invisible to the
 orphan-only check).
 
-From the `enterprise_mono` playground:
+From the `enterprise_mono` playground (a synthetic demo fixture; all dollar figures below are illustrative, not measurements):
 - **6 dead explores** across 3 legacy connection clusters
 - **5 zombie views** — referenced only by those dead explores
 - **~$765,000/year** in compute serving no users
@@ -263,7 +263,7 @@ into the conversation with the team.
 pdt_attribution_full_funnel  →  ~$45,000/30d  →  dead_finance_v2 (0 queries)
 pdt_customer_value_score     →  ~$18,750/30d  →  dead_orders_v2  (0 queries)
 ──────────────────────────────────────────────────────────────────
-Zombie PDT cost:  ~$63,750/30d  (~$765,000/year)  [estimated]
+Zombie PDT cost:  ~$63,750/30d  (~$765,000/year)  [estimated; synthetic demo fixture]
 ```
 
 > Costs are estimated from BigQuery scan volume (`bytes_processed` from Looker System Activity)
@@ -339,7 +339,7 @@ strata dashboard \
   --schema-fixture tests/fixtures/enterprise_schema_facts.json
 ```
 
-![Strata dashboard overview — enterprise_mono playground: 23 active explores (11 dead), 11 dead artifacts, 14,242 queries, $63,755.94 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph with zombie PDT diamonds in purple](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
+![Strata dashboard overview — enterprise_mono synthetic demo fixture: 23 active explores (11 dead), 11 dead artifacts, 14,242 queries, $63,755.94 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph with zombie PDT diamonds in purple](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
 
 *enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, **purple = zombie PDT**, gray = physical table.*
 
@@ -347,7 +347,7 @@ strata dashboard \
 
 *`dead_finance_v2` selected — rendered dead-red with a **deprecate** verdict and QUERY COUNT: 0 in the node detail. Its backing PDT, `pdt_attribution_full_funnel`, is the purple zombie diamond in the full graph above, rebuilding at ~$45,000/month (estimated fixture data) to serve it.*
 
-![PDT Cost Ledger — pdt_attribution_full_funnel flagged ⚠ ZOMBIE at $45,000/mo and pdt_customer_value_score at $18,750/mo, each citing its dead consumer explore, above the Cleanup Roadmap's KILL PDT actions](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
+![PDT Cost Ledger (synthetic demo fixture) — pdt_attribution_full_funnel flagged ⚠ ZOMBIE at $45,000/mo and pdt_customer_value_score at $18,750/mo, each citing its dead consumer explore, above the Cleanup Roadmap's KILL PDT actions](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
 
 *PDT Cost Ledger — both zombie PDTs flagged ⚠ with their monthly cost and the dead explores that consume them, above the Cleanup Roadmap's KILL actions. Every verdict carries evidence links; the Dead Code Register panel (visible at top) applies the same dual-evidence rule — structural and usage tags both required before anything is flagged.*
 
@@ -420,7 +420,7 @@ enrichment, see [Looker OAuth](#looker-oauth-and-token-management) below.
 
 ```
 Agent calls: strata_dead_code_register
-  → 6 dead explores, 2 zombie PDTs, ~$63,750/mo estimated in unused compute
+  → 6 dead explores, 2 zombie PDTs, ~$63,750/mo estimated in unused compute (synthetic demo fixture)
 
 Agent calls: strata_explore_deps("dead_finance_v2", "em_legacy_v2")
   → full join graph: 4 views, 1 zombie PDT backing this explore
@@ -671,7 +671,7 @@ Full breakdown: [`docs/testing.md`](https://github.com/G-Schumacher44/strata-oss
 <details>
 <summary>Playground findings — enterprise_mono · gcs_analytics · thelook</summary>
 
-**enterprise_mono** — 19 models, 34 explores, cross-model extends, 3 legacy connection clusters:
+**enterprise_mono** — synthetic demo fixture authored for Strata (dollar figures below are illustrative). 19 models, 34 explores, cross-model extends, 3 legacy connection clusters:
 
 - 6 dead explores (0 queries over 30 days) — all flagged with dual evidence
 - 5 zombie views — referenced only by dead explores
@@ -679,19 +679,29 @@ Full breakdown: [`docs/testing.md`](https://github.com/G-Schumacher44/strata-oss
 - **~$765,000/year** in compute serving no users
 - 14 schema drift hits across 3 tables (9 from a real `int_inventory_risk` migration)
 
-**gcs_analytics** — gold/silver BQ layer, mixed active and legacy:
+**gcs_analytics** — synthetic fixture authored for Strata (dollar figure illustrative); gold/silver BQ layer, mixed active and legacy:
 
 - 6 dead items (2 orphan views, 2 zombie views, 2 dead explores)
 - 1 unused PDT (~$156/month estimated, no explore backer)
 - 1 schema drift hit
 
-**thelook** — Looker's public demo repo, structural baseline:
+**thelook** — structural baseline built from a fork of Google's public, archived `looker-open-source/thelook` demo repo (see [Fixture provenance](#fixture-provenance)):
 
 - 6 dead items (1 orphan view, 1 zombie view, 4 dead explores)
 - 1 schema drift hit
 
 Each playground ships with matching fixture JSON files (`tests/fixtures/`) that simulate
 Looker System Activity API responses — so the full analysis runs offline with no credentials.
+
+### Fixture provenance
+
+- `thelook` is a git submodule pointing at a fork of Google's public, archived
+  [`looker-open-source/thelook`](https://github.com/looker-open-source/thelook) demo repo
+  (which carries no license file), extended with Strata playground files. It is used only as a
+  test fixture and is not redistributed in the PyPI package (the sdist and wheel include only
+  `src/`, `README.md`, `LICENSE`, `THIRD_PARTY_LICENSES` and `pyproject.toml`). No license to its
+  upstream contents is claimed.
+- `gcs_analytics` and `enterprise_mono` are synthetic fixtures authored for Strata.
 
 </details>
 
@@ -721,5 +731,11 @@ Full index: [**docs/README.md**](https://github.com/G-Schumacher44/strata-oss/bl
 ## License
 
 [Apache 2.0](https://github.com/G-Schumacher44/strata-oss/blob/main/LICENSE) — © 2026 Garrett Schumacher
+
+Third-party JavaScript libraries vendored for offline report rendering are listed, with their licenses, in [`THIRD_PARTY_LICENSES`](https://github.com/G-Schumacher44/strata-oss/blob/main/THIRD_PARTY_LICENSES).
+
+Strata is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Google, Looker, Anthropic, Cursor, Microsoft, or the Model Context Protocol project. Looker, LookML, BigQuery, Claude, Cursor, VS Code and other names are trademarks of their respective owners and are used here only to describe compatibility.
+
+Portions of this codebase were developed with AI coding assistants under the author's direction and review.
 
 <!-- mcp-name: io.github.G-Schumacher44/strata-oss -->

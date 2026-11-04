@@ -100,4 +100,4 @@ python = "3.11"
 [tool.hatch.build.targets.sdist]
 # Lean sdist: the default include-everything shipped 317 files / 6.8MB of test
 # playgrounds, conductor docs, and CI config (caught in the PR #18 review panel).
-include = ["/src", "/README.md", "/LICENSE", "/pyproject.toml"]
+include = ["/src", "/README.md", "/LICENSE", "/THIRD_PARTY_LICENSES", "/pyproject.toml"]

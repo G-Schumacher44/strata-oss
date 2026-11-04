@@ -2,6 +2,8 @@
 
 ## Semantic Layer Audit — enterprise_mono (2026-06-07)
 
+*Illustrative example output; all figures, including dollar costs, are synthetic demo-fixture values.*
+
 **Model scope:** all models (enterprise, finance, marketing)
 **IR built at:** 2026-06-07 06:12 UTC (5h ago — fresh)
 **L1 data:** available (usage data current to 2026-06-06)

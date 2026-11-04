@@ -104,7 +104,7 @@ register. Confirm with the explore team before deleting.
 
 **Artifact:** `output/pdt_ledger.json`
 
-**Reference numbers (enterprise_mono):** 2 zombie PDTs at $63,750/30d (~$765K/yr),
+**Reference numbers (enterprise_mono, synthetic demo fixture):** 2 zombie PDTs at $63,750/30d (~$765K/yr),
 both backed by explores with zero queries.
 
 ---
