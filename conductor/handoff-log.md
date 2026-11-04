@@ -2,63 +2,47 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-03 — chore/release-0.1.9-readiness (PR #46, stacked on #45)
+## Date: 2026-11-03 — chore/release-0.1.9 (version bump, stacked on #46)
 
-Commit: 2aa93bc (last of the six implementation commits; review fixes b6559cc and 027efe1 on
-  top, then merges of refactor/import-strata-lookml carrying #44 + the #50 batch. The PR
-  squash-merges; post-merge resolve the landed anchor with `gh pr view 46 --json mergeCommit`.)
-Conductor Mode: patch — six small, independent changes, one commit each. None changes a layer
-  boundary, adds a tool, or alters a tool's behavior (descriptions, `--help`, an escape inside a
-  JS comment). Codex asked for Full Conductor; recorded as a judgment call on the PR thread.
-Context Budget: medium
-Context Loaded: AGENTS.md, conductor/index.md, README.md, pyproject.toml, .github/workflows/*,
-  src/strata_lookml/mcp/{server,tools}.py, ir/resolver.py (_mark_orphans), l1/{enrich,schema}.py,
-  outputs/dashboard.py, the #44 diff, `gh release view` v0.1.6-v0.1.8.
-Context Skipped: slice specs; handoff-archive beyond prepending #45's block.
+Commit: 553889b (the bump commit, on top of #46 head de7af40; review P3 fixes follow it.
+  The PR squash-merges; post-merge resolve the landed anchor with `gh pr view <this PR> --json
+  mergeCommit`.)
+Conductor Mode: patch — version bump + release-guard hardening, no new slice.
+Context Budget: low
+Context Loaded: AGENTS.md, handoff-log latest block, CHANGELOG.md, pyproject.toml, mcpb/
+  {manifest.json,pyproject.toml}, server.json, .github/workflows/release.yml, the #44/#45/#46/#50
+  handoffs.
+Context Skipped: slices; src/ (no code change).
 Stage/DUOS: not used; not required.
 Ledger: not applicable.
-Tag Posture: no version bump here — 0.1.9 rides the stacked `chore/release-0.1.9` PR.
-Exact Next Steps: after #45 merges, retarget this PR to main and merge it; then retarget and merge
-  the 0.1.9 bump PR and tag v0.1.9.
+Tag Posture: RELEASE TRIGGER — after this merges to main, the operator tags `v0.1.9`; the tag
+  push runs release.yml (guard -> build -> PyPI -> GitHub Release with the .mcpb).
+Exact Next Steps: merge order #45 -> retarget #46 to main, merge -> retarget this PR to main,
+  merge -> `git tag v0.1.9 <merge sha> && git push origin v0.1.9` -> verify PyPI 0.1.9 + the
+  Release -> `mcp-publisher login github && mcp-publisher publish` for the registry.
 
 ### What changed
 
-1. README for PyPI: every relative link is an absolute `github.com/.../blob/main/` URL; Quick
-   Start opens with `pipx install strata-lookml` (editable install moved to clone-and-try); the
-   naming note is corrected (`strata-mcp` 1.0.2 installs a `strata` command, `strata` 26.0.0 has
-   no entry points, both ship a top-level `strata/`) and carries the 0.1.8 upgrade repair; PyPI
-   strips the badge deep-link schemes; a no-credentials path for your own repo (`query status`,
-   `query orphans`, `outputs`).
-2. pyproject: PEP 639 SPDX `license` + `license-files` (License classifier dropped),
-   `hatchling>=1.27`, keywords, extra classifiers, Documentation/Changelog URLs. No 3.14
-   classifier (CI tests only 3.11).
-3. CHANGELOG.md (Keep a Changelog): 0.1.6-0.1.8 from the release notes, plus Unreleased.
-4. Descriptions for the 8 MCP tools that had none (docstrings only). After the merge every tool
-   keeps #44's `title` + `ToolAnnotations` AND has a description; a registry test fails if any
-   tool lacks one.
-5. `outputs/dashboard.py`: the invalid `\]` escape in a JS comment is now `\\]`; the generated
-   template is byte-identical. A test compiles every module with Syntax/DeprecationWarning
-   promoted to errors.
-6. `strata-mcp --help`/`-h` prints usage and exits 0 without building the graph or opening stdio.
-
-### Not done on purpose
-
-- No version bump (separate stacked PR, after #44's server.json landed).
-- No PEP 794 `import-names` field (core metadata 2.5; PyPI/twine support unverified).
-
-### Merge of the updated #45 (#44 + #50 on main)
-
-- Auto-merged with no textual conflicts: #44's decorator lines (`title=`, `annotations=`) and
-  #46's docstrings touch different lines of `mcp/server.py`; README and pyproject merged cleanly
-  because #45 had already absorbed #44's hunks.
-- Handoffs: the per-branch `conductor/handoff/chore-release-0.1.9-readiness.md` is replaced by
-  this block; #45's block moved to handoff-archive.md.
+- 0.1.9 in all five version fields: pyproject `version`, mcpb/manifest.json `version`,
+  mcpb/pyproject.toml (shim `version` and the `strata-lookml==0.1.9` pin), server.json top-level
+  `version` and `packages[0].version`.
+- CHANGELOG: `## [0.1.9] - 2026-11-03` cut from Unreleased (date = PR day; adjust on tag day if
+  the tag slips), adding #44 (server.json, mcp-name token, `strata-lookml` script, titles +
+  ToolAnnotations) and the ten #50 fixes beside the rename (BREAKING for importers, with the
+  `--force-reinstall --no-deps strata` repair) and #46's items. Compare links updated.
+- release.yml guard now also checks server.json (top-level and every `packages[].version`, and
+  fails when `packages` is empty), so the four version files cannot drift. Still fail-closed: a
+  missing file or key raises and exits non-zero under `set -euo pipefail`.
 
 ### Gates
 
-Final tree (after merging the updated #45): ruff check "All checks passed!", ruff format --check
-  "211 files already formatted", mypy src "Success: no issues found in 87 source files", pytest -q
-  "157 passed" (154 on #45 + 3 from this PR).
-Wheel re-proof beside `strata==26.0.0`: 0 entries under `strata/`, 166 under `strata_lookml/`; all
-  four `--help` exit 0 (`strata-mcp --help` prints usage); MCP stdio tools/list = 18 tools, 18 with
-  title, 18 with annotations, 18 with a description.
+Final tree: ruff check "All checks passed!", ruff format --check "211 files already formatted",
+  mypy src "Success: no issues found in 87 source files", pytest -q "157 passed" (no new tests;
+  the existing registry-manifest test already pins server.json == pyproject version).
+Release guard, extracted verbatim from release.yml and run locally: `GITHUB_REF_NAME=v0.1.9`
+  -> "tag v0.1.9 matches pyproject, manifest, shim pin, and server.json", exit 0;
+  `v0.1.10` -> "VERSION MISMATCH — refusing to publish:" with all five fields listed, exit 1.
+  Negative controls on the new leg alone: server.json `packages[0].version` drifted to 0.1.8 ->
+  exit 1 naming only that field; `packages: []` -> "server.json has no packages entry", exit 1.
+Build: sdist + wheel `strata_lookml-0.1.9`; installed beside `strata==26.0.0`, MCP initialize
+  reports serverInfo version 0.1.9, tools/list = 18 (18 titles, 18 annotations, 18 descriptions).
