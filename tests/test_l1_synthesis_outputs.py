@@ -64,7 +64,7 @@ def test_pdt_ledger_ghost_pdt_detection():
     assert ghost["estimated_cost_usd"] == 2.5
     assert ghost["source_file"] == ""
     assert ghost["used_by_explores"] == []
-    assert f"pdt_build:pdt_deleted_view" in ghost["evidence_ids"]
+    assert "pdt_build:pdt_deleted_view" in ghost["evidence_ids"]
 
     # The known PDT is still reported normally.
     known = ledger_by_view["pdt_orders"]
