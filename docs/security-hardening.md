@@ -1,30 +1,119 @@
 # Security Hardening
 
-## Read-Only Contract
+## What Strata Reads And Writes
 
-Strata never writes to the LookML repo, Looker instance, BigQuery, Slack, or Jira
-as part of core analysis. Notification delivery stops at payload generation:
-`scripts/notify.py` builds Slack/Jira payloads and requires `--dry-run` to print them —
-sending is not implemented and the script exits non-zero without that flag. See
-[Notifications Setup](./notifications-setup.md) for wiring actual delivery yourself.
+Strata never modifies `.lkml` content, and never writes to a Looker instance, BigQuery, Slack,
+or Jira. Its writes are local files, listed here exactly:
+
+| Command | Writes |
+|---|---|
+| MCP server (`strata-mcp`) | The IR cache: `strata_ir.db` in the LookML repo root, or the path in `STRATA_CACHE_PATH`. Rebuilt when older than the cache max age or when its timestamp is missing, unparseable, or in the future. |
+| `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
+| `strata outputs` / `strata dashboard` | JSON artifacts and `dashboard.html` under `--out` (dashboard default: `./output/<repo-name>`). |
+| `strata bootstrap` | In the target repo: `AGENTS.md`, `CLAUDE.md`, `conductor/`, `.mcp.json`, `.cursor/mcp.json` (existing files skipped unless `--force`), and a Strata block appended to `.gitignore`. Outside it: `~/.strata/config.json`. |
+| `strata generate-schema` | `schema_facts.json` at `--out`. |
+| `strata auth login` / `logout` | `~/.strata/tokens.json` (or `--token-path`): created / deleted. |
+
+Notification delivery stops at payload generation: `scripts/notify.py` builds Slack/Jira
+payloads and requires `--dry-run` to print them — sending is not implemented and the script
+exits non-zero without that flag. See [Notifications Setup](./notifications-setup.md) for wiring
+actual delivery yourself.
+
+## Network Surface
+
+- **Outbound, Looker:** only with `--looker-url` after `strata auth login`. Looker URLs must be
+  `https://`; `http://` is accepted only when the host is `localhost` or `127.0.0.1` (for local
+  testing). Requests do not follow HTTP redirects, so the `Authorization` header cannot be
+  carried to another host.
+- **Outbound, BigQuery:** `strata generate-schema` shells out to the `bq` CLI with your gcloud
+  credentials; it does not use the Looker token.
+- **Listening:** `strata dashboard` serves its output directory on `127.0.0.1` (default port
+  8765) until you stop it. `strata auth login` listens on the loopback redirect port for a single
+  OAuth redirect, then closes. The MCP server is stdio-only and opens no port.
+
+## Looker OAuth
+
+Implemented from Looker's OAuth guide,
+[https://docs.cloud.google.com/looker/docs/api-cors](https://docs.cloud.google.com/looker/docs/api-cors).
+**Not yet validated against a live Looker instance.**
+
+- Authorization code flow with PKCE (`code_challenge_method=S256`, RFC 7636) and a random
+  `state` that is verified on the redirect before the code is used.
+- The browser goes to `/auth` on the Looker UI host; the code is redeemed with a JSON POST to
+  `/api/token` on the Looker API host (`--api-url`, defaulting to `--looker-url`).
+- The redirect is captured by a one-shot listener on `127.0.0.1` (RFC 8252 §7.3). Looker matches
+  redirect URIs exactly against those registered on the client app, so the port is fixed:
+  default `http://127.0.0.1:48765/oauth/callback`, configurable with `--redirect-uri`.
+- `--no-browser` prints the URL and reads the full redirect URL from stdin (hidden input), so the
+  code never appears in shell history or the process list.
+
+## Token Storage
+
+- Stored at `~/.strata/tokens.json` by default. On POSIX the file is created with mode 0600
+  (exclusive create of a temporary file, then an atomic rename), and its directory is set to
+  0700 on every save — point `--token-path` at a dedicated directory.
+- On read, a token file with any group or other permission bits is **refused** (POSIX). Windows
+  has no POSIX mode bits, so this check is skipped there; protection relies on the user
+  profile's ACLs.
+- A token is bound to the Looker API origin (scheme, host, port) that issued it. Strata refuses
+  to send it anywhere else, including when `--looker-url` names a different instance.
+- Expiry is checked before every request. Looker's guide documents a refresh token but no
+  refresh request, so Strata does not store the refresh token; an expired token means running
+  `strata auth login` again.
+- `strata auth status` shows at most the last four characters of the token. Looker API error
+  messages report the status code and reason, not the response body.
+- `strata auth logout` deletes the local file only. The token stays valid at Looker until it
+  expires or a Looker admin revokes it ("All tokens in this system can be revoked by the Looker
+  admin at any time." — Looker OAuth guide).
+
+## BigQuery Query Construction
+
+`strata generate-schema` (and `scripts/generate_schema_facts.py`, which uses the same code) builds
+`INFORMATION_SCHEMA.COLUMNS` queries from table names found in LookML — repo-controlled text.
+
+- Project, dataset, and table identifiers are checked against an allowlist (project: lowercase
+  letters, digits, hyphens; dataset: letters, digits, underscores; table: letters, digits,
+  underscores, hyphens). Names that fail are skipped and listed as rejected, never queried.
+- Table names are passed as a query parameter (`--parameter=names:ARRAY<STRING>:[...]`,
+  `WHERE table_name IN UNNEST(@names)`). The dataset path cannot be parameterized in BigQuery
+  ("Parameters can't be used as substitutes for identifiers, column names, table names, or other
+  parts of the query." —
+  [BigQuery parameterized queries](https://docs.cloud.google.com/bigquery/docs/parameterized-queries)),
+  so it is interpolated only after passing the allowlist.
+- Each query runs with `--maximum_bytes_billed=1000000000` and `--max_rows=1000000`.
+
+## LookML Parsing
+
+The parser reads `.lkml` files under the repo root. Symlinks whose target resolves outside the
+repo root are skipped. Parsing never executes LookML, SQL, or Liquid.
+
+## Prompt Injection
+
+LookML text (descriptions, SQL, labels), bundled skills, and Conductor handoff files are
+returned to the calling model verbatim as data. Strata executes none of it: no tool runs SQL,
+shells out, or follows instructions found in that text. A hostile LookML repo can still put
+misleading text in front of an agent, so treat MCP answers from an untrusted repo as untrusted
+input to your agent.
 
 ## Credential Matrix
 
 | Credential | Location | Required For | Notes |
 |---|---|---|---|
-| Looker OAuth token | `~/.strata/tokens.json` | Live System Activity | Redacted by status command; outside repo. |
+| Looker OAuth access token | `~/.strata/tokens.json` | Live System Activity (`--looker-url`) | 0600/0700, origin-bound, redacted by `auth status`. MCP tools never read it. |
+| gcloud / ADC credentials | gcloud's own store | `strata generate-schema` | Used by the `bq` CLI, not by Strata directly. |
 | Slack token | GitHub secret | Notification delivery | Not used by dry-run payload generation. |
 | Jira token | GitHub secret | Ticket creation | Not used by dry-run payload generation. |
 | GCP identity | GitHub OIDC | Future schema/weekly integrations | Prefer workload identity, not key files. |
 
 ## MCP Model
 
-The MCP server remains stdio-only. It exposes repo-brain queries over local IR/L1
-data and does not provide HTTP transport.
+The MCP server is stdio-only. It exposes repo-brain queries over the local IR and fixture L1
+data, does not read the Looker token, and makes no network calls. Diagnostic output goes to
+stderr; stdout carries only JSON-RPC.
 
 ## What Strata Never Does
 
-- No LookML writes.
+- No `.lkml` writes.
 - No production warehouse mutations.
 - No model/LLM calls in L0 or L1.
 - No committed secrets or service account keys.

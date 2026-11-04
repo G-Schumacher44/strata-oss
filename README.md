@@ -322,7 +322,7 @@ tools are complementary layers, not competitors.
 ### Dashboard
 
 `strata dashboard` builds all 8 output artifacts and serves a self-contained HTML observability
-panel at `localhost:8765`. No JavaScript framework, no CDN — all JS is bundled locally so it
+panel at `127.0.0.1:8765`. No JavaScript framework, no CDN — all JS is bundled locally so it
 works in air-gapped or corp-network environments.
 
 The dashboard has four panels:
@@ -384,8 +384,10 @@ LookML repo (read-only clone)
 
 L0 never calls any LLM or external API — pure offline deterministic Python. L1 enrichment
 is offline by default (fixture JSON); live Looker System Activity API access is opt-in via
-`strata auth login`. The MCP server transport is stdio-only — no HTTP server, no cloud
-dependency. All analysis runs against a read-only clone.
+`strata auth login`. The MCP server transport is stdio-only — it opens no port and has no cloud
+dependency (`strata dashboard` is the one command that runs a local web server, on `127.0.0.1`).
+Strata never modifies `.lkml` files; the local files it does write are listed in
+[Security Hardening](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md#what-strata-reads-and-writes).
 
 </details>
 
@@ -483,9 +485,19 @@ strata auth login --looker-url https://your-instance.looker.com
 strata auth status
 ```
 
-Token stored at `~/.strata/tokens.json` (0600 permissions, 0700 parent directory). HTTPS enforced —
-`http://` rejected except for `localhost` OAuth callback. Token permissions checked on every read;
-loose permissions surface a warning before any tool call.
+`strata auth login` runs the OAuth authorization-code flow with PKCE (S256) and a verified
+`state`, capturing the redirect on a one-shot `127.0.0.1` listener (default redirect URI
+`http://127.0.0.1:48765/oauth/callback`, which a Looker admin registers on the OAuth client app;
+`--no-browser` reads the pasted redirect URL from stdin instead). Implemented from Looker's
+[OAuth guide](https://docs.cloud.google.com/looker/docs/api-cors); **not yet validated against a
+live Looker instance.**
+
+The access token is stored at `~/.strata/tokens.json`: file 0600, directory 0700 (POSIX). It is
+refused on read if group/world accessible, checked for expiry before each request, and sent only
+to the Looker origin that issued it. Looker URLs must be `https://` (`http://` is accepted only
+for `localhost`/`127.0.0.1`), and requests do not follow redirects. The MCP tools never read the
+token. `strata auth logout` deletes the local copy only — revocation is done by a Looker admin.
+Full model: [`docs/security-hardening.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md).
 
 For enterprise: ADC, OIDC for GitHub Actions, and Google Workspace IAM path in
 [`docs/enterprise-deployment.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/enterprise-deployment.md).
@@ -720,7 +732,7 @@ Full index: [**docs/README.md**](https://github.com/G-Schumacher44/strata-oss/bl
 | [`docs/cli-guide.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/cli-guide.md) | Full CLI reference — all commands, env vars, output artifacts |
 | [`docs/testing.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing.md) | Playgrounds, scenarios, how to run them |
 | [`docs/testing-findings.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing-findings.md) | Full findings — real numbers, drift breakdowns, agentic benchmarks |
-| [`docs/security-hardening.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md) | Read-only enforcement, credential handling, MCP security model |
+| [`docs/security-hardening.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md) | What Strata reads and writes, OAuth + token handling, query construction, MCP security model |
 | [`docs/enterprise-deployment.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/enterprise-deployment.md) | IAM, ADC, OIDC for GH Actions, Google Workspace path |
 | [`docs/CONTRIBUTING.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/CONTRIBUTING.md) | Contribution guide |
 

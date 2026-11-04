@@ -2,30 +2,50 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-04 — docs/legal-0.1.9 (legal-readiness docs + shipped third-party notices)
+## Date: 2026-11-04 — fix/security-0.1.9 (security hardening before the 0.1.9 tag)
 
-Commit: e6da3ab (implementation commit; the PR squash-merges, resolve the landed anchor with
-  `gh pr view 55 --json mergeCommit`.)
-Conductor Mode: patch — docs + packaging metadata only, no src/ Python change, no version bump.
-Context Budget: low
-Context Loaded: AGENTS.md, handoff-log latest block, pyproject.toml, README.md, CONTRIBUTING.md,
-  docs/testing.md, docs/testing-findings.md, docs/runbook.md, src/strata_lookml/assets/js/.
-Context Skipped: slices; src/ Python.
-Stage/DUOS: not used; not required.
-Ledger: not applicable.
-Tag Posture: unchanged — v0.1.9 is tagged only after the security-hardening PR also lands.
-Changes: THIRD_PARTY_LICENSES (repo root + src/strata_lookml/assets/, so it ships in the wheel;
-  `/THIRD_PARTY_LICENSES` added to the sdist include) covering the 7 vendored JS bundles plus
-  graphlib/lodash inside dagre; README non-affiliation disclaimer + AI-assistance line;
-  "synthetic demo fixture" labels on dollar figures (README, docs, skills); fixture provenance
-  (thelook = fork of the archived, unlicensed looker-open-source/thelook, test-only, not shipped);
-  CONTRIBUTING licensing of contributions (Apache-2.0 inbound=outbound, DCO sign-off).
-Exact Next Steps: merge; after the security PR lands, tag v0.1.9 and confirm the built wheel and
-  sdist on PyPI contain THIRD_PARTY_LICENSES. Open follow-up: the Vega bundles' smaller
-  permissive sub-components (d3-*, vega-themes, vega-tooltip, semver) are noted, not enumerated.
+Commit: fc954cd (first commit; follow-ups on the branch. The PR squash-merges; post-merge resolve
+  the landed anchor with `gh pr view <this PR> --json mergeCommit`.)
+Conductor Mode: patch — security fixes from a read-only audit at origin/main 9d19e42, plus the
+  docs that describe them. No new MCP tool, no layer-boundary change.
+Context Budget: medium
+Context Loaded: AGENTS.md, handoff-log, generate_schema.py + scripts/generate_schema_facts.py,
+  l1/looker.py, cli/auth.py, cli/mcp.py, mcp/server.py + ir/store.py, viz/render.py,
+  mcp/tools.py, cli/dashboard.py, ir/parser.py, SECURITY.md, docs/security-hardening.md,
+  docs/enterprise-deployment.md, README security sections.
+Grounding: Looker OAuth guide https://docs.cloud.google.com/looker/docs/api-cors (auth on the UI
+  host with client_id/state/S256 challenge; JSON POST to /api/token on the API host; redirect
+  URIs matched exactly; registration via Admin or register_oauth_client_app with group_id; no
+  refresh request documented). bq `--parameter` ARRAY syntax and the identifier limitation:
+  https://docs.cloud.google.com/bigquery/docs/parameterized-queries. `--max_rows` default 100 and
+  `--maximum_bytes_billed`: https://docs.cloud.google.com/bigquery/docs/reference/bq-cli-reference.
+Exact Next Steps: operator merges after twins pass -> tag v0.1.9 per the previous handoff (now in
+  handoff-archive.md). First real Looker login is the live validation of the OAuth flow; until
+  then the docs label it "not yet validated against a live instance".
+
+### What changed
+
+- generate-schema: one source for query construction (`build_columns_query`), shared by the CLI
+  and the script; identifier allowlist; table names as `@names` ARRAY parameter; bytes/rows caps.
+- Looker OAuth: new `l1/oauth.py` (PKCE, state, `code_from_callback`, `LoopbackReceiver`);
+  `auth login` loses `--code`, gains `--api-url`, `--client-id` (alias `--client-guid`),
+  `--timeout`; `--no-browser` = paste-on-stdin.
+- Token: `LookerToken.ensure_usable_for` is the single origin+expiry check, run at runner
+  construction and per request; redirects refused via a no-redirect opener; refresh token not
+  stored; atomic 0600 write, 0700 dir; loose perms refused.
+- D-1..D-4 local hardening (cache age, stdout in MCP, .html, 127.0.0.1 bind, symlink skip).
+
+### Design calls (conservative options taken)
+
+- Fixed loopback port 48765, not ephemeral: Looker matches registered redirect URIs exactly.
+  BREAKING for anyone who registered the old 8765 URI; CHANGELOG says so.
+- Refresh token dropped rather than stored unused (no documented refresh grant).
+- Parent dir chmod 0700 on every save, even for a custom `--token-path` (documented: use a
+  dedicated directory).
+- `--max_rows` raised to 1,000,000: the bq default of 100 truncated column inventories — a
+  pre-existing correctness bug fixed in passing because the argv was being rebuilt anyway.
 
 ### Gates
 
-`python -m build` OK — wheel has strata_lookml/assets/THIRD_PARTY_LICENSES, sdist has both
-copies and no tests/ fixtures; tests/test_docs_consistency.py 5 passed; README fences balanced;
-PR CI (test, pr-analysis, review) green.
+See the PR body for verbatim gate lines (ruff check, ruff format --check, mypy, pytest, dashboard
+  JS check) and the mutation-control table.
