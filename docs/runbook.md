@@ -8,7 +8,7 @@ Covers standard analysis, gate verification, findings format, and agentic delega
 ## Prerequisites
 
 ```bash
-pip install -e ".[dev]"
+pip install strata-lookml    # or, from a clone: pip install -e ".[dev]"
 strata mcp validate          # confirms repo path, IR cache, skills, token
 ```
 

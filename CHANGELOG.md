@@ -24,7 +24,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
   more classifiers, and Documentation / Changelog project URLs.
 - README: absolute links so it renders correctly on PyPI, Quick Start leads with
   `pipx install strata-lookml`, and a no-credentials path for your own LookML repo.
-  ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
+  ([#52](https://github.com/G-Schumacher44/strata-oss/pull/52))
 
 ### Added
 
@@ -36,9 +36,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `strata_render_chart` is annotated as a destructive, idempotent writer (it writes, and may
   overwrite, one HTML file under `~/.strata/output` or `/tmp`). ([#44](https://github.com/G-Schumacher44/strata-oss/pull/44))
 - Descriptions for the 8 MCP tools that reported an empty description in `tools/list`.
-  ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
+  ([#52](https://github.com/G-Schumacher44/strata-oss/pull/52))
 - `strata-mcp --help` / `-h` prints usage and exits instead of starting the stdio server.
-  ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
+  ([#52](https://github.com/G-Schumacher44/strata-oss/pull/52))
 - Release workflow publishes `server.json` to the official MCP Registry on the tag push via GitHub OIDC (after PyPI is live); no manual `mcp-publisher` step.
 
 ### Fixed
@@ -70,7 +70,7 @@ Also:
   ([#25](https://github.com/G-Schumacher44/strata-oss/pull/25)).
 - An invalid `\]` escape in the dashboard HTML template (inside a JavaScript comment) raised a
   `SyntaxWarning` when the module was compiled, and a `SyntaxError` under `-W error`. The
-  generated dashboard is byte-identical. ([#46](https://github.com/G-Schumacher44/strata-oss/pull/46))
+  generated dashboard is byte-identical. ([#52](https://github.com/G-Schumacher44/strata-oss/pull/52))
 - README naming note rewritten as bullets
   ([#24](https://github.com/G-Schumacher44/strata-oss/pull/24)).
 

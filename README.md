@@ -6,6 +6,7 @@
 
 <div align="center">
 
+[![PyPI](https://img.shields.io/pypi/v/strata-lookml)](https://pypi.org/project/strata-lookml/)
 [![CI](https://github.com/G-Schumacher44/strata-oss/actions/workflows/strata-ci.yml/badge.svg?branch=main)](https://github.com/G-Schumacher44/strata-oss/actions/workflows/strata-ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/G-Schumacher44/strata-oss/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
@@ -33,23 +34,26 @@ semantic-layer change is safe:
 ## What Strata Is
 
 Strata is a local **MCP** server and **CLI** toolkit. Point it at your **LookML** repo. Your AI client
-gets **18 analysis tools — 17 read-only, 1 sandboxed chart renderer**, and **15 domain skills** with structured investigation procedures,
-and a pre-built graph of your resolved LookML dependency structure — enriched with BigQuery usage
-and schema facts. Offline-first: connecting to your Looker instance is preferred but optional; no credentials are required to start.
+gets **18 analysis tools** (17 read-only, 1 sandboxed chart renderer), **15 domain skills** with
+structured investigation procedures, and a pre-built graph of your resolved LookML dependency
+structure, enriched with BigQuery usage and schema facts. Offline-first: connecting to your Looker instance is preferred but optional; no credentials are required to start.
 
 ---
 
 ## Installation
 
 ```bash
-# Run without installing (recommended) — the console scripts are strata,
-# strata-mcp, and strata-chart, not strata-lookml, so pass --from:
+# Run without installing (recommended). The CLI command is `strata`, which differs
+# from the package name, so pass --from:
 uvx --from strata-lookml strata --help
 
 # Or install the CLI + MCP server persistently
 pipx install strata-lookml
 strata --help
 ```
+
+`uvx strata-lookml` on its own starts the MCP server (the `strata-lookml` script is the same
+entry point as `strata-mcp`).
 
 Wire it into an MCP client — the server entry point is `strata-mcp`, resolved from the
 `strata-lookml` distribution via `uvx --from strata-lookml strata-mcp`:
@@ -75,6 +79,14 @@ Wire it into an MCP client — the server entry point is `strata-mcp`, resolved 
   </a>
 </p>
 
+**Claude Code:**
+
+```bash
+claude mcp add strata -e STRATA_REPO_PATH=/path/to/your/lookml -- uvx --from strata-lookml strata-mcp
+```
+
+**Claude Desktop:** add the JSON block above to `claude_desktop_config.json`, or use the `.mcpb` bundle below.
+
 Both badges embed the same `uvx --from strata-lookml strata-mcp` config above; edit
 `STRATA_REPO_PATH` to your repo after installing. The badges are editor deep links that work
 from GitHub; PyPI strips `cursor://` and `vscode:` links, so the JSON block above is the
@@ -91,9 +103,9 @@ pipx install strata-lookml
 # Bootstrap your repo — creates conductor/, .mcp.json, and config
 strata bootstrap --repo /path/to/your/lookml
 
-# Wire your AI client (Claude Code, Cursor, Gemini)
-# .mcp.json is written by bootstrap, or add manually:
 ```
+
+Wire your AI client (Claude Code, Cursor, Gemini). `.mcp.json` is written by bootstrap, or add it manually:
 
 ```json
 {
@@ -295,7 +307,7 @@ validation scope computed.
 | Tool | What it does | Where it stops |
 |---|---|---|
 | **LookML IDE / Extension** | Syntax validation, autocomplete, inline errors | Doesn't know query history, cost, or which explores are actually used |
-| **Looker MCP Server** | Gives Client(Claude, Gemini, Codex, Cursor) live API access to Looker objects and system activity | A bridge for agents — surfaces data, doesn't analyze it |
+| **Looker MCP Server** | Gives clients (Claude, Gemini, Codex, Cursor) live API access to Looker objects and system activity | A bridge for agents — surfaces data, doesn't analyze it |
 | **Spectacles / content validation** | Runs explores in Looker to catch SQL compile errors | Reactive — tests what exists, doesn't surface what should be removed |
 | **Looker native alerting** | Flags broken dashboards and scheduled query failures | Catches failures after they happen, not structural risk before it does |
 

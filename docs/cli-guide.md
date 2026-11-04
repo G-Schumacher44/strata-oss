@@ -1,6 +1,6 @@
 # Strata CLI Reference
 
-All commands installed with `pip install -e .`. Run `strata <command> --help` for full options.
+Install with `pip install strata-lookml` (or run any command as `uvx --from strata-lookml strata ...`); from a clone, use `pip install -e .`. Run `strata <command> --help` for full options.
 
 ---
 
@@ -36,13 +36,13 @@ All commands installed with `pip install -e .`. Run `strata <command> --help` fo
 
 ### First-time setup on a new repo
 ```bash
-pip install -e ".[dev]"
+pip install strata-lookml          # or run each command via: uvx --from strata-lookml strata ...
 strata bootstrap --repo /path/to/your/lookml
-strata lint            # Run initial lint/type checks
 strata mcp validate
 ```
 
 ### Development and Linting
+For contributors working from a clone (`pip install -e ".[dev]"`); `strata lint` checks Strata's own `src/` and `tests/`, not your LookML repo.
 ```bash
 strata lint --fix      # Fix ruff issues automatically
 strata lint --format   # Reformat code
