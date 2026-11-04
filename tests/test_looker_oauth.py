@@ -146,6 +146,19 @@ def test_loopback_receiver_ignores_strays_and_captures_the_real_redirect():
     assert replies == [404, 400, 200]
 
 
+def test_loopback_receiver_rebinds_right_after_a_completed_login():
+    """A retry must not fail with 'address in use' while the last connection is in TIME_WAIT."""
+    redirect = f"http://127.0.0.1:{_free_port()}/oauth/callback"
+    for _ in range(2):
+        receiver = LoopbackReceiver(redirect, "s")
+        t = threading.Thread(
+            target=lambda: urllib.request.urlopen(f"{redirect}?code=c&state=s", timeout=5).read()
+        )
+        t.start()
+        assert receiver.wait(timeout=10) == "c"
+        t.join()
+
+
 def test_loopback_receiver_timeout_holds_against_an_idle_client():
     port = _free_port()
     receiver = LoopbackReceiver(f"http://127.0.0.1:{port}/oauth/callback", "s")

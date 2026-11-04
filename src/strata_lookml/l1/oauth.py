@@ -14,6 +14,7 @@ import base64
 import hashlib
 import hmac
 import http.server
+import os
 import secrets
 import socket
 import time
@@ -82,8 +83,10 @@ def loopback_address(redirect_uri: str) -> tuple[int, str]:
 
 
 class _ExclusiveServer(http.server.HTTPServer):
-    # http.server sets SO_REUSEADDR, which on Windows lets another process bind the same port.
-    allow_reuse_address = False
+    # POSIX: SO_REUSEADDR only lets a retry rebind while the last login's connection sits in
+    # TIME_WAIT; it never lets a second socket bind an address that is actively listening.
+    # Windows: SO_REUSEADDR *would* allow that, so it is off and the bind is exclusive instead.
+    allow_reuse_address = os.name != "nt"
 
     def server_bind(self) -> None:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows only

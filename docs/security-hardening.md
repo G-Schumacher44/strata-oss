@@ -38,8 +38,9 @@ actual delivery yourself.
   `127.0.0.1` at the redirect port until a request with the matching `state` arrives on the
   redirect path, or `--timeout` passes (each connection gets at most 5 seconds to send its
   request); requests to other paths get 404 and requests with a wrong `state` get 400 and are
-  ignored. The listener does not set `SO_REUSEADDR`, and on Windows binds with
-  `SO_EXCLUSIVEADDRUSE`, so another process cannot share the port. The MCP server is stdio-only
+  ignored. On Windows the listener binds with `SO_EXCLUSIVEADDRUSE` and without
+  `SO_REUSEADDR`, so another process cannot share the port; on POSIX it sets `SO_REUSEADDR`,
+  which only lets a retry rebind while the previous connection is in TIME_WAIT. The MCP server is stdio-only
   and opens no port.
 
 ## Looker OAuth

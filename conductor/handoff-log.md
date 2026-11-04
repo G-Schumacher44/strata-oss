@@ -50,7 +50,8 @@ Exact Next Steps: operator merges after twins pass -> tag v0.1.9 per the previou
 
 - Fixed: loopback handler socket timeout (idle connection stalled `--timeout`); stray/forged-state
   callbacks now get 400 and the login keeps waiting; non-ASCII `state` compared as bytes;
-  `SO_REUSEADDR` off + `SO_EXCLUSIVEADDRUSE` on Windows; token-dir rule above; origin-binding
+  exclusive bind on Windows (`SO_EXCLUSIVEADDRUSE`, no `SO_REUSEADDR`; POSIX keeps
+  `SO_REUSEADDR` so a retry can rebind during TIME_WAIT — Codex P2 on PR #58); token-dir rule above; origin-binding
   error names the API URL to pass; `outputs`/`dashboard` map token/API refusals to CLI errors via
   one helper (`cli/outputs.py:live_looker_graph`); docs' write table completed (build, chart,
   query navigate, conductor, validate log, clean deletions) and listener wording made exact.
