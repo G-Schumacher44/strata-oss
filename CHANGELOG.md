@@ -39,6 +39,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
   ([#52](https://github.com/G-Schumacher44/strata-oss/pull/52))
 - `strata-mcp --help` / `-h` prints usage and exits instead of starting the stdio server.
   ([#52](https://github.com/G-Schumacher44/strata-oss/pull/52))
+- Release workflow publishes `server.json` to the official MCP Registry on the tag push via GitHub OIDC (after PyPI is live); no manual `mcp-publisher` step.
 
 ### Fixed
 
