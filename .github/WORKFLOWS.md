@@ -7,7 +7,7 @@
 | [`strata-ci.yml`](workflows/strata-ci.yml) | Push/PR to `dev`, `main` | Full test suite, fixture checks across all 3 playgrounds, MCP preflight, generate-schema dry run |
 | [`strata-pr.yml`](workflows/strata-pr.yml) | PR touching `*.lkml` | **StrataBot** — posts LookML impact analysis as a PR comment |
 | [`strata-weekly.yml`](workflows/strata-weekly.yml) | Monday 08:00 UTC (or manual) | Runs governance check + outputs against all 3 playgrounds; notification dry run |
-| [`release.yml`](workflows/release.yml) | Tag push (`v*.*.*`) | Builds wheel + sdist via hatchling, creates GitHub Release with generated notes |
+| [`release.yml`](workflows/release.yml) | Tag push (`v*.*.*`) | Builds wheel + sdist via hatchling, publishes to PyPI (trusted publishing), then to the official MCP Registry via GitHub OIDC (`mcp-publisher`, pinned and cosign-verified; no manual `mcp-publisher` run), then creates GitHub Release with generated notes |
 | [`sync-public.yml`](workflows/sync-public.yml) | Manual (`workflow_dispatch`) | Dry-run sync plan to public OSS remote — configure `strata-oss` remote before enabling push |
 
 ---
