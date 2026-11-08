@@ -19,6 +19,8 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- `strata_object` MCP tool and `strata query object KIND NAME`: one read for an explore, view, PDT, table or field — source line, upstream/downstream by relation, the ids of findings on it, usage coverage, and for explores the dashboards/looks viewed in the usage window (null, never 0, when usage was not checked).
+
 - `strata chart bar|line|scatter|heatmap` take `--x`, `--y` and `--color` to map the template's
   channels onto your own columns, and each subcommand's help lists the template's required
   columns, read from its YAML.
