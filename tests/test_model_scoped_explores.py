@@ -60,13 +60,16 @@ def test_dead_code_and_usage_stay_per_model(graph):
 
     nodes = {n["data"]["id"]: n["data"] for n in _build_graph_data(graph)["nodes"]}
     retail, wholesale = nodes["explore:retail:orders"], nodes["explore:wholesale:orders"]
-    assert (retail["label"], retail["status"], retail["query_count"]) == (
+    # `label` stays bare (the JS builds `model.label` fact keys from it); the shared name
+    # is disambiguated in display_label only.
+    assert (retail["label"], retail["display_label"], retail["status"], retail["query_count"]) == (
+        "orders",
         "retail.orders",
         "active",
         40,
     )
-    assert (wholesale["label"], wholesale["status"]) == ("wholesale.orders", "dead")
-    assert nodes["view:accounts"]["label"] == "accounts"
+    assert (wholesale["display_label"], wholesale["status"]) == ("wholesale.orders", "dead")
+    assert nodes["view:accounts"]["display_label"] == "accounts"
 
 
 def test_bare_name_is_ambiguous_and_the_model_resolves_it(graph):
@@ -99,6 +102,41 @@ def test_shared_explore_file_is_a_fallback_for_every_model(tmp_path):
         "explore:b:orders": ("orders", ["accounts", "only_b"]),
     }
     assert graph.metadata["resolution_errors"] == []
+
+
+def _write(root, files):
+    for name, text in files.items():
+        (root / name).write_text(text)
+    return build_resolved_graph(root)
+
+
+def test_a_shared_explore_extends_a_model_defined_base(tmp_path):
+    # Codex P1: the shared namespace resolved alone, so a shared explore extending an explore
+    # one model defines lost the base's `from` and joins and failed integrity.
+    graph = _write(
+        tmp_path,
+        {
+            "a.model.lkml": "explore: base {\n  from: orders\n  join: accounts {}\n}\n",
+            "derived.explore.lkml": "explore: derived {\n  extends: [base]\n}\n",
+        },
+    )
+    assert _explores(graph)["explore::derived"] == ("orders", ["accounts"])
+    assert graph.metadata["resolution_errors"] == []
+
+
+def test_an_unreached_ambiguous_fallback_adds_no_resolution_error(tmp_path):
+    # Codex P2: model c's namespace resolved a's `child` eagerly, and `base` (in a and b) is
+    # ambiguous there, so c reported `missing_extends_target: base` for a chain it never uses.
+    graph = _write(
+        tmp_path,
+        {
+            "a.model.lkml": "explore: base {}\nexplore: child {\n  extends: [base]\n}\n",
+            "b.model.lkml": "explore: base {}\n",
+            "c.model.lkml": "explore: other {}\n",
+        },
+    )
+    assert graph.metadata["resolution_errors"] == []
+    assert graph.nodes["explore:a:child"].attrs["resolution_chain"] == ["base", "child"]
 
 
 def test_a_cache_from_the_name_keyed_resolver_is_rebuilt(tmp_path, monkeypatch):

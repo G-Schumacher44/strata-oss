@@ -111,10 +111,13 @@ def _resolve_explores(parsed_files: list[dict[str, Any]]) -> _ResolvedSet:
     first). Each model resolves its own explores, extends and refinements in its own
     namespace. Explores declared outside a model file (an included `.explore.lkml`) form a
     shared namespace every model falls back to for an `extends` base or a refinement target
-    it does not define itself; a refinement never reaches another model's explore. The IR does not resolve includes, so a shared explore stays
-    one model-less node, as before. An `extends` base found in neither falls back to the one
-    other model that defines it (cross-model extends, which the thelook fixture exercises);
-    a base two other models define is ambiguous and stays a missing extends target.
+    it does not define itself; a refinement never reaches another model's explore. The IR
+    does not resolve includes, so a shared explore stays one model-less node, as before. An
+    `extends` base found in neither falls back to the one other model that defines it
+    (cross-model extends, which thelook and enterprise_mono exercise); a base two other
+    models define is ambiguous and stays a missing extends target. Each namespace resolves
+    only its own explores and the ancestors they reach, so a fallback explore it never
+    extends cannot add a resolution error.
     """
     shared_defs, shared_refs = _collect_declarations(
         [parsed for parsed in parsed_files if parsed.get("file_type") != "model"], "explore"
@@ -138,21 +141,11 @@ def _resolve_explores(parsed_files: list[dict[str, Any]]) -> _ResolvedSet:
     errors: list[dict[str, Any]] = []
     seen_errors: set[tuple[Any, ...]] = set()
 
-    def keep(result: _ResolvedSet, own: dict[str, dict[str, Any]], model: str) -> None:
-        for name, obj in result.objects.items():
-            if name in own:
-                objects[explore_id(model, name)] = obj
-        for error in result.errors:
-            # A cycle among shared explores is found again in every model's namespace.
-            key = (error["type"], error.get("name"), tuple(sorted(error.get("chain", []))))
-            if key not in seen_errors:
-                seen_errors.add(key)
-                errors.append(error)
-
-    keep(_resolve_named_objects(shared_defs, shared_refs, "explore"), shared_defs, "")
-    for model, (defs, refs) in scopes.items():
-        # Another model's explore, as this model's extends base: its own refinements, plus
-        # any this model declares for it (they never reach the other model's node).
+    def resolve_scope(model: str, defs: dict[str, dict[str, Any]], refs: dict[str, Any]) -> None:
+        """Resolve one namespace's own explores (`defs`) against its fallback layers."""
+        # Another model's explore, as an extends base: its own refinements, plus any this
+        # namespace declares for it (they never reach the other model's node). A name two
+        # other models define is ambiguous and is left out.
         layers = [
             (
                 {name: scopes[others[0]][0][name]},
@@ -163,12 +156,27 @@ def _resolve_explores(parsed_files: list[dict[str, Any]]) -> _ResolvedSet:
         ]
         scope_defs: dict[str, dict[str, Any]] = {}
         scope_refs: dict[str, list[dict[str, Any]]] = {}
-        # Later layers win: another model's explore < a shared one < this model's own.
+        # Later layers win: another model's explore < a shared one < this namespace's own.
         for layer_defs, layer_refs in [*layers, (shared_defs, {}), (defs, refs)]:
             for name, record in layer_defs.items():
                 scope_defs[name] = record
                 scope_refs[name] = shared_refs.get(name, []) + layer_refs.get(name, [])
-        keep(_resolve_named_objects(scope_defs, scope_refs, "explore"), defs, model)
+        result = _resolve_named_objects(scope_defs, scope_refs, "explore", roots=set(defs))
+        for name, obj in result.objects.items():
+            if name in defs:
+                objects[explore_id(model, name)] = obj
+        for error in result.errors:
+            # A chain through a shared or another model's explore is found again per namespace.
+            key = (error["type"], error.get("name"), tuple(sorted(error.get("chain", []))))
+            if key not in seen_errors:
+                seen_errors.add(key)
+                errors.append(error)
+
+    # The shared namespace resolves like a model's, with "" as its model: any explore exactly
+    # one model defines can be its extends base.
+    resolve_scope("", shared_defs, {})
+    for model, (defs, refs) in scopes.items():
+        resolve_scope(model, defs, refs)
     # Emitted by name, then model: deterministic, and every same-named explore side by side.
     ordered = sorted(objects.items(), key=lambda item: (item[1]["name"], item[1]["model"]))
     return _ResolvedSet(dict(ordered), errors)
@@ -182,12 +190,18 @@ def _resolve_named_objects(
     definitions: dict[str, dict[str, Any]],
     refinements: dict[str, list[dict[str, Any]]],
     kind: str,
+    roots: set[str] | None = None,
 ) -> _ResolvedSet:
+    """Resolve every definition, or only `roots` and the ancestors they extend: a fallback
+    definition nothing in `roots` reaches is neither resolved nor reported."""
     extends_graph = nx.DiGraph()
     for name, record in definitions.items():
         extends_graph.add_node(name)
         for base in _as_list(record["body"].get("extends")):
             extends_graph.add_edge(str(base), name)
+    if roots is not None:
+        reached = set(roots).union(*(nx.ancestors(extends_graph, root) for root in roots))
+        extends_graph = extends_graph.subgraph(reached).copy()
 
     errors: list[dict[str, Any]] = []
     try:
@@ -243,7 +257,7 @@ def _resolve_named_objects(
         }
         return copy.deepcopy(resolved[name])
 
-    for name in sorted(definitions):
+    for name in sorted(definitions if roots is None else roots):
         resolve_one(name)
     return _ResolvedSet(resolved, errors)
 

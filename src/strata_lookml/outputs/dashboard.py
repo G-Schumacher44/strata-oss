@@ -204,7 +204,7 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
     def consumers(keys: list[str]) -> list[dict[str, Any]]:
         return [{"key": k, "dead": k in dead_ids} for k in keys]
 
-    # An explore's label is its bare name unless another model has an explore of that name.
+    # An explore displays as its bare name unless another model has an explore of that name.
     explore_names = Counter(node.name for node in graph.nodes_by_kind("explore"))
     shared_explore_names = {name for name, count in explore_names.items() if count > 1}
 
@@ -298,7 +298,9 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             {
                 "data": {
                     "id": node.id,
-                    "label": explore_key(model, node.name)
+                    # `label` stays the bare name: the JS builds `model.label` fact keys from it.
+                    "label": node.name,
+                    "display_label": explore_key(model, node.name)
                     if node.kind == "explore" and node.name in shared_explore_names
                     else node.name,
                     "kind": node.kind,
@@ -1501,11 +1503,12 @@ function applyGraphState(cy, state) {
   const C = { bg: tok('--bg'), text: tok('--text'), text2: tok('--text-2'), muted: tok('--muted'), focus: tok('--focus'), font: tok('--sans') };
   const KIND_LABEL = { explore: 'Explore', view: 'View', pdt: 'PDT', physical_table: 'Physical table' };
 
-  // Display-only: a warehouse table's label drops its project.dataset qualifier.
+  // Display-only: a warehouse table's label drops its project.dataset qualifier; an explore
+  // whose name another model shares shows model.explore (display_label, set in Python).
   GRAPH_DATA.nodes.forEach(n => {
     const d = n.data;
     const parts = String(d.label).split('.');
-    d.short = d.kind === 'physical_table' ? parts[parts.length - 1] : String(d.label);
+    d.short = d.kind === 'physical_table' ? parts[parts.length - 1] : String(d.display_label || d.label);
   });
 
   // Size the canvas to the tallest layer (~26px per node) so a big repo opens at a zoom
