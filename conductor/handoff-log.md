@@ -20,5 +20,5 @@ Exact Next Steps: twin gate on the PR, operator merges. Other wave-B lanes (S2, 
 
 ### Gates
 
-pytest 292 passed (15 in `tests/test_chart_columns.py`), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: with the check replaced by `pass`, the CLI mismatch test and the MCP isError test fail; the override and help tests fail on main because the options do not exist.
+pytest 315 passed (15 in `tests/test_chart_columns.py`), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: with the check replaced by `pass`, the CLI mismatch test and the MCP isError test fail; the override and help tests fail on main because the options do not exist.
 

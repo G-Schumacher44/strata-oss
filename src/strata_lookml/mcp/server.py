@@ -139,9 +139,15 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
     @server.tool(title="Query Field", annotations=_READ_ONLY)
     def strata_query_field(
         view: _View,
-        field: Annotated[str, Field(description="Field name within the view.", examples=["id"])],
+        field: Annotated[
+            str | None,
+            Field(
+                description="Field name within the view; omit when view is given as view.field.",
+                examples=["id"],
+            ),
+        ] = None,
     ) -> dict[str, Any]:
-        """Get one field's resolved definition (sql, type, tags, source_file, resolution_chain). Errors with not_found if the view.field pair is absent; use strata_find_field to locate a field by fragment."""
+        """Get one field's resolved definition (sql, type, tags, source_file, resolution_chain). Accepts view + field, or one 'view.field' argument. Errors with not_found if the pair is absent; use strata_find_field to locate a field by fragment."""
         return query_field(ir_graph, view, field)
 
     @server.tool(title="List Orphans", annotations=_READ_ONLY)
@@ -157,8 +163,17 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
         return list_envelope(query_list_orphans(ir_graph, kind))
 
     @server.tool(title="Explore Dependencies", annotations=_READ_ONLY)
-    def strata_explore_deps(explore: _Explore, model: _ModelName) -> dict[str, Any]:
-        """Get an explore's base view, joins (name, view, type), resolution_chain, and total field_count. Both explore and model are required; errors with not_found if the pair does not exist (strata_navigate finds an explore by name)."""
+    def strata_explore_deps(
+        explore: _Explore,
+        model: Annotated[
+            str | None,
+            Field(
+                description="LookML model name; optional when the explore name is unique, or "
+                "pass 'model.explore' as explore."
+            ),
+        ] = None,
+    ) -> dict[str, Any]:
+        """Get an explore's model, base view, joins (name, view, type), resolution_chain, and total field_count. model is optional: omit it when the explore name is unique, or pass 'model.explore'. An ambiguous name fails with invalid_input listing the candidates; an unknown one with not_found (strata_navigate finds an explore by name)."""
         return query_explore_deps(ir_graph, explore, model)
 
     @server.tool(title="IR Status", annotations=_READ_ONLY)
@@ -192,13 +207,13 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
             list[str | dict[str, Any]],
             Field(
                 description="Changed objects, each '<kind>:<name>' (kinds: view, explore, "
-                'field, ...) or {"kind": ..., "name": ...}.',
-                examples=[["view:orders", "field:orders.id"]],
+                'physical_table), {"kind": ..., "name": ...}, a .lkml path, or a bare view name.',
+                examples=[["view:orders", "views/users.view.lkml"]],
                 min_length=1,
             ),
         ],
     ) -> dict[str, Any]:
-        """Determine blast radius for changes (impacted_views, impacted_explores, impacted_fields). Malformed entries fail with invalid_input naming the accepted '<kind>:<name>' form."""
+        """Determine blast radius for changes (impacted_views, impacted_explores, impacted_fields). Malformed entries fail with invalid_input naming the accepted forms."""
         return query_validation_scope(ir_graph, changed)
 
     @server.tool(title="Table Impact", annotations=_READ_ONLY)
@@ -206,13 +221,13 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
         physical_table: Annotated[
             str,
             Field(
-                description="Table exactly as written in sql_table_name (strata_view_sources "
-                "lists them).",
+                description="Table as written in sql_table_name, or a unique dataset.table / "
+                "table suffix (strata_view_sources lists them).",
                 examples=["analytics.orders"],
             ),
         ],
     ) -> dict[str, Any]:
-        """Get the downstream impact of a physical table (physical_table, views, explores, fields). Errors with not_found if the table is not in the IR."""
+        """Get the downstream impact of a physical table (physical_table, views, explores, fields). The result echoes the resolved physical_table (resolved_from is the input when it differed). An ambiguous suffix fails with invalid_input listing candidates; an unknown table with not_found."""
         return query_impact(ir_graph, physical_table)
 
     @server.tool(title="Find Field", annotations=_READ_ONLY)

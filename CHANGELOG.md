@@ -22,6 +22,13 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - `strata chart bar|line|scatter|heatmap` take `--x`, `--y` and `--color` to map the template's
   channels onto your own columns, and each subcommand's help lists the template's required
   columns, read from its YAML.
+- Shared identifier resolution (`strata_lookml/identifiers.py`) for the CLI and MCP tools. Tables
+  resolve by exact name or unique suffix (`orders` -> `analytics.orders`; `strata_impact` echoes
+  the resolved name, an ambiguous suffix lists candidates). `model` is optional for explores
+  (`strata_explore_deps`, `strata query explore`), and `model.explore` / `view.field` work as one
+  argument. `validation_scope` accepts `kind:name`, `{kind, name}`, `.lkml` paths and bare view
+  names; `strata query scope` uses the same parser. An unknown model is `not_found`. Old
+  positional forms still work.
 
 ### Changed
 
