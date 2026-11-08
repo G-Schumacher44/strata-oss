@@ -13,6 +13,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
   (`strata_chart_*.html`), and the path written is printed. Chart output (CLI, MCP
   `strata_render_chart`, `strata query navigate`) is opened with `O_NOFOLLOW` and refuses a
   symlink at the final path component, so another local user can no longer redirect the write.
+- `strata dashboard` now validates the HTTP `Host` header and returns 403 unless it is
+  `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` for the bound port, closing a
+  DNS-rebinding path to the artifact JSON.
 
 ## [0.1.9] - 2026-11-03
 
