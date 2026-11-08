@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -12,6 +14,51 @@ _OUT_HELP = (
     "Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; "
     "the path written is printed). Refuses to write through a symlink."
 )
+
+
+def _template_help(name: str, summary: str) -> str:
+    """Command help: the summary plus the template's columns, read from its YAML.
+
+    Help is decoration: a template that cannot be read for it falls back to the plain summary
+    rather than breaking CLI startup.
+    """
+    try:
+        encoding = _load_spec(_CHARTS_DIR / f"{name}.yml").get("encoding", {})
+        required: list[str] = []
+        optional: list[str] = []
+        for channel, enc in encoding.items():
+            # A channel is one definition or a list of them (e.g. `tooltip`).
+            fields = [
+                item["field"]
+                for item in (enc if isinstance(enc, list) else [enc])
+                if isinstance(item, dict) and item.get("field")
+            ]
+            if fields:
+                required.append(f"{channel}={','.join(fields)}")
+            else:
+                optional.append(channel)
+    except Exception:
+        return summary
+    text = f"{summary}\n\nRequired columns (default names): {', '.join(required)}."
+    if optional:
+        text += f" Optional channels: {', '.join(optional)}."
+    return text + " Use --x/--y/--color to map your own columns."
+
+
+def _template_options(func: Callable[..., None]) -> Callable[..., None]:
+    for decorator in reversed(
+        [
+            click.argument("data", type=click.Path(exists=True)),
+            click.option("--x", "x_col", help="Data column for the x channel"),
+            click.option("--y", "y_col", help="Data column for the y channel"),
+            click.option("--color", "color_col", help="Data column for the color channel"),
+            click.option("--title", help="Chart title"),
+            click.option("--out", default=None, help=_OUT_HELP),
+            click.option("--open", "open_browser", is_flag=True, help="Open in browser"),
+        ]
+    ):
+        func = decorator(func)
+    return func
 
 
 @click.group()
@@ -29,44 +76,26 @@ def chart_list() -> None:
         click.echo(t.stem)
 
 
-@chart.command("bar")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_bar(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Categorical comparison — one dimension vs one measure."""
-    _render("bar", data, title, out, open_browser)
+def _template_command(name: str, summary: str) -> None:
+    @chart.command(name, help=_template_help(name, summary))
+    @_template_options
+    def command(
+        data: str,
+        x_col: str | None,
+        y_col: str | None,
+        color_col: str | None,
+        title: str | None,
+        out: str | None,
+        open_browser: bool,
+    ) -> None:
+        """Render the bundled template (help text is set per template by `_template_help`)."""
+        _render(name, data, {"x": x_col, "y": y_col, "color": color_col}, title, out, open_browser)
 
 
-@chart.command("line")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_line(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Trend over time."""
-    _render("line", data, title, out, open_browser)
-
-
-@chart.command("scatter")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_scatter(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Correlation between two measures."""
-    _render("scatter", data, title, out, open_browser)
-
-
-@chart.command("heatmap")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_heatmap(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Two-dimensional breakdown with color intensity."""
-    _render("heatmap", data, title, out, open_browser)
+_template_command("bar", "Categorical comparison — one dimension vs one measure.")
+_template_command("line", "Trend over time.")
+_template_command("scatter", "Correlation between two measures.")
+_template_command("heatmap", "Two-dimensional breakdown with color intensity.")
 
 
 @chart.command("render")
@@ -89,7 +118,12 @@ def chart_render(
 
 
 def _render(
-    chart_type: str, data: str, title: str | None, out: str | None, open_browser: bool
+    chart_type: str,
+    data: str,
+    overrides: dict[str, str | None],
+    title: str | None,
+    out: str | None,
+    open_browser: bool,
 ) -> None:
     spec_path = _CHARTS_DIR / f"{chart_type}.yml"
     if not spec_path.exists():
@@ -98,4 +132,26 @@ def _render(
     rows = _load_data(Path(data))
     if title:
         vl_spec["title"] = title
+    _apply_overrides(vl_spec, overrides, {key for row in rows for key in row})
     render_chart(vl_spec, rows, Path(out) if out else None, open_browser=open_browser)
+
+
+def _field_for(column: str, row_keys: set[str]) -> str:
+    """An exact column name is a literal key, so escape the Vega path punctuation in it
+    (`orders.revenue` would otherwise read key `orders`); anything else passes as a path.
+    """
+    if column not in row_keys:
+        return column
+    return "".join(f"\\{ch}" if ch in "\\.[]" else ch for ch in column)
+
+
+def _apply_overrides(
+    spec: dict[str, Any], overrides: dict[str, str | None], row_keys: set[str]
+) -> None:
+    """Point template channels at the user's columns (no renaming of the data)."""
+    encoding = spec.setdefault("encoding", {})
+    for channel, column in overrides.items():
+        if column:
+            encoding.setdefault(channel, {"type": "nominal"})["field"] = _field_for(
+                column, row_keys
+            )

@@ -107,6 +107,7 @@ def render_chart(
             hint="See strata_chart_templates for valid specs.",
         )
     spec = _strip_empty_channels(spec)
+    _check_encoding_columns(spec, rows)
     spec = _apply_auto_labels(spec)
     spec = _apply_show_labels(spec)
     spec["data"] = {"values": rows}
@@ -145,6 +146,80 @@ def render_chart(
     return out_path
 
 
+def _first_path_component(field: str) -> str:
+    """The top-level key a Vega field access path reads.
+
+    Vega paths: `a.b` and `a[0]` read key `a`; `a\\.b` is the literal key `a.b`; a leading
+    `["a.b"]` is the key `a.b`.
+    """
+    if field.startswith("["):
+        end = field.find("]")
+        return field[1 : end if end > 0 else len(field)].strip("'\"")
+    out: list[str] = []
+    i = 0
+    while i < len(field):
+        ch = field[i]
+        if ch == "\\" and i + 1 < len(field):
+            out.append(field[i + 1])
+            i += 2
+            continue
+        if ch in ".[":
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+_UNCHECKED_KEYS = ("layer", "concat", "hconcat", "vconcat", "facet", "repeat", "spec", "transform")
+
+
+def _unknown_fields(spec: dict[str, Any], columns: set[str]) -> list[str]:
+    """Encoding fields of a single-view spec that are not columns of the data.
+
+    The column check covers single-view charts only. Layered, composite
+    (concat/facet/repeat/spec) and transform specs are passed to Vega unchecked: what columns
+    each part sees (own data, inherited encodings, transform outputs) is Vega-Lite's to decide.
+    A channel that counts rows (`aggregate: count`, or field `*`) is skipped too.
+    """
+    if any(spec.get(key) for key in _UNCHECKED_KEYS):
+        return []
+    encoding = spec.get("encoding")
+    if not isinstance(encoding, dict):
+        return []
+    missing: list[str] = []
+    for enc in encoding.values():
+        # A channel is one definition or a list of them (e.g. `tooltip`).
+        for item in enc if isinstance(enc, list) else [enc]:
+            if not isinstance(item, dict) or item.get("aggregate") == "count":
+                continue
+            field = item.get("field")
+            if (
+                isinstance(field, str)
+                and field not in ("", "*")
+                and _first_path_component(field) not in columns
+            ):
+                missing.append(field)
+    return missing
+
+
+def _check_encoding_columns(spec: dict[str, Any], rows: list[dict]) -> None:
+    """Raise InvalidInput when an encoding field is not a column of the data.
+
+    Without this a mismatch renders a blank chart and exits 0. No rows means no columns to
+    compare, so an empty result still renders (as an empty chart).
+    """
+    available = sorted({key for row in rows if isinstance(row, dict) for key in row})
+    if not available:
+        return
+    missing = list(dict.fromkeys(_unknown_fields(spec, set(available))))
+    if missing:
+        raise InvalidInput(
+            f"chart encoding uses columns not in the data: {', '.join(missing)}. "
+            f"Available columns: {', '.join(available)}.",
+            hint="Map your columns with --x/--y/--color, or rename the data columns.",
+        )
+
+
 def _strip_empty_channels(spec: dict[str, Any]) -> dict[str, Any]:
     """Remove encoding channels where field is None/empty — template placeholders."""
     encoding = spec.get("encoding", {})
@@ -158,7 +233,7 @@ def _apply_auto_labels(spec: dict[str, Any]) -> dict[str, Any]:
     """Set axis title from field name (snake_case → Title Case) when no title provided."""
     for enc in spec.get("encoding", {}).values():
         if isinstance(enc, dict) and enc.get("field") and "title" not in enc:
-            enc["title"] = enc["field"].replace("_", " ").title()
+            enc["title"] = enc["field"].replace("\\", "").replace("_", " ").title()
     return spec
 
 

@@ -19,6 +19,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- `strata chart bar|line|scatter|heatmap` take `--x`, `--y` and `--color` to map the template's
+  channels onto your own columns, and each subcommand's help lists the template's required
+  columns, read from its YAML.
 - Shared identifier resolution (`strata_lookml/identifiers.py`) for the CLI and MCP tools. Tables
   resolve by exact name or unique suffix (`orders` -> `analytics.orders`; `strata_impact` echoes
   the resolved name, an ambiguous suffix lists candidates). `model` is optional for explores
@@ -106,6 +109,14 @@ All notable changes to `strata-lookml` are documented here. The format follows
   stays at its own paths, and the `Host` check still applies.
 
 ### Fixed
+
+- A chart whose encoding names a column missing from the data (for example `strata chart line`
+  on `month`/`revenue` data) used to render a blank chart and exit 0. `render_chart` now raises
+  `InvalidInput` listing the missing and the available columns, so the CLI exits 1 and
+  `strata_render_chart` returns `isError`. The column check covers single-view charts;
+  layered, composite and transform specs are passed to Vega unchecked. Row-count channels
+  (`aggregate: count`, field `*`) are skipped, and Vega field paths (`a.b`, `a[0]`, `a\.b`) are
+  understood.
 
 - `strata_list_orphans` / `strata query orphans` no longer accept `kind=explore|field`, which always
   returned an empty list (only orphan views are detected); `kind` is now `all|view` and other

@@ -88,6 +88,9 @@ Render ad-hoc charts from data files.
 Categorical comparison — one dimension vs one measure.
 
 - `DATA` — argument — required
+- `--x TEXT` — Data column for the x channel
+- `--y TEXT` — Data column for the y channel
+- `--color TEXT` — Data column for the color channel
 - `--title TEXT` — Chart title
 - `--out TEXT` — Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; the path written is printed). Refuses to write through a symlink.
 - `--open` — flag — Open in browser
@@ -99,6 +102,9 @@ Categorical comparison — one dimension vs one measure.
 Two-dimensional breakdown with color intensity.
 
 - `DATA` — argument — required
+- `--x TEXT` — Data column for the x channel
+- `--y TEXT` — Data column for the y channel
+- `--color TEXT` — Data column for the color channel
 - `--title TEXT` — Chart title
 - `--out TEXT` — Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; the path written is printed). Refuses to write through a symlink.
 - `--open` — flag — Open in browser
@@ -110,6 +116,9 @@ Two-dimensional breakdown with color intensity.
 Trend over time.
 
 - `DATA` — argument — required
+- `--x TEXT` — Data column for the x channel
+- `--y TEXT` — Data column for the y channel
+- `--color TEXT` — Data column for the color channel
 - `--title TEXT` — Chart title
 - `--out TEXT` — Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; the path written is printed). Refuses to write through a symlink.
 - `--open` — flag — Open in browser
@@ -139,6 +148,9 @@ Render a custom spec file against a data file.
 Correlation between two measures.
 
 - `DATA` — argument — required
+- `--x TEXT` — Data column for the x channel
+- `--y TEXT` — Data column for the y channel
+- `--color TEXT` — Data column for the color channel
 - `--title TEXT` — Chart title
 - `--out TEXT` — Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; the path written is printed). Refuses to write through a symlink.
 - `--open` — flag — Open in browser
