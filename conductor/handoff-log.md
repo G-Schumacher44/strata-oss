@@ -2,23 +2,21 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/s10-chart-columns (chart column validation + --x/--y/--color, spec S10)
+## Date: 2026-11-08 — feat/s12-port-fallback (dashboard port fallback, spec S12)
 
-Commit: 6808e19
+Commit: 9c3ca66
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — spec S10 (D12; finding B6) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
+Conductor Mode: feature — spec S12 (D9; finding U11) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
 Context Budget: low
-Context Loaded: AGENTS.md, handoff-log, the spec (§1, B6, D12, S10), viz/render.py, cli/chart.py, mcp/tools.py, the four chart templates.
-Exact Next Steps: twin gate on the PR, operator merges. Other wave-B lanes (S2, S4, S6) land serially; merge `origin/main`, hand-resolve handoff/CHANGELOG and regenerate `docs/reference.md`.
+Context Loaded: AGENTS.md, handoff-log, the spec (U11, D9, S12), cli/dashboard.py, tests/test_dashboard_host.py.
+Exact Next Steps: twin gate on the PR, operator merges. Other wave lanes land serially; merge `origin/main`, hand-resolve handoff/CHANGELOG and regenerate `docs/reference.md`.
 
 ### What changed
 
-- `viz/render.py`: `_check_encoding_columns` runs in `render_chart` (the one seam for `strata chart`, `strata-chart`, MCP `strata_render_chart` and `query navigate --chart`) after empty template channels are stripped. Every `encoding.*.field` must be a key in the union of row keys, else `InvalidInput` naming the missing and the available columns. The check covers single-view charts only: layered, composite (concat/facet/repeat/spec) and transform specs are passed to Vega unchecked, and `aggregate: count` / field `*` channels are skipped. Array channels (tooltip) are walked and Vega field paths (`a.b`, `a[0]`, `a\.b`) are parsed to their first component. Templates with `show_labels` are still checked (the check runs before they are layered). No rows means nothing to compare, so it passes.
-- `cli/chart.py`: the four template commands are registered once by `_template_command`; each gains `--x/--y/--color`, which set the channel's field (adding the channel if the template lacks it). Help text lists the required columns and optional channels, read from the template YAML at import.
-- README Charts section, CHANGELOG, regenerated `docs/reference.md`.
+- `cli/dashboard.py`: `bind_server` binds `127.0.0.1`. Without `--port` (click parameter source is DEFAULT, not a value comparison) and 8765 busy, it tries `FALLBACK_PORTS` (8766-8785) and the command prints the URL actually bound. An explicit `--port` that is busy raises `StrataError` (exit 1) naming the port; a fully busy range is a `StrataError` naming the range. Only `EADDRINUSE` triggers fallback; other `OSError`s propagate. `make_handler` gets the bound port, so the Host allow-list follows it.
+- Dropped the `lsof ... | xargs kill -9` advice from `skills/governance/strata_workflow.md`; `docs/runbook.md`, `docs/security-hardening.md` and the regenerated `docs/reference.md` describe the fallback.
 
 ### Gates
 
-pytest 328 passed (16 in `tests/test_chart_columns.py`), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: with the check replaced by `pass`, the CLI mismatch test and the MCP isError test fail; the override and help tests fail on main because the options do not exist.
-
+pytest 333 passed (5 in `tests/test_dashboard_port.py`, on self-bound high ports; `DEFAULT_PORT`/`FALLBACK_PORTS` monkeypatched, never the real 8765), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: on a detached origin/main worktree the new tests error (no `DEFAULT_PORT`); mutating `make_handler(candidate)` to the requested port fails the allow-list test, and treating `--port` as never explicit fails both explicit-port tests.

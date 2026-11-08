@@ -37,6 +37,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- `strata dashboard` falls back to the next free port (8766-8785) when the default 8765 is busy and `--port` was not passed, and prints the URL it bound; the Host allow-list uses the bound port. An explicit `--port` that is busy exits 1 with a clear error.
 - `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered
   before the first write; the writes are a planned list applied with temp file + `os.replace`
   and rolled back (created files removed, overwritten files restored) if any fails. New flags:
