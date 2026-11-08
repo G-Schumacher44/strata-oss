@@ -2,28 +2,29 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/s1-error-contract (one error contract for MCP and CLI, spec S1)
+## Date: 2026-11-08 — feat/s6-bootstrap (non-interactive, atomic bootstrap, spec S6)
 
-Commit: d324871
+Commit: 226be98
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — spec S1 (D2; findings B5, B7, U3, U6, U12) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
+Conductor Mode: feature — spec S6 (D6; findings B2, U10) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
 Context Budget: medium
-Context Loaded: AGENTS.md, handoff-log, the spec (§1, findings, D2, S1), mcp/tools.py, mcp/server.py, navigate.py, validation.py, pipeline.py, viz/render.py, cli/{main,query,auth,skill,build_ir}.py, the installed mcp 2.3.0 `mcpserver/exceptions.py` + `tools/base.py`.
-Exact Next Steps: twin gate on the PR, operator merges. If S0 (generated reference) lands first, merge `origin/main` and re-run `python scripts/gen_reference.py`. Then wave B (S2 ∥ S4 ∥ S6 ∥ S10) builds on this contract: S2's unknown-skill-lists-names is already done here (the hint lists them); S4's `check` integrity failures should raise `StrataError` rather than add a second exit path.
+Context Loaded: AGENTS.md, handoff-log, the spec (§1, B2/U10, D6, S6), cli/{bootstrap,conductor,mcp,_contract}.py, errors.py, config.py, bootstrap templates, tests/test_cli.py.
+Exact Next Steps: twin gate, operator merges. After S2 (U10 partial: MCP side of fixture env) and S4 land, merge `origin/main`, hand-resolve handoff/CHANGELOG, re-run `python scripts/gen_reference.py`. S7 (after S2+S6) and S9 build on `--yes` and `render_mcp_client_config`.
 
 ### What changed
 
-- `src/strata_lookml/errors.py`: `StrataError(ToolError)` (`mcp.server.mcpserver.exceptions.ToolError`, verified in the installed 2.3.0) with `NotFound` (`not_found`) and `InvalidInput` (`invalid_input`); fields `code`/`message`/`hint`; `str()` = `<message> Hint: <hint>`; `to_dict()` = the CLI JSON envelope.
-- Raised from: `mcp/tools.py` (unknown field/explore/table/skill/model, bad orphan/find-field kind, render_chart path guard + YAML/JSON parse), `navigate.py` (no match), `validation.py` (bad `kind:name` / object), `pipeline._repo_graph` (missing repo, no `.lkml`; every pipeline entry point builds through it), `viz/render.py` (symlink guard, spec must be a mapping). `ir/parser.lkml_paths` is now the one .lkml discovery used by both `parse_repo` and the repo check. The duplicate repo check in `cli/build_ir.py` is gone.
-- CLI seam `cli/_contract.py`: `StrataGroup` is the root group class (stderr `Error:`/`Hint:`, exit 1); `JsonCommand` on all `query` subcommands, `build`, `auth status` (stdout envelope; only with `--json` on commands that have that flag). No per-command try/except. `strata-chart` (argparse) has its one seam in `render.main`. `strata skill <unknown>` keeps exit 1, now through the seam.
-- `auth status` without a token: `NotFound` with hint naming `strata auth login`; unsafe permissions → `InvalidInput` (message has the chmod).
-- `pyproject` floor `mcp>=2.3,<3`. README "Error handling" (under CLI). Navigator skill text updated to the new failure shape. `scripts/test_mcp_live.py` catches `StrataError`.
+- New `bootstrap/plan.py`: `FileOp` (write/mkdir/skip), `apply_plan` (temp file + `os.replace` per file; on any failure removes files and dirs created this run and restores overwritten bytes, then raises `StrataError`), `render_mcp_client_config(repo, usage, schema, client)` (the one renderer), `report_ops`.
+- `cli/conductor.py`: `plan_conductor_init(target, force)` plain function; `conductor init` plans then applies. `cli/bootstrap.py` no longer uses CliRunner: gather inputs (`_gather_config`) → `plan_bootstrap` → apply. No tty and no `--yes` → `UsageError` (exit 2) before any write; `--dry-run` implies no prompts and prints the plan.
+- Flags: `--yes/-y --bq-project --cost-threshold-gb --set-default-repo/--no-set-default-repo --usage-fixture --schema-fixture --dry-run`. Fixture paths must be existing files (exit 2). Fixture env goes into `.mcp.json` and `.cursor/mcp.json` (U10).
+- `strata mcp config --client claude|cursor [--repo --usage-fixture --schema-fixture]` prints the bootstrap file byte-for-byte. The `mcp.json`/`cursor_mcp.json` templates are deleted (rendered in code).
+- README Quick Start (`--yes`, submodule init for playgrounds), CHANGELOG, regenerated `docs/reference.md`.
 
-### Deviation from the spec
+### Deviations from the spec
 
-- D2 has `errors.py` import the SDK's `ToolError`, but importing any `mcp.*` module runs `mcp/__init__`, which pulls httpx; `test_l0_no_network_imports` (pipeline is L0) failed with an eager import. `pipeline.py` therefore imports the error classes at raise time. Every other module imports them at the top. The L0 test is the negative control (eager import → it fails).
+- Rollback also restores files overwritten (`--force`, `.gitignore` append, existing config), not only files created; "created files removed" alone would leave a half-applied `--force` run.
+- `--dry-run` skips prompts (it would be useless on a script otherwise). With `--yes`, existing config keeps its `repo_path` unless `--set-default-repo` is passed; flags still update bq_project/threshold, other keys are preserved (the old prompt path rewrote the file from scratch).
 
 ### Gates
 
-pytest 229 passed (217 before; +12 in `tests/test_error_contract.py`), ruff check + format --check clean, mypy clean, dashboard JS check pass, the three CI `strata check` scenarios pass, `strata validate` 10 passed. All 12 new tests fail against the pre-change tree (origin/main 5ac4572). Seam mutations, each failing only its own test: StrataError base → Exception (5 MCP cases), StrataGroup catch removed (CLI envelope/hint), `as_json` gate removed (navigate human stdout), lkml check removed (empty repo), repo-dir check removed (`/nonexistent` → not_found), strata-chart catch removed, auth pre-check removed, view_sources model check removed, eager errors import in pipeline (L0 test).
+pytest 239 passed (+8 in `tests/test_bootstrap.py`), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: old `cli/bootstrap.py` against the new tests fails 7 of 8 (the conductor regression test is a guard that passes on both); disabling the rollback unlink fails both atomicity tests.
