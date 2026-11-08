@@ -8,6 +8,11 @@ import click
 
 from strata_lookml.viz.render import _CHARTS_DIR, _load_data, _load_spec, render_chart
 
+_OUT_HELP = (
+    "Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; "
+    "the path written is printed). Refuses to write through a symlink."
+)
+
 
 @click.group()
 def chart() -> None:
@@ -27,9 +32,9 @@ def chart_list() -> None:
 @chart.command("bar")
 @click.argument("data", type=click.Path(exists=True))
 @click.option("--title", help="Chart title")
-@click.option("--out", default="/tmp/strata_chart.html", show_default=True)
+@click.option("--out", default=None, help=_OUT_HELP)
 @click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_bar(data: str, title: str | None, out: str, open_browser: bool) -> None:
+def chart_bar(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
     """Categorical comparison — one dimension vs one measure."""
     _render("bar", data, title, out, open_browser)
 
@@ -37,9 +42,9 @@ def chart_bar(data: str, title: str | None, out: str, open_browser: bool) -> Non
 @chart.command("line")
 @click.argument("data", type=click.Path(exists=True))
 @click.option("--title", help="Chart title")
-@click.option("--out", default="/tmp/strata_chart.html", show_default=True)
+@click.option("--out", default=None, help=_OUT_HELP)
 @click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_line(data: str, title: str | None, out: str, open_browser: bool) -> None:
+def chart_line(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
     """Trend over time."""
     _render("line", data, title, out, open_browser)
 
@@ -47,9 +52,9 @@ def chart_line(data: str, title: str | None, out: str, open_browser: bool) -> No
 @chart.command("scatter")
 @click.argument("data", type=click.Path(exists=True))
 @click.option("--title", help="Chart title")
-@click.option("--out", default="/tmp/strata_chart.html", show_default=True)
+@click.option("--out", default=None, help=_OUT_HELP)
 @click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_scatter(data: str, title: str | None, out: str, open_browser: bool) -> None:
+def chart_scatter(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
     """Correlation between two measures."""
     _render("scatter", data, title, out, open_browser)
 
@@ -57,9 +62,9 @@ def chart_scatter(data: str, title: str | None, out: str, open_browser: bool) ->
 @chart.command("heatmap")
 @click.argument("data", type=click.Path(exists=True))
 @click.option("--title", help="Chart title")
-@click.option("--out", default="/tmp/strata_chart.html", show_default=True)
+@click.option("--out", default=None, help=_OUT_HELP)
 @click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_heatmap(data: str, title: str | None, out: str, open_browser: bool) -> None:
+def chart_heatmap(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
     """Two-dimensional breakdown with color intensity."""
     _render("heatmap", data, title, out, open_browser)
 
@@ -70,18 +75,22 @@ def chart_heatmap(data: str, title: str | None, out: str, open_browser: bool) ->
     "--spec", required=True, type=click.Path(exists=True), help="Custom YAML/JSON spec file"
 )
 @click.option("--title", help="Override chart title")
-@click.option("--out", default="/tmp/strata_chart.html", show_default=True)
+@click.option("--out", default=None, help=_OUT_HELP)
 @click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_render(data: str, spec: str, title: str | None, out: str, open_browser: bool) -> None:
+def chart_render(
+    data: str, spec: str, title: str | None, out: str | None, open_browser: bool
+) -> None:
     """Render a custom spec file against a data file."""
     vl_spec = _load_spec(Path(spec))
     rows = _load_data(Path(data))
     if title:
         vl_spec["title"] = title
-    render_chart(vl_spec, rows, Path(out), open_browser=open_browser)
+    render_chart(vl_spec, rows, Path(out) if out else None, open_browser=open_browser)
 
 
-def _render(chart_type: str, data: str, title: str | None, out: str, open_browser: bool) -> None:
+def _render(
+    chart_type: str, data: str, title: str | None, out: str | None, open_browser: bool
+) -> None:
     spec_path = _CHARTS_DIR / f"{chart_type}.yml"
     if not spec_path.exists():
         raise click.ClickException(f"Chart template not found: {spec_path}")
@@ -89,4 +98,4 @@ def _render(chart_type: str, data: str, title: str | None, out: str, open_browse
     rows = _load_data(Path(data))
     if title:
         vl_spec["title"] = title
-    render_chart(vl_spec, rows, Path(out), open_browser=open_browser)
+    render_chart(vl_spec, rows, Path(out) if out else None, open_browser=open_browser)

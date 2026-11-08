@@ -13,6 +13,36 @@ from typing import Any
 import click
 
 
+def allowed_hosts(port: int) -> frozenset[str]:
+    """Host header values accepted for a loopback server bound to ``port`` (lowercase)."""
+    hosts = ("127.0.0.1", "localhost", "[::1]")
+    permitted = {f"{h}:{port}" for h in hosts}
+    if port == 80:  # browsers omit the default port from Host
+        permitted.update(hosts)
+    return frozenset(permitted)
+
+
+def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:
+    """Static-file handler that serves only requests whose Host header is a permitted loopback form.
+
+    Guards against DNS rebinding: a foreign page can point its own hostname at 127.0.0.1, but
+    the browser then sends that hostname in Host, which is not on the allowlist.
+    """
+    permitted = allowed_hosts(port)
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+        def send_head(self) -> Any:  # GET and HEAD both route through here
+            if (self.headers.get("Host") or "").strip().lower() not in permitted:
+                self.send_error(403, "Forbidden")
+                return None
+            return super().send_head()
+
+    return QuietHandler
+
+
 @click.command("dashboard")
 @click.option(
     "--repo", required=True, envvar="STRATA_REPO_PATH", show_envvar=True, help="Path to LookML repo"
@@ -96,13 +126,9 @@ def dashboard(
 
     os.chdir(out_dir)
 
-    class QuietHandler(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, format: str, *args: Any) -> None:
-            pass
-
     socketserver.TCPServer.allow_reuse_address = True
     # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
-    server = http.server.HTTPServer(("127.0.0.1", port), QuietHandler)
+    server = http.server.HTTPServer(("127.0.0.1", port), make_handler(port))
 
     if not no_browser:
         threading.Timer(0.4, webbrowser.open, args=[url]).start()

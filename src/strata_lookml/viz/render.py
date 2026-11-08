@@ -8,6 +8,7 @@ import html as _html_module
 import json
 import os
 import sys
+import tempfile
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -59,13 +60,45 @@ _HTML = """\
 """
 
 
+def _write_html(out_path: Path, html: str) -> None:
+    """Write `html` to `out_path`, refusing to follow a symlink at the final component.
+
+    A fixed or guessable path in a shared directory (e.g. /tmp) could be pre-created by another
+    local user as a symlink that redirects this write; O_NOFOLLOW turns that into an error.
+    """
+    # Where O_NOFOLLOW is unavailable (Windows) the lstat check is the only guard (best effort:
+    # it leaves a check-then-open window, but it is no worse than the platform allows).
+    if not hasattr(os, "O_NOFOLLOW") and out_path.is_symlink():
+        raise ValueError(f"Refusing to write chart through a symlink: {out_path}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(out_path, flags, 0o644)
+    except OSError as exc:
+        if out_path.is_symlink():
+            raise ValueError(f"Refusing to write chart through a symlink: {out_path}") from exc
+        raise
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(html)
+
+
+def _default_out_path() -> Path:
+    """A fresh, unpredictable per-invocation path (mkstemp: O_EXCL, mode 0600)."""
+    fd, name = tempfile.mkstemp(prefix="strata_chart_", suffix=".html")
+    os.close(fd)
+    return Path(name)
+
+
 def render_chart(
     spec: dict[str, Any],
     rows: list[dict],
-    out_path: Path | str,
+    out_path: Path | str | None = None,
     open_browser: bool = False,
 ) -> Path:
-    """Render a Vega-Lite spec dict + data rows to an HTML file. Returns the output path."""
+    """Render a Vega-Lite spec dict + data rows to an HTML file. Returns the output path.
+
+    With no `out_path`, a fresh temp file is created; an explicit path is never followed through
+    a symlink at its final component.
+    """
     spec = _strip_empty_channels(spec)
     spec = _apply_auto_labels(spec)
     spec = _apply_show_labels(spec)
@@ -89,9 +122,12 @@ def render_chart(
     spec_json = json.dumps(spec, indent=2).replace("<", "\\u003c")
     html = _HTML.format(title=title, scripts=scripts, spec_json=spec_json)
 
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(html, encoding="utf-8")
+    if out_path is None:
+        out_path = _default_out_path()
+    else:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_html(out_path, html)
     # stderr, not stdout: render_chart also runs inside the stdio MCP server, where stdout is
     # the JSON-RPC channel.
     print(out_path, file=sys.stderr)
@@ -179,7 +215,7 @@ def main() -> None:
         epilog="Examples:\n"
         "  strata-chart list\n"
         "  strata-chart bar data.json --open\n"
-        "  strata-chart line data.csv --title 'Revenue trend' --out /tmp/trend.html\n"
+        "  strata-chart line data.csv --title 'Revenue trend' --out trend.html\n"
         "  strata-chart --spec custom.yml data.json",
     )
     parser.add_argument(
@@ -192,9 +228,10 @@ def main() -> None:
     parser.add_argument("--spec", metavar="FILE", help="Path to a custom spec file (YAML or JSON)")
     parser.add_argument(
         "--out",
-        default="/tmp/strata_chart.html",
+        default=None,
         metavar="FILE",
-        help="Output HTML path (default: /tmp/strata_chart.html)",
+        help="Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; "
+        "the path written is printed). Refuses to write through a symlink.",
     )
     parser.add_argument("--title", metavar="TEXT", help="Override chart title from spec")
     parser.add_argument("--open", action="store_true", help="Open in browser after rendering")
@@ -227,4 +264,4 @@ def main() -> None:
     if args.title:
         spec["title"] = args.title
 
-    render_chart(spec, rows, Path(args.out), open_browser=args.open)
+    render_chart(spec, rows, args.out, open_browser=args.open)
