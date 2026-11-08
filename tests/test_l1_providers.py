@@ -106,3 +106,20 @@ def test_latest_iso_is_independent_of_row_order():
     ]
     results = {reduce(_latest_iso, order, None) for order in permutations(values)}
     assert len(results) == 1
+
+
+def test_schema_fixture_rejects_columns_without_names(tmp_path):
+    import json
+
+    import pytest
+
+    from strata_lookml.errors import InvalidInput
+    from strata_lookml.l1.schema import load_schema_facts
+
+    bad = tmp_path / "s.json"
+    bad.write_text(json.dumps({"tables": [{"name": "t", "columns": [{"name": "id"}]}]}))
+    with pytest.raises(InvalidInput, match="columns of"):
+        load_schema_facts(bad)
+    bad.write_text(json.dumps({"tables": [{"columns": []}]}))
+    with pytest.raises(InvalidInput, match="string"):
+        load_schema_facts(bad)
