@@ -4,7 +4,9 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — fix/list-orphans-kind (narrow strata_list_orphans kind)
 
-Commit: resolve the landed anchor with `gh pr view 59 --json mergeCommit` (the PR squash-merges).
+Commit: c17676f
+  (Implementation commit; the PR squash-merges, post-merge resolve the landed anchor with
+  `gh pr view 59 --json mergeCommit`.)
 Conductor Mode: patch — no version bump.
 Context Budget: low
 Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, mcp/tools.py, mcp/server.py, cli/query.py, README.
