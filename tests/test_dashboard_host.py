@@ -17,6 +17,7 @@ from strata_lookml.cli.dashboard import allowed_hosts, make_handler
 @pytest.fixture
 def server(tmp_path: Path) -> Iterator[int]:
     (tmp_path / "secret.json").write_text('{"k": "v"}')
+    (tmp_path / "dashboard.html").write_text("<title>strata dashboard</title>")
     probe = http.server.HTTPServer(("127.0.0.1", 0), http.server.BaseHTTPRequestHandler)
     port = probe.server_address[1]
     probe.server_close()
@@ -28,9 +29,9 @@ def server(tmp_path: Path) -> Iterator[int]:
     httpd.server_close()
 
 
-def _get(port: int, host: str | None) -> tuple[int, bytes]:
+def _get(port: int, host: str | None, path: str = "/secret.json") -> tuple[int, bytes]:
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-    conn.putrequest("GET", "/secret.json", skip_host=True)
+    conn.putrequest("GET", path, skip_host=True)
     if host is not None:
         conn.putheader("Host", host)
     conn.endheaders()
@@ -68,3 +69,16 @@ def test_portless_hosts_only_permitted_on_port_80() -> None:
     assert portless <= allowed_hosts(80)
     assert "127.0.0.1:80" in allowed_hosts(80)
     assert not portless & allowed_hosts(8765)
+
+
+def test_root_serves_dashboard_not_a_listing(server: int) -> None:
+    status, body = _get(server, f"127.0.0.1:{server}", "/")
+    assert status == 200
+    assert b"strata dashboard" in body
+    assert b"secret.json" not in body, "root must not fall through to the directory listing"
+
+
+def test_root_still_enforces_host_check(server: int) -> None:
+    status, body = _get(server, "evil.example", "/")
+    assert status == 403
+    assert b"strata dashboard" not in body

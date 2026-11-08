@@ -11,7 +11,7 @@ from strata_lookml.l1.fixtures import load_usage_facts
 from strata_lookml.l1.types import ExploreUsage
 from strata_lookml.mcp.tools import strata_impact
 from strata_lookml.outputs import build_artifacts, write_artifacts
-from strata_lookml.outputs.dashboard import build_dashboard_html
+from strata_lookml.outputs.dashboard import NODE_PALETTE, build_dashboard_html
 from strata_lookml.pipeline import build_graph
 from strata_lookml.synthesis.slices import build_explore_slice
 from strata_lookml.synthesis.verdicts import (
@@ -173,11 +173,13 @@ def test_graph_marks_dead_explores_dead():
 
     dead = by_id["explore:em_legacy_v2:dead_finance_v2"]
     assert dead["dead"] is True, "model-qualified dead explore must carry dead=True"
-    assert dead["color"] == "#e74c3c", "dead explore must render dead-red, not active-green"
+    assert dead["color"] == NODE_PALETTE["explore_dead"], (
+        "dead explore must render dead-red, not active-green"
+    )
 
     live = by_id["explore:em_finance_base:revenue_trends"]
     assert live["dead"] is False
-    assert live["color"] == "#2ecc71"
+    assert live["color"] == NODE_PALETTE["explore_active"]
 
 
 def test_view_status_credits_inherited_consumers():
@@ -346,7 +348,7 @@ def test_graph_node_detail_carries_pdt_ledger_fields():
     ):
         d = by_id[pdt_id]
         assert d["status"] == "zombie"
-        assert d["color"] == "#9b59b6"
+        assert d["color"] == NODE_PALETTE["zombie"]
         assert d["estimated_cost_usd"] > 0
         assert d["build_count"] > 0
         assert d["bytes_processed"] > 0
@@ -357,7 +359,7 @@ def test_graph_node_detail_carries_pdt_ledger_fields():
     # consumers must not be mismarked dead.
     live = by_id["pdt:pdt_regional_kpi"]
     assert live["status"] == "used"
-    assert live["color"] == "#2ecc71"
+    assert live["color"] == NODE_PALETTE["pdt_used"]
     assert live["used_by_explores"]
     assert not any(c["dead"] for c in live["used_by_explores"])
 
@@ -385,7 +387,7 @@ def test_graph_node_detail_status_vocabulary_per_kind():
     # true orphan (no explore reference at all) even though both are flagged `dead`.
     zombie_view = by_id["view:legacy_order_detail"]
     assert zombie_view["status"] == "zombie_view"
-    assert zombie_view["color"] == "#9b59b6"
+    assert zombie_view["color"] == NODE_PALETTE["zombie"]
     assert zombie_view["referencing_explores"], (
         "zombie view must be referenced, not structurally orphaned"
     )
@@ -393,7 +395,7 @@ def test_graph_node_detail_status_vocabulary_per_kind():
 
     active_view = by_id["view:fct_cart_abandonment"]
     assert active_view["status"] == "active"
-    assert active_view["color"] == "#3498db"
+    assert active_view["color"] == NODE_PALETTE["view_active"]
 
     # True orphan (no explore reference at all) is a distinct third state — pull from
     # the smaller FIXTURES set, which has a genuine orphan.
@@ -402,7 +404,7 @@ def test_graph_node_detail_status_vocabulary_per_kind():
     fixtures_by_id = {n["data"]["id"]: n["data"] for n in fixtures_data["nodes"]}
     orphan_view = fixtures_by_id["view:orphan_view"]
     assert orphan_view["status"] == "orphaned"
-    assert orphan_view["color"] == "#95a5a6"
+    assert orphan_view["color"] == NODE_PALETTE["view_orphan"]
     assert orphan_view["referencing_explores"] == []
 
 
@@ -1555,3 +1557,59 @@ def test_guardrail_nested_index_only_maps():
         "`<tr>${j}${(x.cells || []).map((c, j) => `<td>${j}</td>`).join('')}</tr>`).join('')}`;"
     )
     assert _find_unescaped_innerhtml_interpolations(leaked)
+
+
+def test_legend_tokens_are_emitted_from_the_node_palette():
+    """Graph nodes and the legend that explains them read one palette: NODE_PALETTE is
+    stamped onto nodes AND emitted as the --n-* CSS tokens every legend swatch uses. A
+    hand-copied hex in the legend could drift from the node it describes; this pins that
+    every palette entry reaches the page as a token and the legend references them."""
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    assert "/*__PALETTE__*/" not in html, "palette placeholder must be substituted"
+    legend = html[html.index('id="graph-legend"') :]
+    legend = legend[: legend.index("</section>")]
+    for key, hex_ in NODE_PALETTE.items():
+        token = f"--n-{key.replace('_', '-')}"
+        assert f"{token}: {hex_};" in html, f"{key} must be emitted as a CSS token"
+        assert f"var({token})" in legend, f"legend must render {key} from its token"
+    # The statuses the legend distinguishes must stay visually distinct.
+    distinct = [
+        "explore_active",
+        "explore_dead",
+        "view_active",
+        "view_orphan",
+        "zombie",
+        "pdt_unused",
+    ]
+    assert len({NODE_PALETTE[k] for k in distinct}) == len(distinct)
+
+
+def test_attention_flag_marks_exactly_the_problem_nodes():
+    """The graph's "Needs attention" filter and the empty-panel start-here list read the
+    Python-side `attention` flag; pin it against both fixture zombies and live negatives."""
+    from strata_lookml.outputs.dashboard import _build_graph_data
+
+    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
+    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
+    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
+    by_id = {
+        n["data"]["id"]: n["data"]
+        for n in _build_graph_data(build_graph(ENTERPRISE, USAGE, SCHEMA))["nodes"]
+    }
+    for flagged in (
+        "explore:em_legacy_v2:dead_finance_v2",
+        "view:legacy_order_detail",
+        "pdt:pdt_attribution_full_funnel",
+    ):
+        assert by_id[flagged]["attention"] is True, flagged
+    for clean in (
+        "explore:em_finance_base:revenue_trends",
+        "view:fct_cart_abandonment",
+        "pdt:pdt_regional_kpi",
+    ):
+        assert by_id[clean]["attention"] is False, clean
