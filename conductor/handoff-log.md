@@ -2,20 +2,20 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — fix/validate-active-slice (validate Active slice annotation)
+## Date: 2026-11-08 — fix/escaping-callback-scope (scope callback index vars)
 
-Commit: 4db71ea
+Commit: cc9bb22
   (Implementation commit; the PR squash-merges, post-merge resolve the landed anchor with
-  `gh pr view 62 --json mergeCommit`.)
+  `gh pr view 63 --json mergeCommit`.)
 Conductor Mode: patch — no version bump.
 Context Budget: low
-Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, cli/validate.py, tests/test_cli.py.
+Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, tests/test_l1_synthesis_outputs.py.
 Exact Next Steps: operator merges after the gate passes; no follow-up work.
 
 ### What changed
 
-`get_active_slice_rel` in `cli/validate.py` used the whole remainder of the `Active slice:` line as the path, so index.md's annotation (`path.md (review — PR open; ...)`) failed the check. It now takes the first whitespace-delimited token (backticks stripped); the `none` sentinel and genuine missing-file failure are unchanged. `strata_conductor_status` still returns the full line as status text. Closes #47.
+Test-only. The escaping guardrail no longer trusts a `forEach/map` callback index block-wide; it is trusted only inside that callback's body (callback body spans, placeholders carry source offsets, `.map` bodies checked with the index added only for that body). Closes #31.
 
 ### Gates
 
-New tests in tests/test_cli.py (plain, annotated, backticked, missing-file); with src reverted 3 fail. ruff check/format, mypy src clean; full pytest 185 passed (submodules initialized).
+New scoped/still-trusted tests; re-adding block-wide trust makes the scoped test fail. ruff check/format, mypy src clean; full pytest 183 passed (submodules initialized).
