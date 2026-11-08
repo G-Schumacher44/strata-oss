@@ -17,6 +17,16 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` for the bound port, closing a
   DNS-rebinding path to the artifact JSON.
 
+### Added
+
+- Shared identifier resolution (`strata_lookml/identifiers.py`) for the CLI and MCP tools. Tables
+  resolve by exact name or unique suffix (`orders` -> `analytics.orders`; `strata_impact` echoes
+  the resolved name, an ambiguous suffix lists candidates). `model` is optional for explores
+  (`strata_explore_deps`, `strata query explore`), and `model.explore` / `view.field` work as one
+  argument. `validation_scope` accepts `kind:name`, `{kind, name}`, `.lkml` paths and bare view
+  names; `strata query scope` uses the same parser. An unknown model is `not_found`. Old
+  positional forms still work.
+
 ### Changed
 
 - `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered
