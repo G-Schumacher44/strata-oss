@@ -142,3 +142,7 @@ stderr; stdout carries only JSON-RPC.
 ---
 
 [← Strata README](../README.md) · [Docs index](./README.md)
+
+## Workbench Rendering And Escaping
+
+Workbench pages render through one Jinja2 environment (`strata_lookml.workbench.render`) with autoescape on for every template regardless of extension and `StrictUndefined`; templates may not use `|safe` or `{% autoescape false %}`, and `markupsafe.Markup` is constructed only inside `safe_svg()` — all enforced by `tests/test_workbench_render.py`.

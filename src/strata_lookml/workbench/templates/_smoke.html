@@ -1,0 +1,6 @@
+{% extends "_base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block main %}
+<p>{{ text }}</p>
+<a href="/o/{{ text | urlencode }}" title="{{ text }}" data-x='{{ text }}'>link</a>
+{% endblock %}

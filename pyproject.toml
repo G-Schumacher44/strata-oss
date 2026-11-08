@@ -46,6 +46,8 @@ dependencies = [
   "click>=8.0",
   "pyyaml>=6.0",
   "anyio>=4.0",
+  # Workbench rendering (strata_lookml.workbench). Same range dbt-core requires. Pulls MarkupSafe.
+  "jinja2>=3.1.3,<4",
 ]
 
 [project.optional-dependencies]
