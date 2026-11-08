@@ -20,7 +20,7 @@ _FIELD_KW = "dimension|dimension_group|measure|filter|parameter"
 
 
 def attach_source_lines(graph: IRGraph) -> None:
-    """Populate `node.attrs['source_line']` for view / field / explore nodes (in place)."""
+    """Populate `node.attrs['source_line']` for view / field / explore / pdt nodes (in place)."""
     repo_path = graph.repo_path
     # The scan cache only de-duplicates reads within one build; a long-lived process
     # (the MCP server) rebuilds after files change, so never carry lines across builds.
@@ -39,6 +39,11 @@ def attach_source_lines(graph: IRGraph) -> None:
         line = _definition_line(repo_path, node.source_file, kind, name)
         if line is not None:
             node.attrs["source_line"] = line
+    # A PDT is its view's derived table: it cites the defining view's line.
+    for node_id, node in graph.nodes.items():
+        view = graph.get_node(f"view:{node_id[4:]}") if node_id.startswith("pdt:") else None
+        if view is not None and "source_line" in view.attrs:
+            node.attrs["source_line"] = view.attrs["source_line"]
 
 
 def _definition_line(repo_path: str, source_file: str, kind: str, name: str) -> int | None:

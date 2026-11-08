@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_key
 from strata_lookml.safe_paths import check_write_destination
 from strata_lookml.synthesis.slices import build_explore_slice
 from strata_lookml.synthesis.verdicts import deterministic_verdict, validate_verdict
@@ -48,29 +48,137 @@ def _integrity_failures(graph: IRGraph) -> list[dict[str, str]]:
     return failures
 
 
-def findings_by_category(graph: IRGraph) -> dict[str, list[dict[str, str]] | None]:
-    """Every finding category's records, or None where its facts were not loaded."""
+def _short_table(table: str, parts: int) -> str:
+    """The trailing `parts` dot-separated segments of a table name (drops project/dataset)."""
+    return ".".join(table.split(".")[-parts:])
+
+
+def _record(
+    graph: IRGraph,
+    category: str,
+    finding_id: str,
+    message: str,
+    label: str,
+    subject_id: str,
+    source_file: str | None,
+    evidence_ids: list[str],
+    cost_usd: float | None = None,
+    line_from: str | None = None,
+) -> dict[str, Any]:
+    subject = graph.get_node(subject_id)
+    cited = graph.get_node(line_from) if line_from else subject
+    record: dict[str, Any] = {
+        "category": category,
+        "id": finding_id,
+        "message": message,
+        "label": label,
+        "subject_id": subject_id,
+        "source_file": source_file or (subject.source_file if subject else None),
+        "source_line": cited.attrs.get("source_line") if cited else None,
+        "evidence_ids": list(evidence_ids),
+    }
+    if cost_usd is not None:
+        record["cost_usd"] = cost_usd
+    return record
+
+
+def finding_records(graph: IRGraph) -> list[dict[str, Any]]:
+    """Every opt-in finding as a full record, the one source the gate and baseline project from.
+
+    `{category, id, message, label, subject_id, source_file, source_line, evidence_ids,
+    cost_usd?}`: `subject_id` is the IR node the finding is about (resolves via `graph.get_node`),
+    `label` the short per-category display string (the full `id` stays the key), `cost_usd` only
+    on PDT findings. Categories whose facts were not loaded contribute no records. Duplicate ids
+    yield one record each (two fields of one name can miss the same column); the baseline
+    de-duplicates, ids are never changed.
+    """
     l1 = graph.metadata.get("l1", {})
-    findings: dict[str, list[dict[str, str]] | None] = dict.fromkeys(FINDING_CATEGORIES)
-    if "dead_code" in l1:
-        findings["dead-code"] = [
-            {"category": "dead-code", "id": r["id"], "message": r["usage_reason"]}
-            for r in l1["dead_code"]
-        ]
-        for status in ("unused", "zombie"):
-            findings[f"{status}-pdt"] = [
-                {
-                    "category": f"{status}-pdt",
-                    "id": f"pdt:{r['view']}",
-                    "message": f"{status} PDT, {r['build_count']} builds",
-                }
-                for r in l1["pdt_ledger"]
-                if r["status"] == status
-            ]
-    if "schema_drift" in l1:
-        findings["drift"] = [
-            {"category": "drift", "id": r["id"], "message": r["reason"]} for r in l1["schema_drift"]
-        ]
+    explore_ids = {
+        explore_key(n.attrs.get("model", ""), n.name): n.id for n in graph.nodes_by_kind("explore")
+    }
+    records: list[dict[str, Any]] = []
+    for r in l1.get("dead_code", []):
+        subject_id = (
+            explore_ids.get(r["name"], "") if r["kind"] == "explore" else f"view:{r['name']}"
+        )
+        records.append(
+            _record(
+                graph,
+                "dead-code",
+                r["id"],
+                r["usage_reason"],
+                r["name"],
+                subject_id,
+                r["source_file"],
+                r["evidence_ids"],
+            )
+        )
+    for status in ("unused", "zombie"):
+        for r in l1.get("pdt_ledger", []):
+            if r["status"] != status:
+                continue
+            records.append(
+                _record(
+                    graph,
+                    f"{status}-pdt",
+                    f"pdt:{r['view']}",
+                    f"{status} PDT, {r['build_count']} builds",
+                    r["view"],
+                    f"pdt:{r['view']}",
+                    r["source_file"],
+                    r["evidence_ids"],
+                    cost_usd=r["estimated_cost_usd"],
+                )
+            )
+    for r in l1.get("schema_drift", []):
+        if r["kind"] == "missing_column":
+            label = f"{r['field']} \u2190 {_short_table(r['table'], 1)}.{r['column']}"
+            subject_id = r["evidence_ids"][0]
+            line_from = None
+        else:
+            label = _short_table(r["table"], 2)
+            subject_id = f"physical_table:{r['table']}"
+            # A table node has no line of its own: cite the first view that reads it.
+            line_from = next(
+                (
+                    e.source
+                    for e in graph.edges
+                    if e.relation == "view\u2192physical_table" and e.target == subject_id
+                ),
+                None,
+            )
+        records.append(
+            _record(
+                graph,
+                "drift",
+                r["id"],
+                r["reason"],
+                label,
+                subject_id,
+                r["source_file"],
+                r["evidence_ids"],
+                line_from=line_from,
+            )
+        )
+    return records
+
+
+def findings_by_category(graph: IRGraph) -> dict[str, list[dict[str, str]] | None]:
+    """Every finding category's `{category, id, message}` rows, or None where facts were not loaded."""
+    l1 = graph.metadata.get("l1", {})
+    loaded = {
+        "dead-code": "dead_code" in l1,
+        "unused-pdt": "dead_code" in l1,
+        "zombie-pdt": "dead_code" in l1,
+        "drift": "schema_drift" in l1,
+    }
+    findings: dict[str, list[dict[str, str]] | None] = {
+        c: [] if loaded[c] else None for c in FINDING_CATEGORIES
+    }
+    for record in finding_records(graph):
+        rows = findings[record["category"]]
+        assert rows is not None
+        rows.append({k: record[k] for k in ("category", "id", "message")})
     return findings
 
 
