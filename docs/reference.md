@@ -405,7 +405,7 @@ Validate the Conductor spine and (optionally) replay L1 facts.
 
 **Chart Templates** (read-only)
 
-List available Vega-Lite chart templates (name, mark).
+List available Vega-Lite chart templates (name, mark). Returns {items, count}.
 
 Parameters: none.
 
@@ -415,7 +415,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Conductor Status** (read-only)
 
-Get the current Conductor workflow status (active_slice, next_steps, latest_handoff).
+Get the current Conductor workflow status (active_slice, next_steps, latest_handoff) from the governed repo's conductor/ directory; keys are omitted when the files are absent.
 
 Parameters: none.
 
@@ -425,7 +425,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Dead Code Register** (read-only)
 
-List dead explores (zero queries, no content refs) and dead views (orphan, or every consumer dead); needs usage facts.
+List dead explores (zero queries, no content refs) and dead views (orphan, or every consumer dead). Returns {items, count, usage_checked, hint?}. Needs usage facts (STRATA_USAGE_FIXTURE); when it was not loaded usage_checked is false with a hint naming the env var, and an empty list means 'not checked'.
 
 Parameters: none.
 
@@ -435,11 +435,11 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Explore Dependencies** (read-only)
 
-Get an explore's base view, joins (name, view, type), resolution_chain, and total field_count.
+Get an explore's base view, joins (name, view, type), resolution_chain, and total field_count. Both explore and model are required; errors with not_found if the pair does not exist (strata_navigate finds an explore by name).
 
 Parameters:
-- `explore` — string — required
-- `model` — string — required
+- `explore` — string — required — Explore name.
+- `model` — string — required — LookML model name (the .model.lkml file stem).
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -447,11 +447,12 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Find Field** (read-only)
 
-Search for fields matching a query string across all views (query, kind, matches, count).
+Search for fields matching a query string across all views (query, kind, matches, count, truncated). count is the number returned, not the total.
 
 Parameters:
-- `query` — string — required
-- `kind` — 'all' | 'dimension' | 'measure' | 'filter' | 'parameter' — optional — default `all`
+- `query` — string — required — Fragment matched against field name, label, description, group label, tags and SQL (case-insensitive).
+- `kind` — 'all' | 'dimension' | 'measure' | 'filter' | 'parameter' — optional — default `all` — Restrict to one field kind.
+- `limit` — integer — optional — default `50` — Max matches returned (default 50, max 200); truncated=true means more exist.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -459,10 +460,10 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Table Impact** (read-only)
 
-Get the downstream impact of a physical table (physical_table, views, explores, fields).
+Get the downstream impact of a physical table (physical_table, views, explores, fields). Errors with not_found if the table is not in the IR.
 
 Parameters:
-- `physical_table` — string — required
+- `physical_table` — string — required — Table exactly as written in sql_table_name (strata_view_sources lists them).
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -470,7 +471,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **IR Status** (read-only)
 
-Summarize the loaded IR (repo_path, built_at, node_counts, edge_count, cache_path).
+Summarize the loaded IR (repo_path, built_at, node_counts, edge_count, cache_path). Call first to confirm which repo is loaded.
 
 Parameters: none.
 
@@ -480,10 +481,10 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **List Orphans** (read-only)
 
-List orphan views (no explore uses them as base, join, or extends ancestor); only views are detected.
+List orphan views (no explore uses them as base, join, or extends ancestor). Returns {items, count}.
 
 Parameters:
-- `kind` — 'all' | 'view' — optional — default `all`
+- `kind` — 'all' | 'view' — optional — default `all` — Only 'view' is meaningful: orphan explores/fields are not detected.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -491,7 +492,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **List Skills** (read-only)
 
-List available skills (name, domain, mode, complexity, trigger).
+List available skills (name, domain, mode, complexity, trigger). Returns {items, count}; fetch one with strata_skill.
 
 Parameters: none.
 
@@ -504,9 +505,9 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 Classify a ticket anchor and return a full navigator brief in one call.
 
 Parameters:
-- `anchor` — string — required
-- `model` — string | null — optional — default `None`
-- `ticket` — string | null — optional — default `None`
+- `anchor` — string — required — BQ table, field name, view, explore, or .lkml filename.
+- `model` — string | null — optional — default `None` — Disambiguate an explore name shared across models.
+- `ticket` — string | null — optional — default `None` — Ticket text; when set, adds an inferred change type and a what-to-touch list.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -514,7 +515,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **PDT Costs** (read-only)
 
-List PDT builds, bytes, estimated USD cost, consumers, and status (used/unused/zombie/missing_build_facts).
+List PDT builds, bytes, estimated USD cost, consumers, and status (used/unused/zombie/missing_build_facts). Returns {items, count, usage_checked, hint?}. Needs usage facts (STRATA_USAGE_FIXTURE); when it was not loaded usage_checked is false with a hint naming the env var, and an empty list means 'not checked'.
 
 Parameters: none.
 
@@ -524,11 +525,11 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Query Field** (read-only)
 
-Get one field's resolved definition (sql, type, tags, source_file, resolution_chain); errors if absent.
+Get one field's resolved definition (sql, type, tags, source_file, resolution_chain). Errors with not_found if the view.field pair is absent; use strata_find_field to locate a field by fragment.
 
 Parameters:
-- `view` — string — required
-- `field` — string — required
+- `view` — string — required — View name as written in LookML.
+- `field` — string — required — Field name within the view.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -536,12 +537,12 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Render Chart**
 
-Render a chart using a Vega-Lite template and JSON data (path, status).
+Render a chart from a Vega-Lite spec and JSON rows to a self-contained HTML file (returns path, status). Writes (and may overwrite) one file, only under ~/.strata/output/ or /tmp/; an out_path outside that sandbox or malformed spec/data fails with invalid_input.
 
 Parameters:
-- `spec_yaml` — string — required
-- `data_json` — string — required
-- `out_path` — string — required
+- `spec_yaml` — string — required — Vega-Lite spec as YAML or JSON (a mapping); start from a strata_chart_templates template.
+- `data_json` — string — required — JSON array of row objects. Every field named in the spec's encoding must be a key in the rows.
+- `out_path` — string — required — Output file, must end in .html and sit under ~/.strata/output/ or /tmp/ (sandboxed; symlinks refused; an existing file is overwritten).
 
 Annotations: `destructive_hint=True`, `idempotent_hint=True`, `open_world_hint=False`, `read_only_hint=False`
 
@@ -549,7 +550,7 @@ Annotations: `destructive_hint=True`, `idempotent_hint=True`, `open_world_hint=F
 
 **Schema Drift** (read-only)
 
-List tables and field-referenced columns missing from BigQuery schema facts; needs schema facts.
+List tables and field-referenced columns missing from BigQuery schema facts. Returns {items, count, schema_checked, hint?}. Needs schema facts (STRATA_SCHEMA_FIXTURE); when it was not loaded schema_checked is false with a hint naming the env var, and an empty list means 'not checked'.
 
 Parameters: none.
 
@@ -559,10 +560,10 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Get Skill** (read-only)
 
-Get the full SKILL.md content for a specific skill.
+Get the full SKILL.md content for a specific skill. Unknown names fail with not_found listing the available skills.
 
 Parameters:
-- `name` — string — required
+- `name` — string — required — Skill name from strata_list_skills.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -570,7 +571,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Usage Summary** (read-only)
 
-Summarize L1 usage facts: has_l1, period, query totals, explore population (ir_explore_count, active/dead counts), dead-code/PDT/zombie/drift counts.
+Summarize L1 usage facts and which checks ran: usage_checked / schema_checked (has_l1 is deprecated), period, query totals, explore population (ir_explore_count, active/dead counts), dead-code/PDT/zombie/drift counts. A zero count means 'nothing found' only when its check ran; hint names the fixture env var to set otherwise.
 
 Parameters: none.
 
@@ -580,10 +581,10 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Validation Scope** (read-only)
 
-Determine blast radius for changes (impacted_views, impacted_explores, impacted_fields).
+Determine blast radius for changes (impacted_views, impacted_explores, impacted_fields). Malformed entries fail with invalid_input naming the accepted '<kind>:<name>' form.
 
 Parameters:
-- `changed` — array of string | object — required
+- `changed` — array of string | object — required — Changed objects, each '<kind>:<name>' (kinds: view, explore, field, ...) or {"kind": ..., "name": ...}.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -591,9 +592,9 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **View Sources** (read-only)
 
-List views and their resolved physical tables (model_filter, views, count).
+List views and their resolved physical tables (model_filter, views, count). Errors with not_found, listing known models, if model is unknown.
 
 Parameters:
-- `model` — string | null — optional — default `None`
+- `model` — string | null — optional — default `None` — Restrict to views reachable from this model's explores.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`

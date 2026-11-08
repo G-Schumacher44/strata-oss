@@ -12,6 +12,36 @@ from strata_lookml.ir.types import IRGraph
 from strata_lookml.l1.enrich import analysis_coverage
 from strata_lookml.validation import validation_scope
 
+FIND_FIELD_DEFAULT_LIMIT = 50
+FIND_FIELD_MAX_LIMIT = 200
+
+_FIXTURE_ENV = {"usage": "STRATA_USAGE_FIXTURE", "schema": "STRATA_SCHEMA_FIXTURE"}
+
+
+def _unchecked_hint(missing: list[str]) -> str:
+    envs = " and ".join(_FIXTURE_ENV[name] for name in missing)
+    return (
+        f"The {' and '.join(missing)} checks did not run, so empty results mean 'not checked', "
+        f"not 'nothing found'. Set {envs} in the MCP server env (see `strata mcp config`) "
+        "and restart the server."
+    )
+
+
+def list_envelope(items: Sequence[Any], **extra: Any) -> dict[str, Any]:
+    """The one shape every list tool returns: {"items": [...], "count": N} as a single JSON
+    object (a bare list is split by the SDK into one content block per element)."""
+    return {"items": list(items), "count": len(items), **extra}
+
+
+def l1_list_envelope(graph: IRGraph, items: Sequence[Any], check: str) -> dict[str, Any]:
+    """list_envelope for a tool whose result needs an L1 check (`usage` or `schema`): adds the
+    coverage flag and, when that check did not run, a hint naming the fixture env var."""
+    checked = analysis_coverage(graph)[check]
+    extra: dict[str, Any] = {f"{check}_checked": checked}
+    if not checked:
+        extra["hint"] = _unchecked_hint([check])
+    return list_envelope(items, **extra)
+
 
 def strata_query_field(graph: IRGraph, view: str, field: str) -> dict[str, Any]:
     node = graph.get_node(f"field:{view}.{field}")
@@ -89,9 +119,17 @@ def strata_usage_summary(graph: IRGraph) -> dict[str, Any]:
     # subtracting dead explores from it undercounts and can go negative.
     ir_explore_count = sum(1 for node in graph.nodes.values() if node.kind == "explore")
     dead_explore_count = sum(1 for item in dead_code if item.get("kind") == "explore")
-    usage_checked = analysis_coverage(graph)["usage"]
+    coverage = analysis_coverage(graph)
+    usage_checked = coverage["usage"]
+    not_run = [name for name in ("usage", "schema") if not coverage[name]]
     return {
+        # usage_checked / schema_checked say which L1 checks ran; a 0 count means "nothing found"
+        # only when its check ran. has_l1 is DEPRECATED: it is true when ANY L1 data exists, so a
+        # schema-only build reports true with dead_code_count 0. Kept for compatibility.
+        "usage_checked": usage_checked,
+        "schema_checked": coverage["schema"],
         "has_l1": bool(l1),
+        "hint": _unchecked_hint(not_run) if not_run else None,
         "period": l1.get("period"),
         # Explores with a usage row (kept for compatibility); not the resolved-explore total.
         "explore_count": len(usage),
@@ -174,12 +212,17 @@ def strata_impact(graph: IRGraph, physical_table: str) -> dict[str, Any]:
     }
 
 
-def strata_find_field(graph: IRGraph, query: str, kind: str = "all") -> dict[str, Any]:
+def strata_find_field(
+    graph: IRGraph, query: str, kind: str = "all", limit: int = FIND_FIELD_DEFAULT_LIMIT
+) -> dict[str, Any]:
     """Search all views for fields matching a name fragment, SQL substring, or tag.
 
-    Returns up to 50 matches. The `count` field is the number of returned matches,
-    not the total possible matches; narrow the query or extend this cap for exhaustive output.
+    Returns up to `limit` matches (default 50, max 200). The `count` field is the number of
+    returned matches, not the total; `truncated` is true when more existed. Narrow the query
+    or raise `limit` for exhaustive output.
     """
+    if not 1 <= limit <= FIND_FIELD_MAX_LIMIT:
+        raise InvalidInput(f"limit must be between 1 and {FIND_FIELD_MAX_LIMIT}. Got: {limit}")
     valid_kinds = {"all", "dimension", "measure", "filter", "parameter"}
     if kind not in valid_kinds:
         raise InvalidInput(f"kind must be one of: {', '.join(sorted(valid_kinds))}. Got: {kind!r}")
@@ -201,7 +244,7 @@ def strata_find_field(graph: IRGraph, query: str, kind: str = "all") -> dict[str
         group_hit = query_lower in str(node.attrs.get("group_label", "")).lower()
         if name_hit or sql_hit or tag_hit or label_hit or desc_hit or group_hit:
             total += 1
-            if len(matches) < 50:
+            if len(matches) < limit:
                 matches.append(
                     {
                         "view": node.attrs.get("view", node_id.split(":")[1].split(".")[0]),
@@ -220,7 +263,7 @@ def strata_find_field(graph: IRGraph, query: str, kind: str = "all") -> dict[str
         "kind": kind,
         "matches": matches,
         "count": len(matches),
-        "truncated": total > 50,
+        "truncated": total > limit,
     }
 
 
