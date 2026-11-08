@@ -6,8 +6,9 @@ Install with `pip install strata-lookml` (or run any command as `uvx --from stra
 
 ## Command Summary
 
-| Command | What it does |
-|---|---|
+The complete command and option list is generated from the CLI itself: see [reference.md](reference.md#cli).
+
+---|---|
 | `strata bootstrap` | Scaffold Strata governance into a repo — creates conductor/, .mcp.json, config |
 | `strata build` | Parse LookML and write the IR cache (strata_ir.db) |
 | `strata check` | Run offline governance gates — dead code, drift, PDT ledger, verdict validation |
