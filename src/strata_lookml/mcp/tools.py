@@ -263,6 +263,9 @@ def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[s
     # defeat both this guard and render_chart's O_NOFOLLOW check.
     requested = Path(out_path).expanduser()
     resolved = requested.parent.resolve() / requested.name
+    if resolved.is_symlink():
+        # Refuse here too, not only in render_chart: O_NOFOLLOW is absent on some platforms.
+        raise ValueError(f"out_path must not be a symlink. Got: {out_path!r}")
     allowed_roots = [
         chart_output_dir(),
         Path("/tmp").resolve(),

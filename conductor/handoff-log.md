@@ -2,72 +2,30 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-04 — fix/security-0.1.9 (security hardening before the 0.1.9 tag)
+## Date: 2026-11-08 — fix/chart-output-path (chart output: no fixed /tmp path, no symlink following)
 
-Commit: 39be7b8 (the fix commit; the docs commit and any review fixes follow it. The PR squash-merges; post-merge resolve
-  the landed anchor with `gh pr view <this PR> --json mergeCommit`.)
-Conductor Mode: patch — security fixes from a read-only audit at origin/main 9d19e42, plus the
-  docs that describe them. No new MCP tool, no layer-boundary change.
-Context Budget: medium
-Context Loaded: AGENTS.md, handoff-log, generate_schema.py + scripts/generate_schema_facts.py,
-  l1/looker.py, cli/auth.py, cli/mcp.py, mcp/server.py + ir/store.py, viz/render.py,
-  mcp/tools.py, cli/dashboard.py, ir/parser.py, SECURITY.md, docs/security-hardening.md,
-  docs/enterprise-deployment.md, README security sections.
-Grounding: Looker OAuth guide https://docs.cloud.google.com/looker/docs/api-cors (auth on the UI
-  host with client_id/state/S256 challenge; JSON POST to /api/token on the API host; redirect
-  URIs matched exactly; registration via Admin or register_oauth_client_app with group_id; no
-  refresh request documented). bq `--parameter` ARRAY syntax and the identifier limitation:
-  https://docs.cloud.google.com/bigquery/docs/parameterized-queries. `--max_rows` default 100 and
-  `--maximum_bytes_billed`: https://docs.cloud.google.com/bigquery/docs/reference/bq-cli-reference.
-Exact Next Steps: operator merges after twins pass -> tag v0.1.9 per the previous handoff (now in
-  handoff-archive.md). First real Looker login is the live validation of the OAuth flow; until
-  then the docs label it "not yet validated against a live instance".
+Commit: 4afba41 (initial fix; review-round fixes follow it. The PR squash-merges; post-merge resolve
+  the landed anchor with `gh pr view 61 --json mergeCommit`.)
+Conductor Mode: patch — security hardening, no new tool or layer change.
+Context Budget: low
+Context Loaded: AGENTS.md, handoff-log, viz/render.py, cli/chart.py, mcp/tools.py, l1/looker.py
+  (the #58 O_NOFOLLOW pattern), docs/security-hardening.md.
+Exact Next Steps: operator merges after twins/Codex pass; CHANGELOG Unreleased > Security rides the
+  next tag.
 
 ### What changed
 
-- generate-schema: one source for query construction (`build_columns_query`), shared by the CLI
-  and the script; identifier allowlist; table names as `@names` ARRAY parameter; bytes/rows caps.
-- Looker OAuth: new `l1/oauth.py` (PKCE, state, `code_from_callback`, `LoopbackReceiver`);
-  `auth login` loses `--code`, gains `--api-url`, `--client-id` (alias `--client-guid`),
-  `--timeout`; `--no-browser` = paste-on-stdin.
-- Token: `LookerToken.ensure_usable_for` is the single origin+expiry check, run at runner
-  construction and per request; redirects refused via a no-redirect opener; refresh token not
-  stored; atomic 0600 write, 0700 dir; loose perms refused.
-- D-1..D-4 local hardening (cache age, stdout in MCP, .html, 127.0.0.1 bind, symlink skip).
+- `render_chart(out_path=None)` defaults to a fresh `mkstemp("strata_chart_*.html")`; explicit
+  paths are opened with `O_NOFOLLOW` (`_write_html`). Where `O_NOFOLLOW` is absent, an lstat
+  (`is_symlink`) check refuses a symlink instead.
+- `strata chart` / `strata-chart` `--out` no longer defaults to `/tmp/strata_chart.html`.
+- MCP `strata_render_chart` resolves only the parent dir and refuses a final-component symlink
+  before the root check, so confinement does not depend on `O_NOFOLLOW`.
+- `strata query navigate --chart` goes through `strata_render_chart`, so it is covered.
 
-### Design calls (conservative options taken)
+### Verification
 
-- Fixed loopback port 48765, not ephemeral: Looker matches registered redirect URIs exactly.
-  BREAKING for anyone who registered the old 8765 URI; CHANGELOG says so.
-- Refresh token dropped rather than stored unused (no documented refresh grant).
-- Token directory: create missing dirs 0700 and keep `~/.strata` 0700, but never chmod any other
-  existing directory — a custom `--token-path` in a group/other-accessible directory is refused,
-  checked before the browser opens (a code is single-use).
-- `--max_rows` raised to 1,000,000: the bq default of 100 truncated column inventories — a
-  pre-existing correctness bug fixed in passing because the argv was being rebuilt anyway.
-
-### Pre-gate (local Artemis, FIX-FIRST, no blocker) — dispositions
-
-- Fixed: loopback handler socket timeout (idle connection stalled `--timeout`); stray/forged-state
-  callbacks now get 400 and the login keeps waiting; non-ASCII `state` compared as bytes;
-  exclusive bind on Windows (`SO_EXCLUSIVEADDRUSE`, no `SO_REUSEADDR`; POSIX keeps
-  `SO_REUSEADDR` so a retry can rebind during TIME_WAIT — Codex P2 on PR #58); token-dir rule above; origin-binding
-  error names the API URL to pass; `outputs`/`dashboard` map token/API refusals to CLI errors via
-  one helper (`cli/outputs.py:live_looker_graph`); docs' write table completed (build, chart,
-  query navigate, conductor, validate log, clean deletions) and listener wording made exact.
-- Filed as pre-existing (not this PR): dashboard Host-header / DNS-rebinding; `/tmp` chart writes
-  follow symlinks.
-
-### Gates
-
-Final tree (head of this branch; also in the PR body):
-  ruff check src/ tests/ scripts/ -> "All checks passed!"
-  ruff format --check src/ tests/ scripts/ -> "176 files already formatted"
-  mypy src/strata_lookml --ignore-missing-imports -> "Success: no issues found in 88 source files"
-  python -m pytest -> "181 passed" (157 before this branch)
-  python scripts/check_dashboard_js_syntax.py -> "5 generated <script> block(s) passed node --check"
-Negative controls: every security guard reverted one at a time -> its test fails (18/18, plus
-  the POSIX reuse-address and localhost-refusal controls added in review).
-CI round 2 (e701a84): Artemis SHIP (one should_fix: `localhost` redirect vs IPv4-only listener ->
-  fixed, receiver now accepts only 127.0.0.1); Apollo ACCEPT (note: gate lines not visible to it
-  -> now inlined here); Codex P2 (POSIX SO_REUSEADDR) fixed + resolved.
+- New tests in `tests/test_security.py` (fresh default, normal write, symlink refused in
+  render_chart + MCP, symlink refused with `O_NOFOLLOW` monkeypatched away). Reverting `src/`
+  makes the behavior tests fail; restored, all pass.
+- Full suite 186 passed (with test submodules initialised), ruff, ruff format, mypy clean.

@@ -333,3 +333,26 @@ def test_mcp_render_chart_refuses_symlink_under_allowed_root(tmp_path, monkeypat
     with pytest.raises(ValueError, match="symlink"):
         strata_render_chart(spec_yaml, '[{"c": "A", "v": 1}]', str(out_dir / "c.html"))
     assert victim.read_text(encoding="utf-8") == "keep"
+
+
+def test_symlink_refused_without_o_nofollow(tmp_path, monkeypatch):
+    # Platforms without os.O_NOFOLLOW (Windows) must still be confined by the lstat checks.
+    import os
+
+    from strata_lookml.mcp.tools import chart_output_dir, strata_render_chart
+    from strata_lookml.viz.render import render_chart
+
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    out_dir = chart_output_dir()
+    out_dir.mkdir(parents=True)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep", encoding="utf-8")
+    link = out_dir / "c.html"
+    link.symlink_to(victim)
+    spec_yaml = "mark: bar\nencoding:\n  x:\n    field: c\n  y:\n    field: v"
+    with pytest.raises(ValueError, match="symlink"):
+        strata_render_chart(spec_yaml, '[{"c": "A", "v": 1}]', str(link))
+    with pytest.raises(ValueError, match="symlink"):
+        render_chart(dict(_CHART_SPEC), _CHART_ROWS, link)
+    assert victim.read_text(encoding="utf-8") == "keep"

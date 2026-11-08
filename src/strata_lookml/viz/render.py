@@ -66,6 +66,10 @@ def _write_html(out_path: Path, html: str) -> None:
     A fixed or guessable path in a shared directory (e.g. /tmp) could be pre-created by another
     local user as a symlink that redirects this write; O_NOFOLLOW turns that into an error.
     """
+    # Where O_NOFOLLOW is unavailable (Windows) the lstat check is the only guard (best effort:
+    # it leaves a check-then-open window, but it is no worse than the platform allows).
+    if not hasattr(os, "O_NOFOLLOW") and out_path.is_symlink():
+        raise ValueError(f"Refusing to write chart through a symlink: {out_path}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(out_path, flags, 0o644)
