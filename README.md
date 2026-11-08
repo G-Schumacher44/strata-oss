@@ -612,7 +612,8 @@ strata chart line sales.json --x month --y revenue --color region
 
 A chart whose encoding names a column that is not in the data fails with the missing and the
 available columns, instead of rendering a blank chart. The same check applies to
-`strata_render_chart` and `strata query navigate --chart`.
+`strata_render_chart` and `strata query navigate --chart`. The check covers single-view charts; layered, composite and transform specs are
+passed to Vega unchecked.
 
 <table>
 <tr>

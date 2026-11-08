@@ -115,29 +115,6 @@ def test_field_access_paths(tmp_path):
     )
 
 
-def test_layer_with_inline_data_is_checked_against_its_own_rows(tmp_path):
-    rule = {"mark": "rule", "data": {"values": [{"threshold": 20}]}}
-    layers = [{"mark": "line", "encoding": {"y": {"field": "revenue"}}}]
-    ok = {"layer": [*layers, {**rule, "encoding": {"y": {"field": "threshold"}}}]}
-    assert _render(ok, tmp_path).exists()
-    bad = {"layer": [*layers, {**rule, "encoding": {"y": {"field": "revenue"}}}]}
-    assert "revenue" in _raises(bad, tmp_path)
-
-
-def test_layer_with_uninspectable_data_is_skipped(tmp_path):
-    spec = {
-        "layer": [
-            {"mark": "rule", "data": {"url": "t.csv"}, "encoding": {"y": {"field": "anything"}}},
-        ]
-    }
-    assert _render(spec, tmp_path).exists()
-
-
-def test_inheriting_layer_mismatch_still_fails(tmp_path):
-    spec = {"layer": [{"mark": "line", "encoding": {"y": {"field": "nope"}}}]}
-    assert "nope" in _raises(spec, tmp_path)
-
-
 def test_array_encoding_fields_are_checked_and_accepted(tmp_path):
     tip = {"mark": "bar", "encoding": {"tooltip": [{"field": "month"}, {"field": "revenue"}]}}
     assert _render(tip, tmp_path).exists()
@@ -199,16 +176,6 @@ def test_transform_specs_are_not_validated(tmp_path):
     assert _render(layered, tmp_path).exists()
 
 
-def test_layer_without_transform_still_fails_beside_a_transform_layer(tmp_path):
-    spec = {
-        "layer": [
-            {"mark": "bar", "transform": [{"calculate": "1", "as": "one"}]},
-            {"mark": "line", "encoding": {"y": {"field": "nope"}}},
-        ]
-    }
-    assert "nope" in _raises(spec, tmp_path)
-
-
 def test_count_channel_is_not_validated(tmp_path):
     spec = {
         "mark": "bar",
@@ -221,30 +188,31 @@ def test_count_channel_is_not_validated(tmp_path):
     assert _render(spec, tmp_path).exists()
 
 
-def test_parent_encoding_overridden_by_every_layer_is_not_checked(tmp_path):
-    rows = [{"month": "2026-01-01", "actual": 1, "target": 2}]
-    spec = {
-        "encoding": {"x": {"field": "month"}, "y": {"field": "value"}},
-        "layer": [
-            {"mark": "bar", "encoding": {"y": {"field": "actual"}}},
-            {"mark": "line", "encoding": {"y": {"field": "target"}}},
-        ],
-    }
-    assert _render(spec, tmp_path, rows).exists()
-
-
-def test_layer_inheriting_a_missing_parent_field_still_fails(tmp_path):
-    rows = [{"month": "2026-01-01", "actual": 1}]
-    spec = {
-        "encoding": {"x": {"field": "month"}, "y": {"field": "value"}},
-        "layer": [
-            {"mark": "bar", "encoding": {"y": {"field": "actual"}}},
-            {"mark": "line"},
-        ],
-    }
-    assert "value" in _raises(spec, tmp_path, rows)
-
-
 def test_composite_views_are_skipped(tmp_path):
     spec = {"hconcat": [{"mark": "bar", "encoding": {"y": {"field": "nope"}}}]}
     assert _render(spec, tmp_path).exists()
+
+
+def test_layer_with_empty_inline_data_is_not_rejected(tmp_path):
+    spec = {
+        "layer": [
+            {"mark": "line", "encoding": {"y": {"field": "revenue"}}},
+            {"mark": "rule", "data": {"values": []}, "encoding": {"y": {"field": "threshold"}}},
+        ]
+    }
+    assert _render(spec, tmp_path).exists()
+
+
+def test_layered_spec_with_a_bad_field_is_passed_to_vega_unchecked(tmp_path):
+    # Documented trade-off: layered/composite/transform specs are not column-checked.
+    spec = {"layer": [{"mark": "line", "encoding": {"y": {"field": "nope"}}}]}
+    assert _render(spec, tmp_path).exists()
+
+
+def test_show_labels_templates_are_still_checked(tmp_path):
+    # show_labels layers the spec only after the check, so the plain templates stay covered.
+    from strata_lookml.viz.render import _CHARTS_DIR, _load_spec
+
+    spec = _load_spec(_CHARTS_DIR / "bar.yml")
+    spec["show_labels"] = True
+    assert "category" in _raises(spec, tmp_path)

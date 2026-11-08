@@ -170,41 +170,23 @@ def _first_path_component(field: str) -> str:
     return "".join(out)
 
 
-_COMPOSITE_KEYS = ("concat", "hconcat", "vconcat", "facet", "repeat", "spec")
+_UNCHECKED_KEYS = ("layer", "concat", "hconcat", "vconcat", "facet", "repeat", "spec", "transform")
 
 
-def _unknown_fields(
-    node: dict[str, Any],
-    columns: set[str],
-    skip: bool,
-    inherited: dict[str, Any] | None = None,
-) -> list[str]:
-    """Encoding fields of the leaf views under `node` that are not columns of the data.
+def _unknown_fields(spec: dict[str, Any], columns: set[str]) -> list[str]:
+    """Encoding fields of a single-view spec that are not columns of the data.
 
-    The rule is to validate only what is certain: the effective encoding of leaf views over
-    inspectable data. A layer's child sees its own channels, else the parent's; a parent's shared
-    encoding is never checked on its own (every child may override it). Composite views
-    (concat/facet/repeat/...) and any (sub)spec with a `transform` are skipped (Vega-Lite decides),
-    as is a channel that counts rows (`aggregate: count`, or field `*`).
+    The column check covers single-view charts only. Layered, composite
+    (concat/facet/repeat/spec) and transform specs are passed to Vega unchecked: what columns
+    each part sees (own data, inherited encodings, transform outputs) is Vega-Lite's to decide.
+    A channel that counts rows (`aggregate: count`, or field `*`) is skipped too.
     """
-    if any(key in node for key in _COMPOSITE_KEYS):
+    if any(spec.get(key) for key in _UNCHECKED_KEYS):
         return []
-    skip = skip or bool(node.get("transform"))
-    own = node.get("encoding")
-    encoding = {**(inherited or {}), **(own if isinstance(own, dict) else {})}
-    layers = node.get("layer")
-    if isinstance(layers, list):
-        missing: list[str] = []
-        for layer in layers:
-            if not isinstance(layer, dict):
-                continue
-            layer_columns = _layer_columns(layer, columns)
-            if layer_columns is not None:  # None: data we cannot inspect, so skip the layer
-                missing += _unknown_fields(layer, layer_columns, skip, encoding)
-        return missing
-    if skip:
+    encoding = spec.get("encoding")
+    if not isinstance(encoding, dict):
         return []
-    missing = []
+    missing: list[str] = []
     for enc in encoding.values():
         # A channel is one definition or a list of them (e.g. `tooltip`).
         for item in enc if isinstance(enc, list) else [enc]:
@@ -220,19 +202,6 @@ def _unknown_fields(
     return missing
 
 
-def _layer_columns(layer: dict[str, Any], inherited: set[str]) -> set[str] | None:
-    """The columns a layer sees: the parent's, its own inline rows, or None when it reads other
-    data (url, named source, generator) that cannot be inspected statically.
-    """
-    if "data" not in layer:
-        return inherited
-    data = layer["data"]
-    values = data.get("values") if isinstance(data, dict) else None
-    if isinstance(values, list):
-        return {key for row in values if isinstance(row, dict) for key in row}
-    return None
-
-
 def _check_encoding_columns(spec: dict[str, Any], rows: list[dict]) -> None:
     """Raise InvalidInput when an encoding field is not a column of the data.
 
@@ -242,7 +211,7 @@ def _check_encoding_columns(spec: dict[str, Any], rows: list[dict]) -> None:
     available = sorted({key for row in rows if isinstance(row, dict) for key in row})
     if not available:
         return
-    missing = list(dict.fromkeys(_unknown_fields(spec, set(available), False)))
+    missing = list(dict.fromkeys(_unknown_fields(spec, set(available))))
     if missing:
         raise InvalidInput(
             f"chart encoding uses columns not in the data: {', '.join(missing)}. "
