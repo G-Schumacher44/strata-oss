@@ -14,12 +14,12 @@ import base64
 import hashlib
 import hmac
 import http.server
-import os
 import secrets
-import socket
 import time
 import urllib.parse
 from typing import Any
+
+from strata_lookml.loopback import ExclusiveHTTPServer
 
 # The IP literal only (RFC 8252 §8.3): "localhost" may resolve to ::1 first, and the browser's
 # redirect would then never reach the IPv4 listener.
@@ -84,18 +84,6 @@ def loopback_address(redirect_uri: str) -> tuple[int, str]:
     return parts.port, parts.path or "/"
 
 
-class _ExclusiveServer(http.server.HTTPServer):
-    # POSIX: SO_REUSEADDR only lets a retry rebind while the last login's connection sits in
-    # TIME_WAIT; it never lets a second socket bind an address that is actively listening.
-    # Windows: SO_REUSEADDR *would* allow that, so it is off and the bind is exclusive instead.
-    allow_reuse_address = os.name != "nt"
-
-    def server_bind(self) -> None:
-        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows only
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        super().server_bind()
-
-
 class LoopbackReceiver:
     """One-shot HTTP listener on 127.0.0.1 that captures a single OAuth redirect.
 
@@ -140,7 +128,7 @@ class LoopbackReceiver:
                 pass
 
         self._captured = captured
-        self._server = _ExclusiveServer((LOOPBACK_HOST, port), _Handler)
+        self._server = ExclusiveHTTPServer((LOOPBACK_HOST, port), _Handler)
 
     def wait(self, timeout: float = 300.0) -> str:
         deadline = time.monotonic() + timeout

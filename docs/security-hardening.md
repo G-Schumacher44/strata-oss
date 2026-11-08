@@ -34,7 +34,7 @@ actual delivery yourself.
 - **Outbound, BigQuery:** `strata generate-schema` shells out to the `bq` CLI with your gcloud
   credentials; it does not use the Looker token.
 - **Listening:** `strata dashboard` serves its output directory on `127.0.0.1` (default port
-  8765) until you stop it, and answers 403 to any request whose `Host` header is not
+  8765, falling back to 8766-8785 if busy and `--port` was not passed) until you stop it, and answers 403 to any request whose `Host` header is not
   `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` (DNS-rebinding guard). `strata auth login` listens on
   `127.0.0.1` at the redirect port until a request with the matching `state` arrives on the
   redirect path, or `--timeout` passes (each connection gets at most 5 seconds to send its

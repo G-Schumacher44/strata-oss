@@ -37,6 +37,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- `strata dashboard` falls back to the next free port (8766-8785) when the default 8765 is busy and `--port` was not passed, and prints the URL it bound; the Host allow-list uses the bound port. An explicit `--port` that is busy exits 1 with a clear error.
 - `strata lint` is hidden from `--help` and the docs (contributor-only; still invocable).
 - `strata validate` resolves the user's project (`CONDUCTOR_PROJECT_ROOT` → configured repo → cwd), never Strata's own tree, and prints real relative paths.
 - `strata generate-schema --repo` reads `STRATA_REPO_PATH`.
