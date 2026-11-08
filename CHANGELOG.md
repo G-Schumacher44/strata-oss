@@ -30,6 +30,13 @@ All notable changes to `strata-lookml` are documented here. The format follows
   and chart, and a layout that works down to 390px wide.
 - When usage or schema facts were not loaded, the dashboard headline, KPI cards and section empty
   states now say which checks did not run, instead of reporting a clean repo or a 0.
+- `strata_usage_summary` (MCP) and the `usage_summary` artifact add `ir_explore_count` (every
+  resolved explore), `dead_explore_count`, `dead_view_count` and `active_explore_count`
+  (`null` when the usage checks did not run). `explore_count` is unchanged and counts explores
+  with a usage row. The dashboard's active-explores KPI now uses `active_explore_count`; it
+  previously subtracted dead explores from the usage-row count and could go negative.
+- Dashboard graph: changing the search or the "Needs attention" filter clears a pinned
+  selection, so the filter's results are what the graph highlights.
 - `strata dashboard` serves `dashboard.html` at `/` instead of a directory listing. Artifact JSON
   stays at its own paths, and the `Host` check still applies.
 

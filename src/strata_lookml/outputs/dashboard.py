@@ -1105,10 +1105,10 @@ function notRunText(coverage) {
   if (!coverage.schema) return 'Schema facts not loaded — the schema drift check did not run';
   return '';
 }
-function heroCopy(coverage, s, deadItems, drift, ledger) {
-  const dead = deadItems.length;
-  const deadExplores = deadItems.filter(r => r.kind === 'explore').length;
-  const deadViews = dead - deadExplores;
+function heroCopy(coverage, s, drift, ledger) {
+  const dead = s.dead_code_count || 0;
+  const deadExplores = s.dead_explore_count || 0;
+  const deadViews = s.dead_view_count || 0;
   const pdtUnused = ledger.filter(r => r.status === 'unused' || r.status === 'zombie').reduce((a, r) => a + (r.estimated_cost_usd || 0), 0);
   const windowLabel = s.period ? `${s.period.days}-day window` : 'unknown window';
   const notRun = notRunText(coverage);
@@ -1123,17 +1123,16 @@ function heroCopy(coverage, s, deadItems, drift, ledger) {
   if (coverage.schema && drift) parts.push(plural(drift, 'broken schema reference'));
   let lede = parts.length ? `Also: ${parts.join(', ')}.` : '';
   if (coverage.usage) {
-    lede += ` Analysed across ${plural(s.explore_count || 0, 'explore')} and ${(s.total_queries || 0).toLocaleString('en-US')} queries in the ${windowLabel}.`;
+    lede += ` Analysed across ${plural(s.ir_explore_count || 0, 'explore')} and ${(s.total_queries || 0).toLocaleString('en-US')} queries in the ${windowLabel}.`;
   }
   // The not-run notice rides in the lede whenever it isn't already the headline.
   if (notRun && headline !== notRun + '.') lede += ` ${notRun}.`;
   if (!lede.trim()) lede = 'Pass --usage-fixture and --schema-fixture (or --looker-url) to run the usage and drift checks.';
   return { headline: headline, lede: lede.trim() };
 }
-function kpiCards(coverage, s, deadItems, drift, ledger) {
+function kpiCards(coverage, s, drift, ledger) {
   const NOT_RUN = 'Not run';
-  const dead = deadItems.length;
-  const deadExplores = deadItems.filter(r => r.kind === 'explore').length;
+  const dead = s.dead_code_count || 0;
   const pdtTotal = ledger.reduce((a, r) => a + (r.estimated_cost_usd || 0), 0);
   const pdtUnused = ledger.filter(r => r.status === 'unused' || r.status === 'zombie').reduce((a, r) => a + (r.estimated_cost_usd || 0), 0);
   const windowLabel = s.period ? `${s.period.days}-day window` : 'unknown window';
@@ -1141,11 +1140,12 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
   const cards = [
     u ? { label: 'PDT spend nothing reads', value: fmt_money(pdtUnused), sub: pdtUnused > 0 ? `of ${fmt_money(pdtTotal)} total, ${windowLabel}` : `all ${fmt_money(pdtTotal)} is in use`, cls: pdtUnused > 0 ? 'caution' : 'ok', href: '#pdt-cost' }
       : { label: 'PDT spend nothing reads', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '#pdt-cost' },
-    u ? { label: 'Dead explores and views', value: dead, sub: `${deadExplores} explores, ${dead - deadExplores} views`, cls: dead > 0 ? 'warn' : 'ok', href: '#dead-code' }
+    u ? { label: 'Dead explores and views', value: dead, sub: `${s.dead_explore_count || 0} explores, ${s.dead_view_count || 0} views`, cls: dead > 0 ? 'warn' : 'ok', href: '#dead-code' }
       : { label: 'Dead explores and views', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '#dead-code' },
     coverage.schema ? { label: 'Broken schema references', value: drift, sub: 'missing tables or columns', cls: drift > 0 ? 'warn' : 'ok', href: '#drift' }
       : { label: 'Broken schema references', value: NOT_RUN, sub: 'no schema facts loaded', cls: 'skipped', href: '#drift' },
-    u ? { label: 'Active explores', value: (s.explore_count || 0) - deadExplores, sub: `of ${s.explore_count || 0} explores`, cls: 'info', href: '#graph' }
+    // active_explore_count is L1's (resolved explores minus dead explores); never re-derived here.
+    u ? { label: 'Active explores', value: s.active_explore_count, sub: `of ${s.ir_explore_count || 0} explores`, cls: 'info', href: '#graph' }
       : { label: 'Active explores', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '#graph' },
     u ? { label: 'Queries', value: (s.total_queries || 0).toLocaleString('en-US'), sub: s.period ? `last ${s.period.days} days` : 'period unknown', cls: 'info', href: '' }
       : { label: 'Queries', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '' },
@@ -1154,7 +1154,7 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
   return cards.sort((a, b) => rank[a.cls] - rank[b.cls]);
 }
 (function() {
-  const args = [COVERAGE, USAGE_SUMMARY || {}, DEAD_CODE || [], (SCHEMA_DRIFT || []).length, PDT_LEDGER || []];
+  const args = [COVERAGE, USAGE_SUMMARY || {}, (SCHEMA_DRIFT || []).length, PDT_LEDGER || []];
   const copy = heroCopy(...args);
   document.getElementById('hero-headline').textContent = copy.headline;
   document.getElementById('hero-lede').textContent = copy.lede;
@@ -1404,6 +1404,53 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
   });
 })();
 
+// ── Graph highlight state (top level, no DOM — runnable against headless Cytoscape) ──
+function newGraphState() {
+  return { query: '', attentionOnly: false, hovered: null, pinned: null, hiddenKinds: new Set() };
+}
+// A filter change (search text or the attention toggle) drops any pinned selection, so the
+// filter's focus set wins; selecting a node afterwards pins again until the next change.
+// Returns whether a filter actually changed.
+function setGraphFilter(state, patch) {
+  const changed = ('query' in patch && patch.query !== state.query) ||
+    ('attentionOnly' in patch && patch.attentionOnly !== state.attentionOnly);
+  Object.assign(state, patch);
+  if (changed) state.pinned = null;
+  return changed;
+}
+function graphFilteredSet(cy, state) {
+  // Null = no filter active (everything visible counts as in focus).
+  if (!state.query && !state.attentionOnly) return null;
+  const q = state.query;
+  return cy.nodes().not('.hidden').filter(n => {
+    const d = n.data();
+    const hit = !q || String(d.label).toLowerCase().includes(q) || String(d.model || '').toLowerCase().includes(q);
+    return hit && (!state.attentionOnly || d.attention);
+  });
+}
+// The one place that decides what is hidden, faded, labeled and matched.
+function applyGraphState(cy, state) {
+  let filtered = null, visible = null;
+  cy.batch(() => {
+    cy.nodes().forEach(n => n.toggleClass('hidden', state.hiddenKinds.has(n.data('kind'))));
+    cy.elements().removeClass('faded hl match');
+    visible = cy.nodes().not('.hidden');
+    filtered = graphFilteredSet(cy, state);
+    if (filtered) {
+      if (state.query) filtered.addClass('match');
+      cy.elements().not(filtered.closedNeighborhood()).addClass('faded');
+      filtered.addClass('hl');
+      filtered.connectedEdges().addClass('hl');
+    }
+    const anchor = state.hovered || state.pinned;
+    if (anchor && !anchor.hasClass('hidden')) {
+      cy.elements().addClass('faded');
+      anchor.closedNeighborhood().removeClass('faded').addClass('hl');
+    }
+  });
+  return { filtered: filtered, visible: visible };
+}
+
 // ── Cytoscape Dependency Graph ────────────────────────────────────────────────
 // Left-to-right layers (explores, then views, then PDTs and warehouse tables) so labels run
 // along each column instead of colliding across a single wide row. Labels show the short
@@ -1585,53 +1632,26 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
   cy.on('viewport resize', placeLanes);
   computeLanes();
 
-  // ── Filter / highlight state — one place decides what is faded, hidden, labeled ──
+  // ── Filter / highlight state — graphState is read by applyGraphState() (top level) ──
   const searchInput = document.getElementById('cy-search');
   const attentionBtn = document.getElementById('cy-attention');
   const countEl = document.getElementById('cy-count');
   const focusBtn = document.getElementById('cy-focus');
   const kindChips = Array.from(document.querySelectorAll('.chip[data-kind]'));
-  const hiddenKinds = new Set();
-  let query = '';
-  let attentionOnly = false;
-  let hovered = null;
-  let pinned = null;
-
-  function matchesQuery(n) {
-    if (!query) return true;
-    const d = n.data();
-    return String(d.label).toLowerCase().includes(query) || String(d.model || '').toLowerCase().includes(query);
-  }
-  function filteredSet() {
-    // Null = no filter active (everything visible counts as in focus).
-    if (!query && !attentionOnly) return null;
-    return cy.nodes().not('.hidden').filter(n => matchesQuery(n) && (!attentionOnly || n.data('attention')));
-  }
+  const state = newGraphState();
   function applyState() {
-    cy.batch(() => {
-      cy.nodes().forEach(n => n.toggleClass('hidden', hiddenKinds.has(n.data('kind'))));
-      cy.elements().removeClass('faded hl match');
-      const visible = cy.nodes().not('.hidden');
-      const filtered = filteredSet();
-      if (filtered) {
-        if (query) filtered.addClass('match');
-        const focusSet = filtered.closedNeighborhood();
-        cy.elements().not(focusSet).addClass('faded');
-        filtered.addClass('hl');
-        filtered.connectedEdges().addClass('hl');
-      }
-      const anchor = hovered || pinned;
-      if (anchor && !anchor.hasClass('hidden')) {
-        const hood = anchor.closedNeighborhood();
-        cy.elements().addClass('faded');
-        hood.removeClass('faded').addClass('hl');
-      }
-      const shown = filtered ? filtered.length : visible.length;
-      countEl.textContent = filtered
-        ? `${shown} of ${visible.length} nodes match`
-        : `${visible.length} nodes, ${cy.edges().filter(e => e.visible()).length} edges`;
-    });
-    focusBtn.disabled = !pinned;
+    const r = applyGraphState(cy, state);
+    countEl.textContent = r.filtered
+      ? `${r.filtered.length} of ${r.visible.length} nodes match`
+      : `${r.visible.length} nodes, ${cy.edges().filter(e => e.visible()).length} edges`;
+    focusBtn.disabled = !state.pinned;
+  }
+  // Every search/attention change goes through here: a filter change drops the pinned
+  // selection (and resets the panel), so the filter's results are what the graph shows.
+  function changeFilter(patch) {
+    const hadPin = !!state.pinned;
+    if (setGraphFilter(state, patch) && hadPin) clearSelection();
+    applyState();
   }
 
   function fitTo(eles, pad) {
@@ -1642,34 +1662,31 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
   let searchTimer = null;
   searchInput.addEventListener('input', () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { query = searchInput.value.trim().toLowerCase(); applyState(); }, 90);
+    searchTimer = setTimeout(() => changeFilter({ query: searchInput.value.trim().toLowerCase() }), 90);
   });
   searchInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
-      query = searchInput.value.trim().toLowerCase();
-      applyState();
-      const f = filteredSet();
+      changeFilter({ query: searchInput.value.trim().toLowerCase() });
+      const f = graphFilteredSet(cy, state);
       if (f && f.length === 1) focusGraphNode(f.id(), false);
       else if (f && f.nonempty()) fitTo(f.closedNeighborhood(), 50);
     } else if (e.key === 'Escape') {
       searchInput.value = '';
-      query = '';
-      applyState();
+      changeFilter({ query: '' });
     }
   });
   kindChips.forEach(chip => chip.addEventListener('click', () => {
     const kind = chip.dataset.kind;
     const on = chip.getAttribute('aria-pressed') !== 'true';
     chip.setAttribute('aria-pressed', String(on));
-    if (on) hiddenKinds.delete(kind); else hiddenKinds.add(kind);
-    if (pinned && hiddenKinds.has(pinned.data('kind'))) clearSelection();
+    if (on) state.hiddenKinds.delete(kind); else state.hiddenKinds.add(kind);
+    if (state.pinned && state.hiddenKinds.has(state.pinned.data('kind'))) clearSelection();
     applyState();
   }));
   attentionBtn.addEventListener('click', () => {
-    attentionOnly = !attentionOnly;
-    attentionBtn.setAttribute('aria-pressed', String(attentionOnly));
-    applyState();
-    const f = filteredSet();
+    changeFilter({ attentionOnly: !state.attentionOnly });
+    attentionBtn.setAttribute('aria-pressed', String(state.attentionOnly));
+    const f = graphFilteredSet(cy, state);
     fitTo(f ? f.closedNeighborhood() : null, 50);
   });
 
@@ -1680,13 +1697,12 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
   document.getElementById('cy-zoom-in').addEventListener('click', () => zoomAt(1.3));
   document.getElementById('cy-zoom-out').addEventListener('click', () => zoomAt(1 / 1.3));
   document.getElementById('cy-fit').addEventListener('click', () => fitTo(null, 40));
-  focusBtn.addEventListener('click', () => { if (pinned) fitTo(pinned.closedNeighborhood(), 60); });
+  focusBtn.addEventListener('click', () => { if (state.pinned) fitTo(state.pinned.closedNeighborhood(), 60); });
   document.getElementById('cy-reset').addEventListener('click', () => {
     searchInput.value = '';
-    query = '';
-    attentionOnly = false;
+    setGraphFilter(state, { query: '', attentionOnly: false });
     attentionBtn.setAttribute('aria-pressed', 'false');
-    hiddenKinds.clear();
+    state.hiddenKinds.clear();
     kindChips.forEach(c => c.setAttribute('aria-pressed', 'true'));
     clearSelection();
     applyState();
@@ -1697,14 +1713,14 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
   const tip = document.getElementById('cy-tip');
   const hint = document.getElementById('cy-hint');
   cy.on('mouseover', 'node', evt => {
-    hovered = evt.target;
+    state.hovered = evt.target;
     applyState();
-    const d = hovered.data();
+    const d = state.hovered.data();
     tip.textContent = '';
     const name = el('div', 'tip-name');
     name.textContent = d.kind === 'explore' && d.model ? `${d.model}.${d.label}` : d.label;
     const meta = el('div', 'tip-meta');
-    const deg = hovered.connectedEdges().length;
+    const deg = state.hovered.connectedEdges().length;
     meta.textContent = `${KIND_LABEL[d.kind] || d.kind} · ${plural(deg, 'connection')}`;
     tip.appendChild(name);
     tip.appendChild(meta);
@@ -1718,7 +1734,7 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
     tip.style.top = (p.y + 16) + 'px';
   });
   cy.on('mouseout', 'node', () => {
-    hovered = null;
+    state.hovered = null;
     tip.style.display = 'none';
     applyState();
   });
@@ -1782,7 +1798,7 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
     return row;
   }
   function clearSelection() {
-    pinned = null;
+    state.pinned = null;
     cy.elements(':selected').unselect();
     panel.className = 'detail-empty';
     panel.innerHTML = '<strong>Nothing selected</strong>Click a node to see its status, cost and what depends on it. Evidence chips in the tables below also jump here.';
@@ -1792,11 +1808,11 @@ function kpiCards(coverage, s, deadItems, drift, ledger) {
 
   cy.on('tap', 'node', function(evt) {
     const node = evt.target;
-    if (hiddenKinds.has(node.data('kind'))) {
-      hiddenKinds.delete(node.data('kind'));
+    if (state.hiddenKinds.has(node.data('kind'))) {
+      state.hiddenKinds.delete(node.data('kind'));
       kindChips.forEach(c => { if (c.dataset.kind === node.data('kind')) c.setAttribute('aria-pressed', 'true'); });
     }
-    pinned = node;
+    state.pinned = node;
     if (!node.selected()) { cy.elements(':selected').unselect(); node.select(); }
     const d = node.data();
     const rows = [];

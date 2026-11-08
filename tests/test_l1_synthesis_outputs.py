@@ -1643,14 +1643,19 @@ def _js_function(html: str, name: str) -> str:
             return html[start:i]
 
 
-def _run_hero(html: str, coverage, summary, dead, drift_count, ledger) -> dict:
+def _node_or_skip() -> str:
     import shutil
 
     node = shutil.which("node")
     if not node:
-        pytest.skip("node not on PATH — the headline logic is JavaScript and needs node to run")
+        pytest.skip("node not on PATH — dashboard logic under test is JavaScript")
+    return node
+
+
+def _run_hero(html: str, coverage, summary, drift_count, ledger) -> dict:
+    node = _node_or_skip()
     names = ("fmt_money", "plural", "notRunText", "heroCopy", "kpiCards")
-    args = json.dumps([coverage, summary, dead, drift_count, ledger])
+    args = json.dumps([coverage, summary, drift_count, ledger])
     script = "\n".join(_js_function(html, n) for n in names) + (
         f"\nconst A = {args};\n"
         "console.log(JSON.stringify({hero: heroCopy(...A), cards: kpiCards(...A)}));\n"
@@ -1676,7 +1681,6 @@ def test_headline_never_claims_clean_when_checks_did_not_run():
             html,
             analysis_coverage(graph),
             artifacts["usage_summary"],
-            artifacts["dead_code_register"],
             len(artifacts["schema_drift"]),
             artifacts["pdt_ledger"],
         ), html
@@ -1695,6 +1699,100 @@ def test_headline_never_claims_clean_when_checks_did_not_run():
     assert drift_card["value"] == "Not run"
 
     # Both checks ran and found nothing: the clean headline is allowed.
-    ran = _run_hero(html, {"usage": True, "schema": True}, {"explore_count": 3}, [], 0, [])
+    ran = _run_hero(
+        html,
+        {"usage": True, "schema": True},
+        {"ir_explore_count": 3, "active_explore_count": 3},
+        0,
+        [],
+    )
     assert ran["hero"]["headline"] == clean
     assert "Not run" not in {c["value"] for c in ran["cards"]}
+
+
+def test_active_explores_share_the_dead_code_population():
+    """Codex PR #65: `explore_count` counts usage rows, but `_dead_code()` checks every
+    resolved explore, so "explore_count - dead explores" undercounts and goes negative when
+    unqueried explores have no usage row. L1 now serializes one population (all resolved
+    explores) and the active count over it; the KPI shows that value, never JS arithmetic."""
+    from strata_lookml.ir.resolver import build_resolved_graph
+    from strata_lookml.mcp.tools import strata_usage_summary
+
+    gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
+    usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
+    summary = strata_usage_summary(build_graph(gcs, usage))
+    assert (summary["ir_explore_count"], summary["dead_explore_count"]) == (7, 2)
+    assert summary["active_explore_count"] == 5
+    assert summary["dead_view_count"] == 4
+
+    # Usage checks ran but no explore has a usage row or content reference: every explore is
+    # dead, explore_count is 0, and the old subtraction gave -7.
+    unqueried = enrich_graph(build_resolved_graph(gcs), [], [], [])
+    s = strata_usage_summary(unqueried)
+    assert s["explore_count"] == 0
+    assert s["dead_explore_count"] == s["ir_explore_count"] == 7
+    assert s["active_explore_count"] == 0
+
+    # No usage checks: there is no verdict to subtract, so no active count at all.
+    assert strata_usage_summary(build_graph(gcs))["active_explore_count"] is None
+
+    html = build_dashboard_html(build_artifacts(unqueried), unqueried)
+    out = _run_hero(html, {"usage": True, "schema": False}, s, 0, [])
+    card = next(c for c in out["cards"] if c["label"] == "Active explores")
+    assert card["value"] == 0, "active explores must come from L1, never go negative"
+    assert card["sub"] == "of 7 explores"
+
+
+def test_filter_change_drops_a_pinned_selection():
+    """Codex PR #65: with node A pinned, searching for an unrelated node B left `pinned` set,
+    so A's neighborhood overrode the results: B carried both `match` and `faded`. Run the
+    page's own state functions against real headless Cytoscape (the vendored build)."""
+    from strata_lookml.outputs.dashboard import _build_graph_data
+
+    node = _node_or_skip()
+    gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
+    usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
+    graph = build_graph(gcs, usage)
+    data = _build_graph_data(graph)
+    html = build_dashboard_html(build_artifacts(graph), graph)
+
+    neighbors: dict[str, set[str]] = {n["data"]["id"]: set() for n in data["nodes"]}
+    for e in data["edges"]:
+        neighbors[e["data"]["source"]].add(e["data"]["target"])
+        neighbors[e["data"]["target"]].add(e["data"]["source"])
+    pin_a = next(i for i in neighbors if i.startswith("explore:") and neighbors[i])
+    target_b = next(
+        n["data"]
+        for n in data["nodes"]
+        if n["data"]["id"] not in neighbors[pin_a] | {pin_a}
+        and n["data"]["kind"] == "physical_table"
+        and neighbors[n["data"]["id"]]
+    )
+    names = ("newGraphState", "setGraphFilter", "graphFilteredSet", "applyGraphState")
+    cytoscape_js = ROOT / "src" / "strata_lookml" / "assets" / "js" / "cytoscape.min.js"
+    script = (
+        f"const cytoscape = require({json.dumps(str(cytoscape_js))});\n"
+        + "\n".join(_js_function(html, n) for n in names)
+        + f"""
+const data = {json.dumps(data)};
+const cy = cytoscape({{ headless: true, styleEnabled: false, elements: [...data.nodes, ...data.edges] }});
+const A = cy.getElementById({json.dumps(pin_a)}), B = cy.getElementById({json.dumps(target_b["id"])});
+const st = newGraphState();
+st.pinned = A;
+const kept = setGraphFilter(st, {{ query: '' }});  // no change: the pin survives
+const pinKept = st.pinned === A;
+setGraphFilter(st, {{ query: {json.dumps(target_b["label"].lower())} }});
+applyGraphState(cy, st);
+const afterSearch = {{ pinned: st.pinned, bMatch: B.hasClass('match'), bFaded: B.hasClass('faded'),
+  aHl: A.hasClass('hl') }};
+st.pinned = A;  // selecting after filtering pins again and wins
+applyGraphState(cy, st);
+console.log(JSON.stringify({{ kept, pinKept, afterSearch,
+  reselect: {{ aHl: A.hasClass('hl'), aFaded: A.hasClass('faded') }} }}));
+"""
+    )
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True)
+    r = json.loads(out.stdout)
+    assert r["kept"] is False and r["pinKept"] is True
+    assert r["afterSearch"] == {"pinned": None, "bMatch": True, "bFaded": False, "aHl": False}
+    assert r["reselect"] == {"aHl": True, "aFaded": False}

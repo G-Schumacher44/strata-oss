@@ -128,7 +128,7 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
 
     @server.tool(title="Usage Summary", annotations=_READ_ONLY)
     def strata_usage_summary() -> dict[str, Any]:
-        """Summarize L1 usage facts: has_l1, period, query totals, dead-code/PDT/zombie/drift counts."""
+        """Summarize L1 usage facts: has_l1, period, query totals, explore population (ir_explore_count, active/dead counts), dead-code/PDT/zombie/drift counts."""
         return query_usage_summary(ir_graph)
 
     @server.tool(title="Dead Code Register", annotations=_READ_ONLY)
