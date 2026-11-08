@@ -107,6 +107,7 @@ def render_chart(
             hint="See strata_chart_templates for valid specs.",
         )
     spec = _strip_empty_channels(spec)
+    _check_encoding_columns(spec, rows)
     spec = _apply_auto_labels(spec)
     spec = _apply_show_labels(spec)
     spec["data"] = {"values": rows}
@@ -143,6 +144,41 @@ def render_chart(
         webbrowser.open(out_path.as_uri())
 
     return out_path
+
+
+def _encoding_fields(spec: dict[str, Any]) -> list[str]:
+    """Every `encoding.*.field` in the spec, including the layers of a layered spec."""
+    fields: list[str] = []
+    encodings = [spec.get("encoding")]
+    layers = spec.get("layer")
+    if isinstance(layers, list):
+        encodings += [layer.get("encoding") for layer in layers if isinstance(layer, dict)]
+    for encoding in encodings:
+        if not isinstance(encoding, dict):
+            continue
+        for enc in encoding.values():
+            if isinstance(enc, dict) and isinstance(enc.get("field"), str) and enc["field"]:
+                fields.append(enc["field"])
+    return fields
+
+
+def _check_encoding_columns(spec: dict[str, Any], rows: list[dict]) -> None:
+    """Raise InvalidInput when an encoding field is not a column of the data.
+
+    Without this a mismatch renders a blank chart and exits 0. No rows means no columns to
+    compare, so an empty result still renders (as an empty chart).
+    """
+    available = sorted({key for row in rows if isinstance(row, dict) for key in row})
+    if not available:
+        return
+    # A dotted field ("a.b") addresses a nested value; the top-level key must exist.
+    missing = [f for f in dict.fromkeys(_encoding_fields(spec)) if f.split(".")[0] not in available]
+    if missing:
+        raise InvalidInput(
+            f"chart encoding uses columns not in the data: {', '.join(missing)}. "
+            f"Available columns: {', '.join(available)}.",
+            hint="Map your columns with --x/--y/--color, or rename the data columns.",
+        )
 
 
 def _strip_empty_channels(spec: dict[str, Any]) -> dict[str, Any]:

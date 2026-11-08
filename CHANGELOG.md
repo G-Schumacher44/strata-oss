@@ -17,6 +17,12 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` for the bound port, closing a
   DNS-rebinding path to the artifact JSON.
 
+### Added
+
+- `strata chart bar|line|scatter|heatmap` take `--x`, `--y` and `--color` to map the template's
+  channels onto your own columns, and each subcommand's help lists the template's required
+  columns, read from its YAML.
+
 ### Changed
 
 - CLI exits non-zero on not-found/invalid input; MCP tool errors now reach the client. Every
@@ -53,6 +59,11 @@ All notable changes to `strata-lookml` are documented here. The format follows
   stays at its own paths, and the `Host` check still applies.
 
 ### Fixed
+
+- A chart whose encoding names a column missing from the data (for example `strata chart line`
+  on `month`/`revenue` data) used to render a blank chart and exit 0. `render_chart` now raises
+  `InvalidInput` listing the missing and the available columns, so the CLI exits 1 and
+  `strata_render_chart` returns `isError`.
 
 - `strata_list_orphans` / `strata query orphans` no longer accept `kind=explore|field`, which always
   returned an empty list (only orphan views are detected); `kind` is now `all|view` and other

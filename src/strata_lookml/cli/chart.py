@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -12,6 +14,36 @@ _OUT_HELP = (
     "Output HTML path (default: a fresh strata_chart_*.html in the system temp dir; "
     "the path written is printed). Refuses to write through a symlink."
 )
+
+
+def _template_help(name: str, summary: str) -> str:
+    """Command help: the summary plus the template's columns, read from its YAML."""
+    path = _CHARTS_DIR / f"{name}.yml"
+    if not path.exists():
+        return summary
+    encoding = _load_spec(path).get("encoding", {})
+    required = [f"{ch}={enc['field']}" for ch, enc in encoding.items() if enc.get("field")]
+    optional = [ch for ch, enc in encoding.items() if not enc.get("field")]
+    text = f"{summary}\n\nRequired columns (default names): {', '.join(required)}."
+    if optional:
+        text += f" Optional channels: {', '.join(optional)}."
+    return text + " Use --x/--y/--color to map your own columns."
+
+
+def _template_options(func: Callable[..., None]) -> Callable[..., None]:
+    for decorator in reversed(
+        [
+            click.argument("data", type=click.Path(exists=True)),
+            click.option("--x", "x_col", help="Data column for the x channel"),
+            click.option("--y", "y_col", help="Data column for the y channel"),
+            click.option("--color", "color_col", help="Data column for the color channel"),
+            click.option("--title", help="Chart title"),
+            click.option("--out", default=None, help=_OUT_HELP),
+            click.option("--open", "open_browser", is_flag=True, help="Open in browser"),
+        ]
+    ):
+        func = decorator(func)
+    return func
 
 
 @click.group()
@@ -29,44 +61,25 @@ def chart_list() -> None:
         click.echo(t.stem)
 
 
-@chart.command("bar")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_bar(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Categorical comparison — one dimension vs one measure."""
-    _render("bar", data, title, out, open_browser)
+def _template_command(name: str, summary: str) -> None:
+    @chart.command(name, help=_template_help(name, summary))
+    @_template_options
+    def command(
+        data: str,
+        x_col: str | None,
+        y_col: str | None,
+        color_col: str | None,
+        title: str | None,
+        out: str | None,
+        open_browser: bool,
+    ) -> None:
+        _render(name, data, {"x": x_col, "y": y_col, "color": color_col}, title, out, open_browser)
 
 
-@chart.command("line")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_line(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Trend over time."""
-    _render("line", data, title, out, open_browser)
-
-
-@chart.command("scatter")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_scatter(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Correlation between two measures."""
-    _render("scatter", data, title, out, open_browser)
-
-
-@chart.command("heatmap")
-@click.argument("data", type=click.Path(exists=True))
-@click.option("--title", help="Chart title")
-@click.option("--out", default=None, help=_OUT_HELP)
-@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def chart_heatmap(data: str, title: str | None, out: str | None, open_browser: bool) -> None:
-    """Two-dimensional breakdown with color intensity."""
-    _render("heatmap", data, title, out, open_browser)
+_template_command("bar", "Categorical comparison — one dimension vs one measure.")
+_template_command("line", "Trend over time.")
+_template_command("scatter", "Correlation between two measures.")
+_template_command("heatmap", "Two-dimensional breakdown with color intensity.")
 
 
 @chart.command("render")
@@ -89,7 +102,12 @@ def chart_render(
 
 
 def _render(
-    chart_type: str, data: str, title: str | None, out: str | None, open_browser: bool
+    chart_type: str,
+    data: str,
+    overrides: dict[str, str | None],
+    title: str | None,
+    out: str | None,
+    open_browser: bool,
 ) -> None:
     spec_path = _CHARTS_DIR / f"{chart_type}.yml"
     if not spec_path.exists():
@@ -98,4 +116,13 @@ def _render(
     rows = _load_data(Path(data))
     if title:
         vl_spec["title"] = title
+    _apply_overrides(vl_spec, overrides)
     render_chart(vl_spec, rows, Path(out) if out else None, open_browser=open_browser)
+
+
+def _apply_overrides(spec: dict[str, Any], overrides: dict[str, str | None]) -> None:
+    """Point template channels at the user's columns (no renaming of the data)."""
+    encoding = spec.setdefault("encoding", {})
+    for channel, column in overrides.items():
+        if column:
+            encoding.setdefault(channel, {"type": "nominal"})["field"] = column
