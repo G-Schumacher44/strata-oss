@@ -65,6 +65,21 @@ def test_server_with_fixtures_rebuilds_a_cache_built_without_them(env, monkeypat
     assert data["usage_checked"] is True
 
 
+def test_server_rebuilds_after_a_lkml_edit_within_the_reuse_window(env, monkeypatch):
+    # The cache keyed on the repo path alone served a stale IR for up to the max age after a
+    # .lkml edit; the .lkml fingerprint in the inputs forces the rebuild.
+    from strata_lookml.mcp.server import load_configured_graph
+
+    _, repo = env
+    built = json.loads(_strata("build", "--repo", str(repo), "--json").output)
+    view_file = next(repo.glob("*.view.lkml"))
+    with view_file.open("a", encoding="utf-8") as handle:
+        handle.write("\nview: s7_probe {\n  dimension: id {\n    sql: 1 ;;\n  }\n}\n")
+    monkeypatch.setenv("STRATA_REPO_PATH", str(repo))
+    graph = load_configured_graph()
+    assert graph.node_counts()["view"] == built["node_counts"]["view"] + 1
+
+
 def test_build_default_cache_lands_private_under_strata_home(env):
     home, repo = env
     out = json.loads(_strata("build", "--repo", str(repo), "--json").output)

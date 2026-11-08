@@ -15,18 +15,19 @@ Exact Next Steps: twin gate, operator merges. S8 (`mcp validate` readiness) buil
 ### What changed
 
 - `config.py`: `default_cache_path(repo)` = `~/.strata/cache/<repo-name>-<sha256(abs path)[:12]>.db`; `load_cache_path(repo, cache=None)` = `--cache` → `STRATA_CACHE_PATH` → default, the one resolver; `ensure_private_dir(dir, tighten=)` (missing levels created 0700; `tighten` chmods an existing Strata-owned dir). `l1/looker.prepare_token_dir` now creates through `ensure_private_dir` (refusal rule unchanged).
-- `ir/store.py`: the cache row stores `inputs` (repo path, fixture paths + `mtime_ns`, from `describe_inputs`); `save_ir` creates the file 0600 and the dir 0700 (tightens `~/.strata/cache`), drops an older-schema table instead of migrating; `cache_inputs`, `cache_is_fresh(path, inputs, max_age)`.
+- `ir/store.py`: the cache row stores `inputs` (repo path + `lookml_fingerprint` — count, max `mtime_ns`, total size, hash of relative paths over `ir/parser.lkml_paths` — and fixture paths + `mtime_ns`, from `describe_inputs`); `save_ir` creates the file 0600 and the dir 0700 (tightens `~/.strata/cache`), drops an older-schema table instead of migrating; `cache_inputs`, `cache_is_fresh(path, inputs, max_age)`.
 - `pipeline.py`: `build_and_cache` (inputs captured before the build) and `load_or_build` (reuse only when inputs match and age < max). The server's `load_configured_graph` and `strata build` go through them; the four path decisions (server `_cache_path`, build, `mcp validate`, `mcp config`) are gone.
 - `strata build --cache` declares `STRATA_CACHE_PATH`. `strata clean` removes the repo's `~/.strata/cache` entry plus legacy `strata_ir.db` under the repo; `--repo` declares `STRATA_REPO_PATH` (addendum).
 - Docs: security-hardening write table, enterprise-deployment, SECURITY.md, README (commands table + MCP layer note), cli-guide; regenerated `docs/reference.md`; CHANGELOG Changed with the compat note.
 
 ### Deviations from the spec
 
-- Inputs record fixture mtimes only; the repo is recorded by path. A directory mtime does not change when a nested `.lkml` file is edited, so it would look like a content check without being one; LookML edits stay covered by the max age.
 - `strata clean` deletes the default-location entry, not a cache at `STRATA_CACHE_PATH`/`--cache` (a user-chosen path is not Strata's to delete). Without `--repo`/env it cleans the cwd's entry.
 - The N1 test asserts `usage_checked` (S2's field) rather than the spec's older `has_l1` wording.
 - `ensure_private_dir` creates every missing level 0700, so a custom `--token-path` with missing parents now gets 0700 parents too (narrower than before).
 
 ### Gates
 
-pytest 284 passed (277 before, +7 in `tests/test_cache_location.py`); 307 after merging S3 (#73), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: the new tests against `origin/main` code (detached worktree) fail 6 of 7 — the server test fails `usage_checked False is True`; the passing one is the same-name-repos invariant of the new resolver. Mutations: `cache_is_fresh` ignoring inputs fails the N1 test; dropping the 0600 create/chmod fails the mode test. Real `~/.strata` untouched by the suite (no `cache/` dir).
+pytest 308 passed (277 before S7; +8 in `tests/test_cache_location.py`, +23 from merging S3 #73), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: the new tests against `origin/main` code (detached worktree) fail 6 of 7 — the server test fails `usage_checked False is True`; the passing one is the same-name-repos invariant of the new resolver. Mutations: `cache_is_fresh` ignoring inputs fails the N1 test; dropping the `.lkml` fingerprint from the inputs fails the lkml-edit test (`13 == 13 + 1`); dropping the 0600 create/chmod fails the mode test. Real `~/.strata` untouched by the suite (no `cache/` dir).
+
+Review (head): the repo was keyed by path only, so a `.lkml` edit inside the reuse window served a stale IR. Inputs now carry a stat-only `.lkml` fingerprint over the parser's own discovery; `test_server_rebuilds_after_a_lkml_edit_within_the_reuse_window`.

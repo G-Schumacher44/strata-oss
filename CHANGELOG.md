@@ -33,8 +33,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db` (directory 0700, file 0600 on
   POSIX); `--cache` and `STRATA_CACHE_PATH` still win, and `strata build`, the MCP server and
   `strata mcp validate|config` now resolve it in one place (`mcp validate` and `strata build`
-  previously ignored `STRATA_CACHE_PATH`). The cache records the repo and fixture paths +
-  mtimes it was built from, and the MCP server reuses it only when they match and it is younger
+  previously ignored `STRATA_CACHE_PATH`). The cache records the repo path, a fingerprint of
+  its `.lkml` files (count, newest mtime, total size, paths) and the fixture paths + mtimes it
+  was built from, and the MCP server reuses it only when they match and it is younger
   than the max age: `strata build` without fixtures followed by a server start with
   `STRATA_USAGE_FIXTURE` no longer serves a graph with no usage data. `strata clean` removes
   the repo's cache entry, and `--repo` now reads `STRATA_REPO_PATH`. Compat: an existing

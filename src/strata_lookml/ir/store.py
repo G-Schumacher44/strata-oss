@@ -1,11 +1,13 @@
 """SQLite cache for resolved IR graphs.
 
-The cache records the inputs it was built from (repo path, fixture paths + mtimes), so a
-reader can tell a cache built for other inputs from a fresh one (`cache_is_fresh`).
+The cache records the inputs it was built from (repo path + .lkml fingerprint, fixture
+paths + mtimes), so a reader can tell a cache built for other inputs from a fresh one
+(`cache_is_fresh`).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -14,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from strata_lookml.config import ensure_private_dir, strata_home
+from strata_lookml.ir.parser import lkml_paths
 from strata_lookml.ir.types import IRGraph
 
 SCHEMA = """
@@ -34,7 +37,8 @@ def describe_inputs(
     """The inputs a graph is built from, normalised so a writer and a reader compare equal.
 
     A fixture is recorded with its mtime, so editing it in place invalidates the cache. A
-    missing fixture records mtime None (the build itself then fails loudly).
+    missing fixture records mtime None (the build itself then fails loudly). The repo is
+    recorded by path plus `lookml_fingerprint`, so a .lkml edit invalidates it too.
     """
 
     def fixture(path: str | Path | None) -> dict[str, Any] | None:
@@ -47,10 +51,36 @@ def describe_inputs(
             mtime_ns = None
         return {"path": str(resolved), "mtime_ns": mtime_ns}
 
+    repo = Path(repo_path).expanduser().resolve()
     return {
-        "repo": str(Path(repo_path).expanduser().resolve()),
+        "repo": str(repo),
+        "lookml": lookml_fingerprint(repo),
         "usage_fixture": fixture(usage_fixture),
         "schema_fixture": fixture(schema_fixture),
+    }
+
+
+def lookml_fingerprint(repo: Path) -> dict[str, Any]:
+    """A cheap stat-only fingerprint of the .lkml files the IR is built from.
+
+    Uses the parser's own discovery (`lkml_paths`), so it covers exactly the files a build
+    reads: count, newest mtime, total size, and a hash of the relative paths (a rename or
+    move changes source_file citations even when no content changes).
+    """
+    paths = lkml_paths(repo) if repo.is_dir() else []
+    max_mtime_ns = 0
+    total_size = 0
+    names = hashlib.sha256()
+    for path in paths:
+        st = path.stat()
+        max_mtime_ns = max(max_mtime_ns, st.st_mtime_ns)
+        total_size += st.st_size
+        names.update(str(path.relative_to(repo)).encode("utf-8") + b"\0")
+    return {
+        "count": len(paths),
+        "max_mtime_ns": max_mtime_ns,
+        "total_size": total_size,
+        "paths_sha256": names.hexdigest(),
     }
 
 
