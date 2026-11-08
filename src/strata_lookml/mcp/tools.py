@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from strata_lookml.errors import InvalidInput, NotFound
+from strata_lookml.identifiers import resolve_explore, resolve_field, resolve_table
 from strata_lookml.ir.types import IRGraph
 from strata_lookml.l1.enrich import analysis_coverage
 from strata_lookml.validation import validation_scope
@@ -43,7 +44,8 @@ def l1_list_envelope(graph: IRGraph, items: Sequence[Any], check: str) -> dict[s
     return list_envelope(items, **extra)
 
 
-def strata_query_field(graph: IRGraph, view: str, field: str) -> dict[str, Any]:
+def strata_query_field(graph: IRGraph, view: str, field: str | None = None) -> dict[str, Any]:
+    view, field = resolve_field(view, field)
     node = graph.get_node(f"field:{view}.{field}")
     if node is None:
         raise NotFound(
@@ -71,14 +73,9 @@ def strata_list_orphans(graph: IRGraph, kind: str = "all") -> list[dict[str, Any
     return [orphan for orphan in orphans if orphan.get("kind") == kind]
 
 
-def strata_explore_deps(graph: IRGraph, explore: str, model: str) -> dict[str, Any]:
-    node = graph.get_node(f"explore:{model}:{explore}")
-    if node is None:
-        raise NotFound(
-            f"explore not found: {model}.{explore}",
-            hint="Arguments are the explore name, then its model; strata_navigate finds an "
-            "explore by name.",
-        )
+def strata_explore_deps(graph: IRGraph, explore: str, model: str | None = None) -> dict[str, Any]:
+    model, explore = resolve_explore(graph, explore, model)
+    node = graph.nodes[f"explore:{model}:{explore}"]
     joins = [
         {
             "name": join["name"],
@@ -92,6 +89,8 @@ def strata_explore_deps(graph: IRGraph, explore: str, model: str) -> dict[str, A
         _field_count_for_view(graph, view_name) for view_name in view_names if view_name
     )
     return {
+        "model": model,
+        "explore": explore,
         "base_view": node.attrs.get("base_view"),
         "joins": joins,
         "resolution_chain": node.attrs.get("resolution_chain", []),
@@ -170,13 +169,9 @@ def strata_validation_scope(
 
 
 def strata_impact(graph: IRGraph, physical_table: str) -> dict[str, Any]:
+    requested = physical_table
+    physical_table = resolve_table(graph, requested)
     table_id = f"physical_table:{physical_table}"
-    if table_id not in graph.nodes:
-        raise NotFound(
-            f"physical_table not found in IR: {physical_table}",
-            hint="Pass the table as written in sql_table_name; strata_view_sources lists "
-            "every view's table.",
-        )
 
     # Build reverse adjacency index once — O(E) — so inner loops are O(degree) not O(E)
     edges_by_target: dict[str, list] = {}
@@ -206,6 +201,7 @@ def strata_impact(graph: IRGraph, physical_table: str) -> dict[str, Any]:
         )
     return {
         "physical_table": physical_table,
+        "resolved_from": requested if requested != physical_table else None,
         "views": sorted(views),
         "explores": sorted(explores),
         "fields": sorted(fields),

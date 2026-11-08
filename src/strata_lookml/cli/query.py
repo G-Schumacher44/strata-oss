@@ -65,18 +65,23 @@ _schema_opt = click.option(
 
 @query.command("field", cls=JsonCommand)
 @click.argument("view")
-@click.argument("field")
+@click.argument("field", required=False)
 @_repo_opt
 @_usage_opt
 @_schema_opt
 def query_field(
-    view: str, field: str, repo: str | None, usage_fixture: str | None, schema_fixture: str | None
+    view: str,
+    field: str | None,
+    repo: str | None,
+    usage_fixture: str | None,
+    schema_fixture: str | None,
 ) -> None:
     """Show a field's full definition: type, SQL, tags, and usage.
 
     \b
     Example:
       strata query field orders total_revenue
+      strata query field orders.total_revenue
     """
     graph = _build(repo, usage_fixture, schema_fixture)
     from strata_lookml.mcp.tools import strata_query_field
@@ -87,22 +92,26 @@ def query_field(
 
 @query.command("explore", cls=JsonCommand)
 @click.argument("explore")
-@click.argument("model")
+@click.argument("model", required=False)
 @_repo_opt
 @_usage_opt
 @_schema_opt
 def query_explore(
     explore: str,
-    model: str,
+    model: str | None,
     repo: str | None,
     usage_fixture: str | None,
     schema_fixture: str | None,
 ) -> None:
     """Show an explore's join graph, base view, and field count.
 
+    MODEL is optional when the explore name is unique; MODEL.EXPLORE also works.
+
     \b
     Example:
       strata query explore orders enterprise
+      strata query explore enterprise.orders
+      strata query explore orders
     """
     graph = _build(repo, usage_fixture, schema_fixture)
     from strata_lookml.mcp.tools import strata_explore_deps
@@ -143,11 +152,13 @@ def query_impact(
 ) -> None:
     """Show every view, explore, and field affected by a physical table change.
 
-    Use before dropping a BQ column or renaming a table.
+    Use before dropping a BQ column or renaming a table. A unique table or dataset.table
+    suffix resolves to the full name, which the result echoes.
 
     \b
     Example:
       strata query impact acme-data.analytics.orders
+      strata query impact orders
     """
     graph = _build(repo, usage_fixture, schema_fixture)
     from strata_lookml.mcp.tools import strata_impact
@@ -164,8 +175,9 @@ def query_impact(
 def query_scope(
     files: tuple[str, ...], repo: str | None, usage_fixture: str | None, schema_fixture: str | None
 ) -> None:
-    """Show which explores are impacted by a set of changed .lkml files.
+    """Show which explores are impacted by a set of changed objects.
 
+    Each FILE may be a .lkml path, kind:name (view:orders), or a bare view name.
     Use before merging a PR to know what needs revalidation.
 
     \b
@@ -175,17 +187,7 @@ def query_scope(
     graph = _build(repo, usage_fixture, schema_fixture)
     from strata_lookml.mcp.tools import strata_validation_scope
 
-    def _file_to_changed(f: str) -> str:
-        stem = Path(f).name
-        if ".view." in stem:
-            return f"view:{stem.split('.view.')[0]}"
-        if ".model." in stem:
-            return f"model:{stem.split('.model.')[0]}"
-        if ".explore." in stem:
-            return f"explore:{stem.split('.explore.')[0]}"
-        return f"view:{Path(f).stem}"
-
-    result = strata_validation_scope(graph, [_file_to_changed(f) for f in files])
+    result = strata_validation_scope(graph, list(files))
     click.echo(json.dumps(result, indent=2, default=str))
 
 
