@@ -2,23 +2,20 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/s10-chart-columns (chart column validation + --x/--y/--color, spec S10)
+## Date: 2026-11-08 — feat/s11-unknown-explores (explores "unknown" without usage facts, spec S11 / N7)
 
-Commit: 6808e19
+Commit: b6ee775
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — spec S10 (D12; finding B6) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
+Conductor Mode: fix — spec S11 (finding N7) of `ux-agentic-cli-docs-spec-2026-11-08.md`; the KPI half of S11 was folded into #65.
 Context Budget: low
-Context Loaded: AGENTS.md, handoff-log, the spec (§1, B6, D12, S10), viz/render.py, cli/chart.py, mcp/tools.py, the four chart templates.
-Exact Next Steps: twin gate on the PR, operator merges. Other wave-B lanes (S2, S4, S6) land serially; merge `origin/main`, hand-resolve handoff/CHANGELOG and regenerate `docs/reference.md`.
+Context Loaded: AGENTS.md, handoff-log, the spec (N7, S11), outputs/AGENTS.md, outputs/dashboard.py, the node harness in tests/test_l1_synthesis_outputs.py.
+Exact Next Steps: twin gate on the PR, operator merges.
 
 ### What changed
 
-- `viz/render.py`: `_check_encoding_columns` runs in `render_chart` (the one seam for `strata chart`, `strata-chart`, MCP `strata_render_chart` and `query navigate --chart`) after empty template channels are stripped. Every `encoding.*.field` must be a key in the union of row keys, else `InvalidInput` naming the missing and the available columns. The check covers single-view charts only: layered, composite (concat/facet/repeat/spec) and transform specs are passed to Vega unchecked, and `aggregate: count` / field `*` channels are skipped. Array channels (tooltip) are walked and Vega field paths (`a.b`, `a[0]`, `a\.b`) are parsed to their first component. Templates with `show_labels` are still checked (the check runs before they are layered). No rows means nothing to compare, so it passes.
-- `cli/chart.py`: the four template commands are registered once by `_template_command`; each gains `--x/--y/--color`, which set the channel's field (adding the channel if the template lacks it). Help text lists the required columns and optional channels, read from the template YAML at import.
-- README Charts section, CHANGELOG, regenerated `docs/reference.md`.
+- `outputs/dashboard.py`: `NODE_PALETTE` gains `explore_unknown` (neutral grey, emitted as `--n-explore-unknown` like every other entry). `_build_graph_data` reads `analysis_coverage(graph)["usage"]` and stamps explore nodes `status` = `dead` / `active` / `unknown`; with no usage facts they take the unknown colour. The decision is serialized from coverage, not inferred in JS. The legend gains an "Unknown (no usage facts)" swatch and a note ("Usage facts not loaded — explore activity unknown") rendered visible only when usage is absent; the node badge reads UNKNOWN instead of KEEP. With usage loaded nothing changes.
 
 ### Gates
 
-pytest 328 passed (16 in `tests/test_chart_columns.py`), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: with the check replaced by `pass`, the CLI mismatch test and the MCP isError test fail; the override and help tests fail on main because the options do not exist.
-
+pytest 329 passed, ruff check and format --check clean, mypy clean, `scripts/check_dashboard_js_syntax.py` passes. Negative control: the new test run against a detached `origin/main` worktree fails (no `status` on explore nodes).
