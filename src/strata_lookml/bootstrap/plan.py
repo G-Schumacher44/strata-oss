@@ -101,8 +101,17 @@ def _make_dirs(path: Path, created_dirs: list[Path]) -> None:
         created_dirs.append(d)
 
 
+def resolve_fixture(path: str | Path | None) -> Path | None:
+    """Normalise a fixture path the way every command does: expanded, absolute."""
+    return Path(path).expanduser().resolve() if path else None
+
+
 def apply_plan(ops: Sequence[FileOp]) -> None:
-    """Apply `ops` in order; on any failure undo this run's changes and raise `StrataError`."""
+    """Apply `ops` in order; on any failure undo this run's changes and raise `StrataError`.
+
+    Rollback is best effort per step: every restore/unlink is attempted even if an earlier one
+    fails, and the raised error says which restores did not work.
+    """
     created_files: list[Path] = []
     created_dirs: list[Path] = []
     overwritten: dict[Path, bytes] = {}
@@ -115,22 +124,35 @@ def apply_plan(ops: Sequence[FileOp]) -> None:
                 continue
             assert op.content is not None
             _make_dirs(op.path.parent, created_dirs)
-            if op.path.exists():
-                overwritten[op.path] = op.path.read_bytes()
-            else:
-                created_files.append(op.path)
+            prior = op.path.read_bytes() if op.path.exists() else None
             _write_atomic(op.path, op.content)
+            # Recorded only once the replace succeeded: a failed write changed nothing.
+            if prior is None:
+                created_files.append(op.path)
+            else:
+                overwritten[op.path] = prior
     except Exception as exc:
+        problems: list[str] = []
         for path, data in overwritten.items():
-            path.write_bytes(data)
+            try:
+                path.write_bytes(data)
+            except OSError as undo_exc:
+                problems.append(f"could not restore {path}: {undo_exc}")
         for path in created_files:
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as undo_exc:
+                problems.append(f"could not remove {path}: {undo_exc}")
         for d in reversed(created_dirs):
             with contextlib.suppress(OSError):
                 d.rmdir()
+        message = f"Write failed ({exc})."
+        if problems:
+            message += " Rollback incomplete: " + "; ".join(problems)
+        else:
+            message += " Nothing was changed."
         raise StrataError(
-            f"Write failed ({exc}); nothing was changed.",
-            hint="Fix the cause (permissions, disk space) and re-run.",
+            message, hint="Fix the cause (permissions, disk space) and re-run."
         ) from exc
 
 

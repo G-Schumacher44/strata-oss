@@ -97,7 +97,7 @@ def test_failure_on_fourth_write_leaves_no_new_files(repo, home, monkeypatch):
     result = invoke("--repo", str(repo), "--yes")
     assert calls["n"] == 4
     assert result.exit_code == 1
-    assert "nothing was changed" in result.output
+    assert "Nothing was changed" in result.output
     assert snapshot(repo, home) == before  # no files, no leftover dirs, no temp files
 
 
@@ -163,3 +163,46 @@ def test_conductor_init_still_works_and_is_idempotent(repo, home):
     second = runner.invoke(cli, ["conductor", "init", "--repo", str(repo)])
     assert "skip (exists)" in second.output
     assert os.listdir(repo / "conductor" / "templates")
+
+
+def test_rollback_finishes_when_a_restore_fails(repo, home):
+    cfg_dir = home / ".strata"
+    cfg_dir.mkdir()
+    cfg = cfg_dir / "config.json"
+    cfg.write_text(json.dumps({"repo_path": "/elsewhere"}))
+    before_repo = snapshot(repo)
+    cfg.chmod(0o400)
+    cfg_dir.chmod(0o500)  # the final config write fails; so would restoring it
+    try:
+        result = invoke("--repo", str(repo), "--yes", "--bq-project", "p")
+    finally:
+        cfg_dir.chmod(0o700)
+        cfg.chmod(0o600)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit) and "Write failed" in result.output
+    assert snapshot(repo) == before_repo  # everything created this run is gone
+    assert json.loads(cfg.read_text()) == {"repo_path": "/elsewhere"}
+
+
+def test_fixture_env_vars_are_honoured(repo, home, monkeypatch):
+    monkeypatch.setenv("STRATA_USAGE_FIXTURE", str(USAGE))
+    monkeypatch.setenv("STRATA_SCHEMA_FIXTURE", str(SCHEMA))
+    assert invoke("--repo", str(repo), "--yes").exit_code == 0
+    env = json.loads((repo / ".mcp.json").read_text())["mcpServers"]["strata"]["env"]
+    assert env["STRATA_USAGE_FIXTURE"] == str(USAGE.resolve())
+    assert env["STRATA_SCHEMA_FIXTURE"] == str(SCHEMA.resolve())
+    result = CliRunner().invoke(cli, ["mcp", "config", "--client", "claude", "--repo", str(repo)])
+    assert result.output == (repo / ".mcp.json").read_text()
+
+
+def test_mcp_config_client_resolves_relative_fixture_paths(repo, home, monkeypatch):
+    monkeypatch.chdir(FIXTURES)
+    rel = USAGE.name
+    result = CliRunner().invoke(
+        cli, ["mcp", "config", "--client", "claude", "--repo", str(repo), "--usage-fixture", rel]
+    )
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)["mcpServers"]["strata"]["env"]
+    assert env["STRATA_USAGE_FIXTURE"] == str(USAGE.resolve())
+    assert invoke("--repo", str(repo), "--yes", "--usage-fixture", rel).exit_code == 0
+    assert result.output == (repo / ".mcp.json").read_text()

@@ -20,6 +20,7 @@ from strata_lookml.bootstrap.plan import (
     plan_template_write,
     render_mcp_client_config,
     render_template,
+    resolve_fixture,
     report_ops,
 )
 from strata_lookml.cli.conductor import plan_conductor_init
@@ -51,12 +52,16 @@ from strata_lookml.cli.conductor import plan_conductor_init
     "--usage-fixture",
     type=click.Path(path_type=Path),
     default=None,
+    envvar="STRATA_USAGE_FIXTURE",
+    show_envvar=True,
     help="usage_facts.json to wire into .mcp.json as STRATA_USAGE_FIXTURE",
 )
 @click.option(
     "--schema-fixture",
     type=click.Path(path_type=Path),
     default=None,
+    envvar="STRATA_SCHEMA_FIXTURE",
+    show_envvar=True,
     help="schema_facts.json to wire into .mcp.json as STRATA_SCHEMA_FIXTURE",
 )
 @click.option("--dry-run", is_flag=True, help="Print the plan, write nothing (implies no prompts)")
@@ -96,8 +101,8 @@ def bootstrap(
     for flag, fixture in (("--usage-fixture", usage_fixture), ("--schema-fixture", schema_fixture)):
         if fixture is not None and not fixture.expanduser().is_file():
             raise click.UsageError(f"{flag}: not a file: {fixture}")
-    usage = usage_fixture.expanduser().resolve() if usage_fixture else None
-    schema = schema_fixture.expanduser().resolve() if schema_fixture else None
+    usage = resolve_fixture(usage_fixture)
+    schema = resolve_fixture(schema_fixture)
 
     # Gather every input before anything is written.
     config_path = Path.home() / ".strata" / "config.json"

@@ -147,10 +147,18 @@ def mcp_validate() -> None:
     "--repo", "repo_arg", default=None, help="With --client: LookML repo path (default: resolved)"
 )
 @click.option(
-    "--usage-fixture", default=None, help="With --client: usage_facts.json (default: env)"
+    "--usage-fixture",
+    default=None,
+    envvar="STRATA_USAGE_FIXTURE",
+    show_envvar=True,
+    help="With --client: usage_facts.json",
 )
 @click.option(
-    "--schema-fixture", default=None, help="With --client: schema_facts.json (default: env)"
+    "--schema-fixture",
+    default=None,
+    envvar="STRATA_SCHEMA_FIXTURE",
+    show_envvar=True,
+    help="With --client: schema_facts.json",
 )
 def mcp_config(
     client: str | None, repo_arg: str | None, usage_fixture: str | None, schema_fixture: str | None
@@ -179,13 +187,13 @@ def mcp_config(
     from strata_lookml.config import load_bq_project, load_cost_threshold_gb
 
     if client:
-        from strata_lookml.bootstrap.plan import render_mcp_client_config
+        from strata_lookml.bootstrap.plan import render_mcp_client_config, resolve_fixture
 
         click.echo(
             render_mcp_client_config(
                 Path(repo_arg).expanduser().resolve() if repo_arg else _repo_path(),
-                usage_fixture or os.environ.get("STRATA_USAGE_FIXTURE"),
-                schema_fixture or os.environ.get("STRATA_SCHEMA_FIXTURE"),
+                resolve_fixture(usage_fixture),
+                resolve_fixture(schema_fixture),
                 client,
             ),
             nl=False,
