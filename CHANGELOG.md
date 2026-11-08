@@ -29,6 +29,11 @@ All notable changes to `strata-lookml` are documented here. The format follows
   argument. `validation_scope` accepts `kind:name`, `{kind, name}`, `.lkml` paths and bare view
   names; `strata query scope` uses the same parser. An unknown model is `not_found`. Old
   positional forms still work.
+- `strata check --write-baseline FILE` records the current finding ids (sorted JSON, one list
+  per category) and `--baseline FILE` subtracts them before `--fail-on` applies, so a legacy
+  repo can gate on new findings only. Stale baseline ids warn (text and `stale_baseline_ids`
+  in `--json`); `--json` adds `baselined`; integrity failures are never baselined; an
+  unreadable baseline is a usage error (exit 2).
 
 ### Changed
 

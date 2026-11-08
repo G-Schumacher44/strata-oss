@@ -492,3 +492,169 @@ def test_check_json_is_stable():
             "drift": None,
         },
     }
+
+
+# ── strata check --baseline ──────────────────────────────────────────────────
+
+GCS_FACTS = (
+    "--usage-fixture",
+    str(FIXTURES / "gcs_usage_facts.json"),
+    "--schema-fixture",
+    str(FIXTURES / "gcs_schema_facts.json"),
+)
+
+
+def _write_gcs_baseline(path):
+    result = run("check", "--repo", str(GCS), *GCS_FACTS, "--write-baseline", str(path))
+    assert result.returncode == 0, result.stderr
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_check_baseline_round_trip_passes_fail_on_all(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    document = _write_gcs_baseline(baseline)
+    assert document["version"] == 1
+    assert all(ids == sorted(set(ids)) for ids in document["findings"].values())
+    assert baseline.read_text(encoding="utf-8").endswith("\n")
+
+    result = run(
+        "check",
+        "--repo",
+        str(GCS),
+        *GCS_FACTS,
+        "--fail-on",
+        "all",
+        "--baseline",
+        str(baseline),
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["baselined"] == sum(len(ids) for ids in document["findings"].values())
+    assert payload["stale_baseline_ids"] == []
+
+
+def test_check_baseline_fails_only_on_a_new_drift_id(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    document = _write_gcs_baseline(baseline)
+    dropped = document["findings"]["drift"].pop()
+    baseline.write_text(json.dumps(document), encoding="utf-8")
+
+    result = run(
+        "check",
+        "--repo",
+        str(GCS),
+        *GCS_FACTS,
+        "--fail-on",
+        "drift",
+        "--baseline",
+        str(baseline),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    assert [f["id"] for f in json.loads(result.stdout)["failures"]] == [dropped]
+
+
+def test_check_baseline_stale_id_warns_without_failing(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    document = _write_gcs_baseline(baseline)
+    document["findings"]["drift"].append("schema:gone:nowhere")
+    baseline.write_text(json.dumps(document), encoding="utf-8")
+    args = (
+        "check",
+        "--repo",
+        str(GCS),
+        *GCS_FACTS,
+        "--fail-on",
+        "all",
+        "--baseline",
+        str(baseline),
+    )
+
+    text, as_json = run(*args), run(*args, "--json")
+
+    assert text.returncode == 0 and as_json.returncode == 0
+    assert "WARN stale baseline id (no longer found): schema:gone:nowhere" in text.stderr
+    assert json.loads(as_json.stdout)["stale_baseline_ids"] == ["schema:gone:nowhere"]
+
+
+def test_check_baseline_never_suppresses_integrity(tmp_path):
+    (tmp_path / "orders.view.lkml").write_text(
+        "view: orders {\n  extends: [gone]\n  dimension: id { sql: ${TABLE}.id ;; }\n}\n",
+        encoding="utf-8",
+    )
+    baseline = tmp_path / "baseline.json"
+    integrity_id = "resolution:view:missing_extends_target:gone"
+    baseline.write_text(
+        json.dumps({"version": 1, "findings": {"drift": [integrity_id]}}), encoding="utf-8"
+    )
+
+    result = run("check", "--repo", str(tmp_path), "--baseline", str(baseline), "--json")
+
+    assert result.returncode == 1
+    assert [f["id"] for f in json.loads(result.stdout)["failures"]] == [integrity_id]
+
+
+@pytest.mark.parametrize("content", [None, "not json", '{"version": 2, "findings": {}}', "[]"])
+def test_check_bad_baseline_is_a_usage_error(tmp_path, content):
+    baseline = tmp_path / "baseline.json"
+    if content is not None:
+        baseline.write_text(content, encoding="utf-8")
+
+    result = run("check", "--repo", str(GCS), "--baseline", str(baseline))
+
+    assert result.returncode == 2
+    assert (
+        str(baseline) in result.stderr
+    )  # our message names the file, not click's "no such option"
+
+
+def _write_baseline_to(path):
+    return run("check", "--repo", str(GCS), *GCS_FACTS, "--write-baseline", str(path))
+
+
+def test_write_baseline_refuses_a_lkml_target(tmp_path):
+    source = tmp_path / "orders.view.lkml"
+    source.write_text("view: orders {}\n", encoding="utf-8")
+
+    result = _write_baseline_to(source)
+
+    assert result.returncode == 2
+    assert source.read_text(encoding="utf-8") == "view: orders {}\n"
+
+
+def test_write_baseline_refuses_a_symlink_to_lkml(tmp_path):
+    source = tmp_path / "orders.view.lkml"
+    source.write_text("view: orders {}\n", encoding="utf-8")
+    link = tmp_path / "baseline.json"
+    link.symlink_to(source)
+
+    result = _write_baseline_to(link)
+
+    assert result.returncode == 2
+    assert link.is_symlink()
+    assert source.read_text(encoding="utf-8") == "view: orders {}\n"
+
+
+def test_write_baseline_overwrites_a_previous_baseline(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    _write_gcs_baseline(baseline)
+    document = json.loads(baseline.read_text(encoding="utf-8"))
+    document["findings"]["drift"].append("schema:gone:nowhere")
+    baseline.write_text(json.dumps(document), encoding="utf-8")
+
+    assert _write_baseline_to(baseline).returncode == 0
+    assert "schema:gone:nowhere" not in baseline.read_text(encoding="utf-8")
+    assert [p.name for p in tmp_path.iterdir()] == ["baseline.json"]
+
+
+def test_write_baseline_refuses_a_non_baseline_file(tmp_path):
+    other = tmp_path / "package.json"
+    other.write_text('{"name": "x"}', encoding="utf-8")
+
+    result = _write_baseline_to(other)
+
+    assert result.returncode == 2
+    assert other.read_text(encoding="utf-8") == '{"name": "x"}'

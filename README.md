@@ -322,6 +322,23 @@ Exit codes: `0` passed, `1` gate failed, `2` usage error. `--json` prints
 `{"passed", "failures": [{"category", "id", "message"}], "counts"}`; `counts` has every
 category, `null` where its fixture was not loaded.
 
+**Adopting on a legacy repo.** Record today's findings once, commit the file, and gate on new
+ones only:
+
+```bash
+strata check --repo . --usage-fixture usage_facts.json --schema-fixture schema_facts.json \
+  --write-baseline strata-baseline.json          # commit strata-baseline.json
+strata check --repo . --usage-fixture usage_facts.json --schema-fixture schema_facts.json \
+  --fail-on all --baseline strata-baseline.json  # fails only on findings not in the baseline
+```
+
+The baseline is JSON (`{"version": 1, "findings": {category: [sorted ids]}}`), sorted so it
+diffs cleanly. Baselined ids are subtracted before `--fail-on` applies. Ids that no longer
+exist are listed as stale (a warning, and `stale_baseline_ids` in `--json`; never a failure) so
+you can regenerate and shrink the file. Integrity failures are never baselined. A missing or
+unparseable baseline is a usage error (exit `2`). With `--baseline`, `--json` also reports
+`baselined`, the number of findings it suppressed.
+
 <details>
 <summary>How does Strata fit with existing tools?</summary>
 

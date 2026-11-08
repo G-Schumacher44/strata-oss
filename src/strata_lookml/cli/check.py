@@ -7,7 +7,13 @@ import json
 import click
 
 from strata_lookml.cli._contract import JsonCommand
-from strata_lookml.gate import FINDING_CATEGORIES, evaluate_gate
+from strata_lookml.gate import (
+    FINDING_CATEGORIES,
+    BaselineError,
+    evaluate_gate,
+    load_baseline,
+    write_baseline,
+)
 
 
 def _parse_fail_on(value: str) -> set[str]:
@@ -61,12 +67,28 @@ def _parse_fail_on(value: str) -> set[str]:
         "--usage-fixture; drift needs --schema-fixture."
     ),
 )
+@click.option(
+    "--baseline",
+    "baseline_path",
+    default=None,
+    type=click.Path(dir_okay=False),
+    help="Baseline file: known finding ids are ignored, so only NEW findings fail --fail-on.",
+)
+@click.option(
+    "--write-baseline",
+    "write_baseline_path",
+    default=None,
+    type=click.Path(dir_okay=False),
+    help="Write the current findings' ids to this baseline file (sorted JSON), then gate.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Print {passed, failures, counts} as JSON")
 def check(
     repo: str | None,
     usage_fixture: str | None,
     schema_fixture: str | None,
     fail_on_raw: str,
+    baseline_path: str | None,
+    write_baseline_path: str | None,
     as_json: bool,
 ) -> None:
     """Gate a LookML repo in CI: exit 0 pass, 1 gate failed, 2 usage error.
@@ -74,11 +96,15 @@ def check(
     Always fails on integrity: a missing repo or no .lkml files, unresolved extends
     (missing target, cycle), or a verdict that breaks the evidence contract. Findings
     (dead code, unused/zombie PDTs, schema drift) are reported but fail only the
-    categories named in --fail-on.
+    categories named in --fail-on. On a legacy repo, record today's findings with
+    --write-baseline FILE, commit it, then gate with --baseline FILE: only new findings fail.
+    Integrity is never baselined; baseline ids no longer found are reported as stale.
 
     \b
     strata check --repo . --usage-fixture usage_facts.json
     strata check --repo . --schema-fixture schema_facts.json --fail-on drift
+    strata check --repo . --usage-fixture usage_facts.json --write-baseline strata-baseline.json
+    strata check --repo . --usage-fixture usage_facts.json --fail-on all --baseline strata-baseline.json
     """
     from pathlib import Path
 
@@ -91,8 +117,24 @@ def check(
         if not loaded[needed]:
             raise click.UsageError(f"--fail-on {category} needs --{needed}-fixture")
 
+    if baseline_path and write_baseline_path:
+        raise click.UsageError("--baseline and --write-baseline are mutually exclusive")
+    baseline = None
+    if baseline_path:
+        try:
+            baseline = load_baseline(Path(baseline_path))
+        except BaselineError as exc:
+            raise click.UsageError(str(exc)) from exc
+
     _repo = Path(repo).expanduser().resolve() if repo else Path.cwd()
-    result = evaluate_gate(build_graph(str(_repo), usage_fixture, schema_fixture), fail_on)
+    graph = build_graph(str(_repo), usage_fixture, schema_fixture)
+    if write_baseline_path:
+        try:
+            written = write_baseline(graph, Path(write_baseline_path))
+        except BaselineError as exc:
+            raise click.UsageError(str(exc)) from exc
+        click.echo(f"Wrote {written} finding ids to {write_baseline_path}", err=True)
+    result = evaluate_gate(graph, fail_on, baseline)
 
     if as_json:
         click.echo(json.dumps(result, indent=2, sort_keys=True))
@@ -103,9 +145,13 @@ def check(
                 fg="red",
                 err=True,
             )
+        for stale in result.get("stale_baseline_ids", []):
+            click.secho(f"WARN stale baseline id (no longer found): {stale}", fg="yellow", err=True)
         summary = ", ".join(
             f"{c} {'not checked' if n is None else n}" for c, n in result["counts"].items()
         )
+        if "baselined" in result:
+            summary += f", {result['baselined']} baselined"
         if result["passed"]:
             click.secho(f"Strata check passed ({summary}).", fg="green")
         else:
