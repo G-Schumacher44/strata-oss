@@ -21,7 +21,9 @@ Run `strata mcp config` to see exactly what will be used.
 
 ### 1 — Gate
 
-Run before any investigation. Must pass before writing findings.
+Run before any investigation. Must pass before writing findings: it fails on integrity
+(missing repo or no `.lkml`, unresolved `extends`, a verdict that breaks the evidence contract)
+and prints the finding counts. Add `--fail-on <category>` (or `all`) to fail on findings too.
 
 ```bash
 strata check \

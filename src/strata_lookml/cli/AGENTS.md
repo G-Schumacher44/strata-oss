@@ -43,7 +43,7 @@ Commands that report status use `click.secho(..., fg="green"|"red"|"yellow")`.
 | File | Command(s) |
 |---|---|
 | `main.py` | `strata` group + `clean` |
-| `check.py` | `strata check` |
+| `check.py` | `strata check` (argument parsing + output; the gate itself is `strata_lookml/gate.py`) |
 | `outputs.py` | `strata outputs` |
 | `query.py` | `strata query` group (field, explore, orphans, impact, scope, status, find-field, view-sources, navigate) |
 | `skill.py` | `strata skill [name]` — list skills or print one (CLI twin of `strata_list_skills`/`strata_skill`) |

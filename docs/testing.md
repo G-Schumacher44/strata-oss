@@ -35,6 +35,10 @@ and `pyproject.toml`). No license to its upstream contents is claimed. `gcs_anal
 
 ## Running the Playgrounds
 
+`strata check` gates integrity and prints each playground's finding counts. The scenario
+assertions (each playground still shows the dead code, PDT and drift findings it was built to
+show) are pytest cases: `python -m pytest tests/test_scenarios.py`.
+
 ```bash
 # gcs_analytics (default — L1 enrichment, PDT cost, schema drift)
 strata check \

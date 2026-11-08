@@ -40,6 +40,18 @@ All notable changes to `strata-lookml` are documented here. The format follows
   description (and examples where useful), tool descriptions state input format, failure modes
   and prerequisites, and `strata_find_field` takes `limit` (default 50, max 200) and requires a
   `query` of at least 2 characters.
+- `strata check` is now a real CI gate. It used to fail any repo without dead code, PDT
+  ledger rows and schema drift (a check on Strata's own playgrounds), so a clean repo failed
+  and a dirty one passed. It now always fails (exit 1) on integrity: a missing repo or no
+  `.lkml` files, an unresolved `extends` (missing target or cycle), or a verdict that breaks
+  the evidence contract. Findings are counted and fail the gate only when named in the new
+  `--fail-on dead-code,unused-pdt,zombie-pdt,drift|all|none` (default `none`); a category
+  without its fixture is a usage error (exit 2). `--json` prints
+  `{passed, failures: [{category, id, message}], counts}`. Compat: clean repos now pass, and
+  repos with findings still pass by default; to keep failing on findings, add `--fail-on`.
+  The playground scenario assertions moved to `tests/test_scenarios.py`; the weekly canary now
+  checks out the playground submodules and runs the gate plus those assertions on every
+  playground.
 - CLI exits non-zero on not-found/invalid input; MCP tool errors now reach the client. Every
   anticipated failure raises one error type (`strata_lookml.errors`: `NotFound`, `InvalidInput`,
   each with a `code`, `message` and `hint`). The CLI prints `Error:` / `Hint:` on stderr and

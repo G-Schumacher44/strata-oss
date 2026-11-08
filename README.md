@@ -161,7 +161,7 @@ export STRATA_SCHEMA_FIXTURE=tests/fixtures/enterprise_schema_facts.json
 
 ```bash
 $ strata check
-Strata scenario gates passed.
+Strata check passed (integrity 0, dead-code 11, unused-pdt 0, zombie-pdt 2, drift 14).
 
 $ strata query status
 {
@@ -294,12 +294,25 @@ graph. Every view, explore, and field that depends on it — with content refere
 ### CI Gate
 
 ```bash
-strata check --repo . --usage-fixture usage_facts.json
+strata check --repo . --usage-fixture usage_facts.json --schema-fixture schema_facts.json
 ```
 
-Exits 0 if all gates pass. No Looker instance, no credentials, no flaky API calls. Every PR
-gets deterministic coverage: extends chains resolved, dead code counted, drift checked,
-validation scope computed.
+No Looker instance, no credentials, no flaky API calls. By default the gate fails only on
+integrity: a missing repo or no `.lkml` files, an unresolved `extends` (missing target or
+cycle), or a verdict that breaks the evidence contract. Dead code, unused and zombie PDTs, and
+schema drift are counted and printed; add `--fail-on` to make any of them fail the build:
+
+```bash
+strata check --repo . --schema-fixture schema_facts.json --fail-on drift
+strata check --repo . --usage-fixture usage_facts.json --schema-fixture schema_facts.json --fail-on all
+```
+
+Categories: `dead-code`, `unused-pdt`, `zombie-pdt`, `drift` (comma-separated), or `all` /
+`none` (default). The usage categories need `--usage-fixture` and `drift` needs
+`--schema-fixture`; asking for one without its fixture is a usage error, never a silent pass.
+Exit codes: `0` passed, `1` gate failed, `2` usage error. `--json` prints
+`{"passed", "failures": [{"category", "id", "message"}], "counts"}`; `counts` has every
+category, `null` where its fixture was not loaded.
 
 <details>
 <summary>How does Strata fit with existing tools?</summary>
@@ -677,8 +690,9 @@ See [`.github/workflows/strata-pr.yml`](https://github.com/G-Schumacher44/strata
 <summary>2. CI Test Pipeline (hard gate)</summary>
 
 `strata-ci.yml` runs lint (`ruff`), types (`mypy`), the test suite (`pytest`), and
-offline `strata check` / `strata outputs` across the bundled playgrounds — verifying
-dead code, schema drift, and PDT findings deterministically.
+offline `strata check` / `strata outputs` across the bundled playgrounds. `strata check` gates
+integrity; the playground scenarios (each still shows its dead code, PDT and drift findings)
+are pytest cases in `tests/test_scenarios.py`.
 
 ```yaml
 # .github/workflows/strata-ci.yml
@@ -687,10 +701,11 @@ dead code, schema drift, and PDT findings deterministically.
     strata check \
       --repo . \
       --usage-fixture usage_facts.json \
-      --schema-fixture schema_facts.json
+      --schema-fixture schema_facts.json \
+      --fail-on drift
 ```
 
-Exits 0 if all gates pass. No Looker instance, no credentials, no flaky API calls.
+Exits 0 if the gate passes, 1 if it fails. No Looker instance, no credentials, no flaky API calls.
 
 </details>
 
