@@ -994,7 +994,12 @@ def _is_safe_expr(expr, safe_vars):
     if expr.startswith("`"):
         placeholders, end = _extract_template_placeholders(expr, 1)
         if end == len(expr):
-            return all(_is_safe_expr(p, safe_vars) for p in placeholders)
+            # Nested placeholders are flattened; an index var of a callback inside THIS
+            # template is trusted only for placeholders positioned within that callback's body.
+            scopes = _callback_index_scopes(expr)
+            return all(
+                _is_safe_expr(p, _safe_vars_at(safe_vars, scopes, p.pos)) for p in placeholders
+            )
 
     if len(expr) >= 2 and expr[0] == expr[-1] and expr[0] in "'\"":
         return True
@@ -1534,3 +1539,19 @@ def test_guardrail_variable_template_resolves_at_declaration_position():
         "xs.forEach((x, i) => {\n  const t = `<b>${i}</b>`;\n  li.innerHTML = t;\n});"
     )
     assert _find_unescaped_innerhtml_interpolations(declared_inside) == []
+
+
+def test_guardrail_nested_index_only_maps():
+    """Codex PR #63 P2: each nested callback's index is trusted inside its own body."""
+    nested = _wrap_in_scope(
+        "li.innerHTML = `${(xs || []).map((x, i) => "
+        "`<tr>${(x.cells || []).map((c, j) => `<td>${i}-${j}</td>`).join('')}</tr>`).join('')}`;"
+    )
+    assert _find_unescaped_innerhtml_interpolations(nested) == []
+
+    # The inner index does not leak into the outer callback body outside the inner callback.
+    leaked = _wrap_in_scope(
+        "li.innerHTML = `${(xs || []).map((x, i) => "
+        "`<tr>${j}${(x.cells || []).map((c, j) => `<td>${j}</td>`).join('')}</tr>`).join('')}`;"
+    )
+    assert _find_unescaped_innerhtml_interpolations(leaked)
