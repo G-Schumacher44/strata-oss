@@ -9,7 +9,7 @@ from pathlib import Path
 import click
 
 
-@click.command("lint")
+@click.command("lint", hidden=True)
 @click.option(
     "--fix", is_flag=True, help="Attempt to fix violations automatically (ruff check --fix)"
 )

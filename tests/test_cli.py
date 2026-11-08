@@ -658,3 +658,104 @@ def test_write_baseline_refuses_a_non_baseline_file(tmp_path):
 
     assert result.returncode == 2
     assert other.read_text(encoding="utf-8") == '{"name": "x"}'
+
+
+# ── S9: the user's project, never Strata's own tree ───────────────────────────
+
+
+def test_conductor_status_reads_repo_from_env_in_other_cwd(tmp_path, monkeypatch):
+    import shutil
+
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.main import strata_cli
+
+    proj, elsewhere = tmp_path / "proj", tmp_path / "elsewhere"
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "conductor", proj / "conductor")
+    (proj / "conductor" / "slice-99-test-fixture.md").write_text(
+        "# Slice 99: Fixture\nStatus: queued\n"
+    )
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setenv("STRATA_REPO_PATH", str(proj))
+    result = CliRunner().invoke(strata_cli, ["conductor", "status"])
+    assert result.exit_code == 0, result.output
+    assert "slice-99-test-fixture" in result.output
+    assert "Slice 99: Fixture" in result.output
+
+
+def test_conductor_state_active_slice_null_on_bootstrap_template(tmp_path):
+    from strata_lookml.bootstrap.plan import apply_plan
+    from strata_lookml.cli.conductor import plan_conductor_init
+    from strata_lookml.conductor_state import read_status
+
+    apply_plan(plan_conductor_init(tmp_path))
+    assert read_status(tmp_path / "conductor")["active_slice"] is None
+
+
+def test_conductor_state_ignores_prose_mention(tmp_path):
+    from strata_lookml.conductor_state import read_status
+
+    (tmp_path / "index.md").write_text("Avoid history unless the active slice requires history.\n")
+    assert read_status(tmp_path)["active_slice"] is None
+
+
+def test_cli_and_mcp_conductor_status_agree(tmp_path):
+    import shutil
+
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.main import strata_cli
+    from strata_lookml.mcp.tools import strata_conductor_status
+
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "conductor", tmp_path / "conductor")
+    state = strata_conductor_status(tmp_path / "conductor")
+    result = CliRunner().invoke(strata_cli, ["conductor", "status", "--repo", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert state["active_slice"] == "slice-99-test-fixture"
+    assert f"Active slice : {state['active_slice']}" in result.output
+    assert state["next_steps"] in result.output
+
+
+def test_validate_check_replay_without_file_fails_in_user_project(tmp_path):
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.validate import validate
+
+    result = CliRunner().invoke(
+        validate, ["--project-root", str(tmp_path), "--check-replay"], env={"CI": "1"}
+    )
+    line = next(ln for ln in result.output.splitlines() if "Replay facts valid" in ln)
+    assert "✗" in line and "pass --replay" in line
+
+
+def test_lint_hidden_but_invocable():
+    assert "lint" not in run("--help").stdout
+    assert "ruff" in run("lint", "--help").stdout.lower()
+
+
+def test_generate_schema_repo_shows_envvar():
+    assert "STRATA_REPO_PATH" in run("generate-schema", "--help").stdout
+
+
+def test_validate_writes_nothing_into_the_project(tmp_path, monkeypatch):
+    import hashlib
+
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.validate import validate
+
+    home, proj = tmp_path / "home", tmp_path / "proj"
+    home.mkdir()
+    proj.mkdir()
+    (proj / "stuff.txt").write_text("x")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("CONDUCTOR_VALIDATION_LOG", raising=False)
+    before = sorted(p.relative_to(proj) for p in proj.rglob("*"))
+    CliRunner().invoke(validate, ["--project-root", str(proj)], env={"CI": "1"})
+    assert sorted(p.relative_to(proj) for p in proj.rglob("*")) == before
+    digest = hashlib.sha256(str(proj.resolve()).encode()).hexdigest()[:12]
+    log = home / ".strata" / "logs" / f"validation-proj-{digest}.log"
+    assert log.read_text().count("\n") == 2  # header + one row
+    assert oct(log.stat().st_mode & 0o777) == "0o600"
+    assert oct(log.parent.stat().st_mode & 0o777) == "0o700"
