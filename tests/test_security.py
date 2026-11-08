@@ -102,7 +102,7 @@ def test_mcp_explore_deps_unknown_raises_not_found():
     from strata_lookml.mcp.tools import strata_explore_deps
 
     graph = _make_graph()
-    with pytest.raises(NotFound, match="explore not found"):
+    with pytest.raises(NotFound, match="not found"):
         strata_explore_deps(graph, "nonexistent_explore", "nonexistent_model")
 
 

@@ -19,6 +19,13 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- Shared identifier resolution (`strata_lookml/identifiers.py`) for the CLI and MCP tools. Tables
+  resolve by exact name or unique suffix (`orders` -> `analytics.orders`; `strata_impact` echoes
+  the resolved name, an ambiguous suffix lists candidates). `model` is optional for explores
+  (`strata_explore_deps`, `strata query explore`), and `model.explore` / `view.field` work as one
+  argument. `validation_scope` accepts `kind:name`, `{kind, name}`, `.lkml` paths and bare view
+  names; `strata query scope` uses the same parser. An unknown model is `not_found`. Old
+  positional forms still work.
 - `strata check --write-baseline FILE` records the current finding ids (sorted JSON, one list
   per category) and `--baseline FILE` subtracts them before `--fail-on` applies, so a legacy
   repo can gate on new findings only. Stale baseline ids warn (text and `stale_baseline_ids`
