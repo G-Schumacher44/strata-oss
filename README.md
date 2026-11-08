@@ -621,6 +621,19 @@ strata chart scatter correlation.csv --open
 strata chart heatmap activity.json --open
 ```
 
+Each template expects default column names (`strata chart line --help` lists them, read from the
+template). If your data uses other names, map them with `--x`, `--y` and `--color` instead of
+renaming columns:
+
+```bash
+strata chart line sales.json --x month --y revenue --color region
+```
+
+A chart whose encoding names a column that is not in the data fails with the missing and the
+available columns, instead of rendering a blank chart. The same check applies to
+`strata_render_chart` and `strata query navigate --chart`. The check covers single-view charts; layered, composite and transform specs are
+passed to Vega unchecked.
+
 <table>
 <tr>
 <td align="center"><img src="https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/chart-bar.png" width="420" alt="Bar chart: Revenue by Region"/><br/><sub><b>bar</b> — categorical comparison</sub></td>
