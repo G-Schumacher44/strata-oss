@@ -37,6 +37,10 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- `strata lint` is hidden from `--help` and the docs (contributor-only; still invocable).
+- `strata validate` resolves the user's project (`CONDUCTOR_PROJECT_ROOT` → configured repo → cwd), never Strata's own tree, and prints real relative paths.
+- `strata generate-schema --repo` reads `STRATA_REPO_PATH`.
+
 - `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered
   before the first write; the writes are a planned list applied with temp file + `os.replace`
   and rolled back (created files removed, overwritten files restored) if any fails. New flags:
@@ -113,6 +117,8 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - The dashboard's dependency graph no longer colours every explore green when no usage facts are
   loaded: explores render in a neutral "unknown" state (palette entry, legend swatch, note and
   UNKNOWN badge). With usage loaded, active/dead colouring is unchanged.
+- `strata conductor status` and MCP `strata_conductor_status` share one parser; `active_slice` is null when absent instead of capturing prose.
+- `strata validate --check-replay` no longer silently reads Strata's own fixture; without a replay file it fails with "pass --replay".
 
 - A chart whose encoding names a column missing from the data (for example `strata chart line`
   on `month`/`revenue` data) used to render a blank chart and exit 0. `render_chart` now raises

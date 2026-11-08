@@ -215,11 +215,7 @@ Strata utilizes **Ruff** for linting/formatting and **Mypy** for type checking.
 **Linting and type checking:**
 
 ```bash
-# Run both ruff and mypy
-strata lint
-
-# Fix safe violations automatically
-strata lint --fix --format
+ruff check . && ruff format --check . && mypy src
 ```
 
 Install pre-commit hooks to run checks automatically on every commit:
@@ -663,7 +659,6 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 | `strata conductor` | Manage slice-based agent workflow and handoffs |
 | `strata dashboard` | Build artifacts and serve the local HTML dashboard |
 | `strata generate-schema` | Pull BigQuery INFORMATION_SCHEMA facts for drift checks |
-| `strata lint` | Run ruff and mypy checks |
 | `strata mcp` | Run, validate, and inspect MCP server configuration |
 | `strata outputs` | Write 8 JSON artifacts to an output directory |
 | `strata query` | Inspect the IR from the terminal |

@@ -14,7 +14,7 @@ or Jira. Its writes are local files. Every command that writes or deletes files,
 | `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default: a fresh `strata_chart_*.html` in the system temp dir, path printed); any path the user names, never written through a symlink at the final component. |
 | `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
 | `strata conductor init` / `new-slice` | `conductor/` files in the target repo. |
-| `strata validate` | Appends one row to `<project>/conductor/.validation-log` (or `CONDUCTOR_VALIDATION_LOG`). |
+| `strata validate` | Appends one row to `~/.strata/logs/validation-<repo-name>-<hash>.log` (dir 0700, file 0600), or to `CONDUCTOR_VALIDATION_LOG`. Nothing is written inside the project being validated. |
 | `strata clean` | **Deletes** `./output/`, every `strata_ir.db`, and every `__pycache__` directory under `--repo` (default: the current directory). |
 | `strata bootstrap` | In the target repo: `AGENTS.md`, `CLAUDE.md`, `conductor/`, `.mcp.json`, `.cursor/mcp.json` (existing files skipped unless `--force`), and a Strata block appended to `.gitignore`. Outside it: `~/.strata/config.json`. |
 | `strata generate-schema` | `schema_facts.json` at `--out`. |

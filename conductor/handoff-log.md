@@ -2,20 +2,22 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/s11-unknown-explores (explores "unknown" without usage facts, spec S11 / N7)
+## Date: 2026-11-08 — feat/s9-user-project (resolve the user's project; one conductor parser; hide lint, spec S9)
 
-Commit: b6ee775
+Commit: 511cf4c
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: fix — spec S11 (finding N7) of `ux-agentic-cli-docs-spec-2026-11-08.md`; the KPI half of S11 was folded into #65.
+Conductor Mode: feature — spec S9 (D10, D11; findings B8, U8, U9, N3) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
 Context Budget: low
-Context Loaded: AGENTS.md, handoff-log, the spec (N7, S11), outputs/AGENTS.md, outputs/dashboard.py, the node harness in tests/test_l1_synthesis_outputs.py.
-Exact Next Steps: twin gate on the PR, operator merges.
+Context Loaded: AGENTS.md, handoff-log, the spec, cli/conductor.py, cli/validate.py, cli/lint.py, mcp/tools.py.
+Exact Next Steps: twin gate on the PR, operator merges. Parallel lanes (S7, S11, S12) land serially; merge `origin/main`, hand-resolve handoff/CHANGELOG and regenerate `docs/reference.md`.
 
 ### What changed
 
-- `outputs/dashboard.py`: `NODE_PALETTE` gains `explore_unknown` (neutral grey, emitted as `--n-explore-unknown` like every other entry). `_build_graph_data` reads `analysis_coverage(graph)["usage"]` and stamps explore nodes `status` = `dead` / `active` / `unknown`; with no usage facts they take the unknown colour. The decision is serialized from coverage, not inferred in JS. The legend gains an "Unknown (no usage facts)" swatch and a note ("Usage facts not loaded — explore activity unknown") rendered visible only when usage is absent; the node badge reads UNKNOWN instead of KEEP. With usage loaded nothing changes.
+- New `conductor_state.read_status`, used by `strata conductor status` and MCP `strata_conductor_status`. `active_slice` is line-anchored and null when absent or `none` (the old MCP regex captured prose). MCP now always returns all six keys (null when unknown).
+- `validate`: project root is `--project-root`/`CONDUCTOR_PROJECT_ROOT`, else `load_repo_path()`; git checks run in that project; labels print the real relative path. `--check-replay` without `--replay` uses `<project>/tests/fixtures/replay_facts.json` only if present, else fails with "pass --replay".
+- `lint` hidden (still invocable); removed from README and cli-guide. `generate-schema --repo` reads `STRATA_REPO_PATH`.
 
 ### Gates
 
-pytest 329 passed, ruff check and format --check clean, mypy clean, `scripts/check_dashboard_js_syntax.py` passes. Negative control: the new test run against a detached `origin/main` worktree fails (no `status` on explore nodes).
+pytest 335 passed, ruff check/format, mypy clean. Negative control (origin/main, new tests copied in): all 7 new tests fail.

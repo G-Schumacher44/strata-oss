@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from strata_lookml.bootstrap.plan import FileOp, apply_plan, plan_template_write, report_ops
+from strata_lookml.conductor_state import read_status
 
 
 @click.group()
@@ -167,54 +168,25 @@ def conductor_status(repo: str) -> None:
     if not conductor_dir.exists():
         raise click.ClickException("No conductor/ directory found. Run: strata conductor init")
 
-    # Read index for active slice
-    index_path = conductor_dir / "index.md"
-    active_slice_file: Path | None = None
-    if index_path.exists():
-        for line in index_path.read_text(encoding="utf-8").splitlines():
-            m = re.search(r"[Aa]ctive [Ss]lice[:\s]+conductor/(slice-[^\s]+\.md)", line)
-            if m:
-                active_slice_file = conductor_dir / m.group(1).replace("conductor/", "")
-                break
+    state = read_status(conductor_dir)
 
     click.secho("=== Conductor Status ===", bold=True)
 
-    if active_slice_file and active_slice_file.exists():
-        lines = active_slice_file.read_text(encoding="utf-8").splitlines()
-        title_line = lines[0].lstrip("# ").strip() if lines else active_slice_file.name
-        status = next(
-            (line.split(":", 1)[1].strip() for line in lines if line.startswith("Status:")),
-            "unknown",
-        )
-        mode_line = next((line for line in lines if "conductor_mode:" in line), None)
-        mode = mode_line.split(":", 1)[1].strip() if mode_line else "unknown"
-        click.echo(f"Active slice : {active_slice_file.name}")
-        click.echo(f"Title        : {title_line}")
-        click.echo(f"Status       : {status}")
-        click.echo(f"Mode         : {mode}")
+    if state["active_slice"]:
+        click.echo(f"Active slice : {state['active_slice']}")
+        click.echo(f"Title        : {state['title'] or 'unknown'}")
+        click.echo(f"Status       : {state['status'] or 'unknown'}")
+        click.echo(f"Mode         : {state['mode'] or 'unknown'}")
     else:
         click.secho("No active slice found in conductor/index.md", fg="yellow")
 
-    # Read latest handoff block
-    handoff_path = conductor_dir / "handoff-log.md"
-    if handoff_path.exists():
-        text = handoff_path.read_text(encoding="utf-8")
-        blocks = [b.strip() for b in text.split("##") if b.strip()]
-        if blocks:
-            latest = "##" + blocks[1] if len(blocks) > 1 else "##" + blocks[0]
-            next_steps = next(
-                (
-                    line.split(":", 1)[1].strip()
-                    for line in latest.splitlines()
-                    if line.startswith("Exact Next Steps")
-                ),
-                None,
-            )
+    if state["latest_handoff"]:
+        latest = state["latest_handoff"]
+        click.echo("")
+        click.secho("Latest handoff:", bold=True)
+        click.echo(latest[:600] + ("…" if len(latest) > 600 else ""))
+        if state["next_steps"]:
             click.echo("")
-            click.secho("Latest handoff:", bold=True)
-            click.echo(latest[:600] + ("…" if len(latest) > 600 else ""))
-            if next_steps:
-                click.echo("")
-                click.secho(f"Next steps: {next_steps}", fg="cyan")
-    else:
+            click.secho(f"Next steps: {state['next_steps']}", fg="cyan")
+    elif not (conductor_dir / "handoff-log.md").exists():
         click.secho("No handoff-log.md found.", fg="yellow")
