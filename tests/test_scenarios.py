@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from strata_lookml.cli.check import evaluate_gate
+from strata_lookml.gate import evaluate_gate
 from strata_lookml.pipeline import build_graph
 
 ROOT = Path(__file__).resolve().parents[1]
