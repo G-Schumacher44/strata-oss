@@ -55,6 +55,13 @@ Drop full Strata governance into a repo and prep the environment.
 - `--no-conductor` — flag — Skip conductor/ setup
 - `--no-mcp` — flag — Skip .mcp.json / .cursor/mcp.json
 - `--force` — flag — Overwrite existing files
+- `--yes / -y` — flag — Non-interactive: take flags and defaults, no prompts
+- `--bq-project TEXT` — BigQuery project for ~/.strata/config.json
+- `--cost-threshold-gb FLOAT` — BQ dry-run cost hard stop in GB for ~/.strata/config.json
+- `--set-default-repo / --no-set-default-repo` — flag — Write this repo as repo_path in ~/.strata/config.json (default with --yes: only if no config exists yet)
+- `--usage-fixture PATH` — usage_facts.json to wire into .mcp.json as STRATA_USAGE_FIXTURE
+- `--schema-fixture PATH` — schema_facts.json to wire into .mcp.json as STRATA_SCHEMA_FIXTURE
+- `--dry-run` — flag — Print the plan, write nothing (implies no prompts)
 
 ### `strata build`
 
@@ -237,6 +244,11 @@ Local MCP server for AI clients (Claude, Cursor, Gemini).
 `strata mcp config [OPTIONS]`
 
 Show resolved paths and env vars the MCP server will use.
+
+- `--client [claude|cursor]` — Print the MCP client config (.mcp.json / .cursor/mcp.json) instead of resolved paths
+- `--repo TEXT` — With --client: LookML repo path (default: resolved)
+- `--usage-fixture TEXT` — With --client: usage_facts.json (default: env)
+- `--schema-fixture TEXT` — With --client: schema_facts.json (default: env)
 
 ### `strata mcp run`
 

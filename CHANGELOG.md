@@ -19,6 +19,18 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered
+  before the first write; the writes are a planned list applied with temp file + `os.replace`
+  and rolled back (created files removed, overwritten files restored) if any fails. New flags:
+  `--yes/-y`, `--bq-project`, `--cost-threshold-gb`, `--set-default-repo/--no-set-default-repo`
+  (with `--yes`, default sets `repo_path` only when no `~/.strata/config.json` exists),
+  `--usage-fixture`, `--schema-fixture` (written into `.mcp.json` and `.cursor/mcp.json`),
+  `--dry-run`. With no terminal and no `--yes` it exits 2 before writing anything, naming
+  `--yes`; previously it wrote files and then died on the first prompt.
+- `strata mcp config --client claude|cursor [--repo --usage-fixture --schema-fixture]` prints
+  the exact client config bootstrap writes (one shared renderer). `strata conductor init`
+  uses the same plan/apply path (`plan_conductor_init`).
+
 - CLI exits non-zero on not-found/invalid input; MCP tool errors now reach the client. Every
   anticipated failure raises one error type (`strata_lookml.errors`: `NotFound`, `InvalidInput`,
   each with a `code`, `message` and `hint`). The CLI prints `Error:` / `Hint:` on stderr and
