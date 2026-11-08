@@ -2,20 +2,20 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — fix/list-orphans-kind (narrow strata_list_orphans kind)
+## Date: 2026-11-08 — fix/validate-active-slice (validate Active slice annotation)
 
-Commit: c17676f
+Commit: 4db71ea
   (Implementation commit; the PR squash-merges, post-merge resolve the landed anchor with
-  `gh pr view 59 --json mergeCommit`.)
+  `gh pr view 62 --json mergeCommit`.)
 Conductor Mode: patch — no version bump.
 Context Budget: low
-Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, mcp/tools.py, mcp/server.py, cli/query.py, README.
+Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, cli/validate.py, tests/test_cli.py.
 Exact Next Steps: operator merges after the gate passes; no follow-up work.
 
 ### What changed
 
-`strata_list_orphans(kind=...)` accepted `explore|field` but only view orphans are recorded, so those kinds always returned `[]` (readable as "none exist"). Narrowed to `all|view`; other values raise `ValueError` with an explicit message. MCP tool schema (`Literal`), CLI `--kind` choice, and README table kept consistent. Closes #49.
+`get_active_slice_rel` in `cli/validate.py` used the whole remainder of the `Active slice:` line as the path, so index.md's annotation (`path.md (review — PR open; ...)`) failed the check. It now takes the first whitespace-delimited token (backticks stripped); the `none` sentinel and genuine missing-file failure are unchanged. `strata_conductor_status` still returns the full line as status text. Closes #47.
 
 ### Gates
 
-New `test_strata_list_orphans_rejects_unsupported_kind` fails with src reverted (3 failed), passes with the fix. ruff check/format, mypy src clean; full pytest 184 passed (submodules initialized).
+New tests in tests/test_cli.py (plain, annotated, backticked, missing-file); with src reverted 3 fail. ruff check/format, mypy src clean; full pytest 185 passed (submodules initialized).

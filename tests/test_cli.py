@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
 ENTERPRISE = REPO_ROOT / "tests" / "lookml" / "enterprise_mono"
@@ -349,3 +351,37 @@ def test_clean_repo_never_deletes_output_inside_the_lookml_repo(tmp_path, monkey
     assert result.exit_code == 0, result.output
     assert (repo / "output" / "keep.txt").exists()
     assert not (cwd / "output").exists()
+
+
+def _validate_active_slice(tmp_path, index_line):
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.validate import validate
+
+    conductor = tmp_path / "conductor"
+    conductor.mkdir()
+    (conductor / "slice-01.md").write_text("# Slice\n\n## Acceptance Criteria\n- [x] done\n")
+    (conductor / "index.md").write_text(f"{index_line}\n")
+    result = CliRunner().invoke(validate, ["--project-root", str(tmp_path)])
+    return next(line for line in result.output.splitlines() if "Active slice file" in line)
+
+
+@pytest.mark.parametrize(
+    "index_line",
+    [
+        "Active slice: conductor/slice-01.md",
+        "Active slice: conductor/slice-01.md (review — PR open; design source: conductor/x.md)",
+        "Active slice: `conductor/slice-01.md` (review)",
+    ],
+)
+def test_validate_active_slice_ignores_path_annotation(tmp_path, index_line):
+    line = _validate_active_slice(tmp_path, index_line)
+
+    assert "not found" not in line
+    assert "✗" not in line
+
+
+def test_validate_active_slice_still_fails_on_missing_file(tmp_path):
+    line = _validate_active_slice(tmp_path, "Active slice: conductor/gone.md (review)")
+
+    assert "conductor/gone.md not found" in line

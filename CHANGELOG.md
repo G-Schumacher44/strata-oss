@@ -22,6 +22,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - `strata_list_orphans` / `strata query orphans` no longer accept `kind=explore|field`, which always
   returned an empty list (only orphan views are detected); `kind` is now `all|view` and other
   values are rejected with a clear error (#49).
+- `strata validate`: the "Active slice file" check takes the first path token of the `Active slice:`
+  line in `conductor/index.md`, so an annotated line (`path.md (review — PR open; ...)`) no longer
+  fails as a missing file (#47).
 
 ## [0.1.9] - 2026-11-03
 
