@@ -6,6 +6,14 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- `strata chart` / `strata-chart` no longer default to the fixed, world-guessable
+  `/tmp/strata_chart.html`: the default is a fresh per-invocation `mkstemp` file
+  (`strata_chart_*.html`), and the path written is printed. Chart output (CLI, MCP
+  `strata_render_chart`, `strata query navigate`) is opened with `O_NOFOLLOW` and refuses a
+  symlink at the final path component, so another local user can no longer redirect the write.
+
 ## [0.1.9] - 2026-11-03
 
 ### Security

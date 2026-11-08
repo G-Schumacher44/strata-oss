@@ -279,3 +279,57 @@ def test_parse_repo_skips_symlinks_that_escape_the_repo(tmp_path):
     assert all("escape" not in n and "dir_link" not in n for n in names), names
     assert any(n.endswith("ok.view.lkml") for n in names)
     assert any(n.endswith("inside_link.view.lkml") for n in names)
+
+
+# --- Chart output: no fixed shared path, no symlink following ---
+
+_CHART_SPEC = {"mark": "bar", "encoding": {"x": {"field": "c"}, "y": {"field": "v"}}}
+_CHART_ROWS = [{"c": "A", "v": 1}]
+
+
+def test_render_chart_default_path_is_fresh_and_not_fixed(tmp_path, monkeypatch):
+    import tempfile
+
+    from strata_lookml.viz.render import render_chart
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    first = render_chart(dict(_CHART_SPEC), _CHART_ROWS)
+    second = render_chart(dict(_CHART_SPEC), _CHART_ROWS)
+    assert first != second
+    assert first.name != "strata_chart.html" and first.name.startswith("strata_chart_")
+    assert first.parent == tmp_path and first.read_text(encoding="utf-8").startswith("<")
+
+
+def test_render_chart_explicit_path_writes_normally(tmp_path):
+    from strata_lookml.viz.render import render_chart
+
+    out = tmp_path / "sub" / "c.html"
+    assert render_chart(dict(_CHART_SPEC), _CHART_ROWS, out) == out
+    assert "vega" in out.read_text(encoding="utf-8").lower()
+
+
+def test_render_chart_refuses_symlink_at_target(tmp_path):
+    from strata_lookml.viz.render import render_chart
+
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep", encoding="utf-8")
+    link = tmp_path / "c.html"
+    link.symlink_to(victim)
+    with pytest.raises(ValueError, match="symlink"):
+        render_chart(dict(_CHART_SPEC), _CHART_ROWS, link)
+    assert victim.read_text(encoding="utf-8") == "keep"
+
+
+def test_mcp_render_chart_refuses_symlink_under_allowed_root(tmp_path, monkeypatch):
+    from strata_lookml.mcp.tools import chart_output_dir, strata_render_chart
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    out_dir = chart_output_dir()
+    out_dir.mkdir(parents=True)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep", encoding="utf-8")
+    (out_dir / "c.html").symlink_to(victim)
+    spec_yaml = "mark: bar\nencoding:\n  x:\n    field: c\n  y:\n    field: v"
+    with pytest.raises(ValueError, match="symlink"):
+        strata_render_chart(spec_yaml, '[{"c": "A", "v": 1}]', str(out_dir / "c.html"))
+    assert victim.read_text(encoding="utf-8") == "keep"

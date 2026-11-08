@@ -259,7 +259,10 @@ def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[s
     """Render a Vega-Lite spec (YAML or JSON string) + JSON data rows to an HTML file."""
     import json as _json
 
-    resolved = Path(out_path).expanduser().resolve()
+    # Resolve the directory only: resolving the final component would follow a symlink there and
+    # defeat both this guard and render_chart's O_NOFOLLOW check.
+    requested = Path(out_path).expanduser()
+    resolved = requested.parent.resolve() / requested.name
     allowed_roots = [
         chart_output_dir(),
         Path("/tmp").resolve(),
