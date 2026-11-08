@@ -4,11 +4,12 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/dashboard-polish (dashboard redesign: graph legibility + polish)
 
-Commit: (pending — local preview branch, not yet pushed; operator reviews the live preview first)
+Commit: 630bbee
+  (Implementation commit; the PR squash-merges. After the merge, resolve the landed anchor with `gh pr view <n> --json mergeCommit`.)
 Conductor Mode: feature — dashboard presentation only; no artifact/schema change.
 Context Budget: medium
 Context Loaded: AGENTS.md, outputs/AGENTS.md, conductor/dashboard-north-star.md, handoff-log, dashboard.py, cli/dashboard.py, escaping guardrail + dashboard tests.
-Exact Next Steps: operator reviews the preview; on approval push and open the PR (twin gate). Open design questions listed in the lane report (light theme, graph-as-landing vs drill-in per the north star, mobile table cards).
+Exact Next Steps: operator approved the preview ("way better"); PR open on the twin gate, operator merges. Follow-ups are listed in the PR body (light theme, graph below the findings, phone card tables, whether the attention filter counts PDTs without build data).
 
 ### What changed
 
