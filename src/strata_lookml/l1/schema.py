@@ -34,10 +34,33 @@ class FixtureSchemaProvider:
 
     def tables(self) -> list[SchemaTable]:
         data = json.loads(self.path.read_text(encoding="utf-8"))
-        return [
-            SchemaTable(name=item["name"], columns=list(item.get("columns", [])))
-            for item in data.get("tables", [])
-        ]
+        return [_table_from_fact(self.path, item) for item in _tables_list(self.path, data)]
+
+
+def _bad_shape(path: Path, detail: str) -> Exception:
+    # Imported at raise time: errors.py pulls the MCP SDK into the L0 import graph.
+    from strata_lookml.errors import InvalidInput
+
+    return InvalidInput(
+        f"schema facts {path} are malformed: {detail}",
+        hint='expected {"tables": [{"name": "<table>", "columns": ["<column>", ...]}]}',
+    )
+
+
+def _tables_list(path: Path, data: object) -> list[object]:
+    tables = data.get("tables", []) if isinstance(data, dict) else None
+    if not isinstance(tables, list):
+        raise _bad_shape(path, '"tables" must be a list')
+    return tables
+
+
+def _table_from_fact(path: Path, item: object) -> SchemaTable:
+    if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+        raise _bad_shape(path, 'each table needs a string "name"')
+    columns = item.get("columns", [])
+    if not isinstance(columns, list) or not all(isinstance(c, str) for c in columns):
+        raise _bad_shape(path, f'columns of "{item["name"]}" must be a list of column-name strings')
+    return SchemaTable(name=item["name"], columns=list(columns))
 
 
 def load_schema_facts(path: str | Path) -> SchemaFacts:

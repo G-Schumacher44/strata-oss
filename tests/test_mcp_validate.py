@@ -126,3 +126,45 @@ def test_strata_cache_path_is_honoured(env, monkeypatch):
     assert build.exit_code == 0, build.output
     assert cache.exists()
     assert _statuses(_validate("--json"))["IR cache"] == "pass"
+
+
+MALFORMED_SCHEMA = {"tables": [{"name": "analytics.orders", "columns": [{"name": "id"}]}]}
+
+
+def test_schema_fixture_with_malformed_columns_fails_validate(env, monkeypatch):
+    tmp, _ = env
+    bad = tmp / "schema.json"
+    bad.write_text(json.dumps(MALFORMED_SCHEMA))
+    monkeypatch.setenv("STRATA_SCHEMA_FIXTURE", str(bad))
+    result = _validate()
+    assert result.exit_code == 1
+    assert "✗ schema facts" in result.output
+    assert "columns of" in result.output
+
+
+def test_enrichment_failure_after_loading_is_a_hard_fail(env, monkeypatch):
+    # A fixture that loads but breaks enrichment must not read as ready.
+    tmp, _ = env
+    ok = tmp / "schema.json"
+    ok.write_text(json.dumps({"tables": []}))
+    monkeypatch.setenv("STRATA_SCHEMA_FIXTURE", str(ok))
+
+    def boom(*args, **kwargs):
+        raise TypeError("unhashable")
+
+    monkeypatch.setattr("strata_lookml.l1.schema.enrich_schema_drift", boom)
+    monkeypatch.setattr("strata_lookml.pipeline.enrich_schema_drift", boom)
+    result = _validate("--json")
+    assert result.exit_code == 1
+    check = next(
+        c for c in json.loads(result.output)["checks"] if c["name"] == "fixture enrichment"
+    )
+    assert check["status"] == "fail"
+    assert "fixture enrichment failed: TypeError: unhashable" in check["message"]
+
+
+def test_valid_fixtures_pass_enrichment(env, monkeypatch):
+    monkeypatch.setenv("STRATA_USAGE_FIXTURE", str(USAGE))
+    result = _validate("--json")
+    assert result.exit_code == 0, result.output
+    assert _statuses(result)["fixture enrichment"] == "pass"

@@ -61,6 +61,9 @@ def mcp_validate(as_json: bool) -> None:
         Only needed for --looker-url; `strata auth login` creates it.
       MCP server is ready.
     """
+    from strata_lookml.errors import StrataError
+    from strata_lookml.pipeline import build_graph
+
     checks: list[dict[str, str | None]] = []
     counts: dict[str, int] = {}
 
@@ -86,9 +89,6 @@ def mcp_validate(as_json: bool) -> None:
         add("repo path", "fail", "repo path does not exist", hint)
     else:
         add("repo path", "pass", "exists")
-        from strata_lookml.errors import StrataError
-        from strata_lookml.pipeline import build_graph
-
         try:
             graph = build_graph(repo)
         except StrataError as exc:
@@ -132,6 +132,7 @@ def mcp_validate(as_json: bool) -> None:
     from strata_lookml.l1.fixtures import load_usage_facts
     from strata_lookml.l1.schema import load_schema_facts
 
+    fixtures_ok = True
     for label, env_name, loader, flag in (
         ("usage facts", "STRATA_USAGE_FIXTURE", load_usage_facts, "usage_checked"),
         ("schema facts", "STRATA_SCHEMA_FIXTURE", load_schema_facts, "schema_checked"),
@@ -142,6 +143,7 @@ def mcp_validate(as_json: bool) -> None:
             continue
         fixture = Path(configured).expanduser()
         if not fixture.is_file():
+            fixtures_ok = False
             add(
                 label,
                 "fail",
@@ -151,10 +153,36 @@ def mcp_validate(as_json: bool) -> None:
             continue
         try:
             loader(fixture)
+        except StrataError as exc:
+            fixtures_ok = False
+            add(label, "fail", exc.message, exc.hint)
         except Exception as exc:  # any parse/shape failure means the server would not load it
+            fixtures_ok = False
             add(label, "fail", f"{fixture} is not valid {label}: {type(exc).__name__}: {exc}")
         else:
             add(label, "pass", str(fixture))
+
+    # The server's startup path: the configured fixtures enriching the graph. A fixture can
+    # load and still break enrichment, so exercise it rather than infer it from the loaders.
+    usage_env = os.environ.get("STRATA_USAGE_FIXTURE")
+    schema_env = os.environ.get("STRATA_SCHEMA_FIXTURE")
+    if graph is not None and fixtures_ok and (usage_env or schema_env):
+        try:
+            build_graph(
+                repo,
+                usage_env and Path(usage_env).expanduser(),
+                schema_env and Path(schema_env).expanduser(),
+            )
+        except StrataError as exc:
+            add("fixture enrichment", "fail", exc.message, exc.hint)
+        except Exception as exc:
+            add(
+                "fixture enrichment",
+                "fail",
+                f"fixture enrichment failed: {type(exc).__name__}: {exc}",
+            )
+        else:
+            add("fixture enrichment", "pass", "configured facts enrich the graph")
 
     # BQ project
     from strata_lookml.config import load_bq_project
