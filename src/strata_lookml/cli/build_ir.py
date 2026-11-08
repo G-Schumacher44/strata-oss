@@ -13,7 +13,13 @@ from strata_lookml.cli._contract import JsonCommand
 @click.option(
     "--repo", required=True, envvar="STRATA_REPO_PATH", show_envvar=True, help="Path to LookML repo"
 )
-@click.option("--cache", default=None, help="SQLite cache path (default: <repo>/strata_ir.db)")
+@click.option(
+    "--cache",
+    default=None,
+    envvar="STRATA_CACHE_PATH",
+    show_envvar=True,
+    help="SQLite cache path (default: ~/.strata/cache/<repo-name>-<hash>.db)",
+)
 @click.option(
     "--usage-fixture",
     default=None,
@@ -36,11 +42,13 @@ def build_ir(
     schema_fixture: str | None,
     as_json: bool,
 ) -> None:
-    """Parse a LookML repo and write the IR cache (strata_ir.db).
+    """Parse a LookML repo and write the IR cache.
 
     Pre-builds the SQLite IR so the MCP server loads instantly rather than
     parsing on first tool call. Run this after cloning a new repo or after
-    significant LookML changes.
+    significant LookML changes. The cache lives under ~/.strata/cache/, never
+    in the repo, and records the fixtures it was built with: the MCP server
+    reuses it only when started with the same repo and fixtures.
 
     \b
     strata build --repo tests/lookml/enterprise_mono \\
@@ -48,15 +56,12 @@ def build_ir(
     """
     from pathlib import Path
 
-    from strata_lookml.ir.store import save_ir
-    from strata_lookml.pipeline import build_graph
+    from strata_lookml.config import load_cache_path
+    from strata_lookml.pipeline import build_and_cache
 
     repo_path = Path(repo).expanduser().resolve()
-
-    cache_path = Path(cache).expanduser().resolve() if cache else repo_path / "strata_ir.db"
-
-    graph = build_graph(repo_path, usage_fixture, schema_fixture)
-    save_ir(graph, cache_path)
+    cache_path = load_cache_path(repo_path, cache)
+    graph = build_and_cache(repo_path, usage_fixture, schema_fixture, cache_path)
 
     status = {
         "repo_path": graph.repo_path,

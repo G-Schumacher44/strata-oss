@@ -2,6 +2,28 @@
 
 Older handoff blocks moved out of the thin active log (`handoff-log.md` keeps the current block only — conductor/AGENTS.md).
 
+## Date: 2026-11-08 — feat/s12-port-fallback (dashboard port fallback, spec S12)
+
+Commit: 8393a08
+  (Implementation commit; the PR squash-merges.)
+Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
+Conductor Mode: feature — spec S12 (D9; finding U11) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
+Context Budget: low
+Context Loaded: AGENTS.md, handoff-log, the spec (U11, D9, S12), cli/dashboard.py, tests/test_dashboard_host.py.
+Exact Next Steps: twin gate on the PR, operator merges. Other wave lanes land serially; merge `origin/main`, hand-resolve handoff/CHANGELOG and regenerate `docs/reference.md`.
+
+### What changed
+
+- `cli/dashboard.py`: `bind_server` binds `127.0.0.1`. Without `--port` (click parameter source is DEFAULT, not a value comparison) and 8765 busy, it tries `FALLBACK_PORTS` (8766-8785) and the command prints the URL actually bound. An explicit `--port` that is busy raises `StrataError` (exit 1) naming the port; a fully busy range is a `StrataError` naming the range. Only `EADDRINUSE` triggers fallback; other `OSError`s propagate. `make_handler` gets the bound port, so the Host allow-list follows it.
+- Dropped the `lsof ... | xargs kill -9` advice from `skills/governance/strata_workflow.md`; `docs/runbook.md`, `docs/security-hardening.md` and the regenerated `docs/reference.md` describe the fallback.
+- Twin-gate fix: the dashboard server relied on EADDRINUSE, but `allow_reuse_address=True` lets a bind succeed on a port in use on Windows, so fallback would never trigger. The exclusive-bind server moved from `l1/oauth.py` into `strata_lookml/loopback.py` (`ExclusiveHTTPServer`), used by both the OAuth receiver and the dashboard; the dashboard no longer sets `socketserver.TCPServer.allow_reuse_address` globally.
+- Codex P2: Windows reports an exclusive listener as WSAEACCES (errno EACCES / winerror 10013), not EADDRINUSE. `loopback.port_in_use(exc)` is the one predicate (EADDRINUSE; on win32 also EACCES/10013) used by `bind_server` for both fallback and the explicit-port error.
+
+### Gates
+
+pytest 339 passed (10 in `tests/test_dashboard_port.py`, on self-bound high ports; `DEFAULT_PORT`/`FALLBACK_PORTS` monkeypatched, never the real 8765), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: on a detached origin/main worktree the new tests error (no `DEFAULT_PORT`); mutating `make_handler(candidate)` to the requested port fails the allow-list test, and treating `--port` as never explicit fails both explicit-port tests.
+
+
 ## Date: 2026-11-08 — feat/s9-user-project (resolve the user's project; one conductor parser; hide lint, spec S9)
 
 Commit: 511cf4c
@@ -22,6 +44,7 @@ Exact Next Steps: twin gate on the PR, operator merges. Parallel lanes (S7, S11,
 
 pytest 335 passed, ruff check/format, mypy clean. Negative control (origin/main, new tests copied in): all 7 new tests fail.
 
+
 ## Date: 2026-11-08 — feat/s11-unknown-explores (explores "unknown" without usage facts, spec S11 / N7)
 
 Commit: b6ee775
@@ -39,6 +62,7 @@ Exact Next Steps: twin gate on the PR, operator merges.
 ### Gates
 
 pytest 329 passed, ruff check and format --check clean, mypy clean, `scripts/check_dashboard_js_syntax.py` passes. Negative control: the new test run against a detached `origin/main` worktree fails (no `status` on explore nodes).
+
 
 ## Date: 2026-11-08 — feat/s10-chart-columns (chart column validation + --x/--y/--color, spec S10)
 
@@ -59,6 +83,7 @@ Exact Next Steps: twin gate on the PR, operator merges. Other wave-B lanes (S2, 
 ### Gates
 
 pytest 328 passed (16 in `tests/test_chart_columns.py`), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: with the check replaced by `pass`, the CLI mismatch test and the MCP isError test fail; the override and help tests fail on main because the options do not exist.
+
 
 ## Date: 2026-11-08 — feat/s5-check-baseline (`strata check --baseline`, spec S5)
 
@@ -89,31 +114,6 @@ pytest 285 passed (+8 in `tests/test_cli.py`), ruff check + format --check clean
 
 Review round (Codex P1): `--write-baseline` could truncate a source file. `write_baseline` now resolves the destination and refuses (usage error, exit 2, before any write) a symlink final component, a `.lkml`/`.lookml` target, a directory, or an existing file that is not a prior Strata baseline; the write is temp-file-in-same-dir + `os.replace`. +4 tests (pytest 289); against the pre-fix code 3 of 4 fail (overwrite-a-previous-baseline is a guard that passes on both).
 
-## Date: 2026-11-08 — feat/s3-identifiers (shared identifier resolution, spec S3)
-
-Commit: 7c96545
-  (Implementation commit; the PR squash-merges.)
-Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — spec S3 (D4; findings U4, U5, U7) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
-Context Budget: medium
-Context Loaded: AGENTS.md, handoff-log, the spec (§1, U4/U5/U7, D4, S3), mcp/{tools,server}.py, cli/query.py, validation.py, errors.py.
-Exact Next Steps: twin gate, operator merges. S9 and S11 build on `identifiers.py`. Parallel lanes (S5, S7, #68): merge `origin/main`, hand-resolve handoff/CHANGELOG, regenerate `docs/reference.md`.
-
-### What changed
-
-- New `strata_lookml/identifiers.py`, the one resolver for `mcp/tools.py` and `cli/query.py`: `resolve_table` (exact or unique dot-boundary suffix; ambiguous -> `InvalidInput` listing candidates), `resolve_explore` (`model` optional, `model.explore` accepted), `resolve_field` (`view.field`), `parse_changed` (`kind:name`, `{kind,name}`, `.lkml` paths, bare name = view).
-- `strata_impact` echoes the resolved `physical_table` plus `resolved_from` (the input when it differed, else null). `strata_explore_deps` echoes `model` and `explore`; `model` is optional on the tool and the CLI (`strata query explore EXPLORE [MODEL]`). `strata_query_field`/`strata query field` take `view.field` as one argument. Unknown model -> `NotFound` (explore_deps and view_sources).
-- `validation.ChangedObject.from_value` delegates to `parse_changed`; the CLI's `_file_to_changed` is deleted and `strata query scope` passes its args straight through.
-- Tool descriptions and CLI help updated; `docs/reference.md` regenerated.
-
-### Deviations from the spec
-
-- A bare name in `changed` is now a view (spec: "bare = view"), so the old `invalid_input` for `"bogus"` is gone; `tests/test_error_contract.py` now uses `"view:"` as the malformed example.
-- `strata_explore_deps` ambiguity cannot arise from LookML today: the resolver keys explores by name across models, so two models sharing an explore name collapse to one node. The ambiguity path is implemented and tested against a hand-built graph; the collapse is a separate pre-existing limitation, not fixed here.
-
-### Gates
-
-pytest 300 passed (+23 in `tests/test_identifiers.py`), ruff check + format --check clean, mypy clean. Negative control: `tests/test_identifiers.py` against a detached worktree of origin/main fails 18 of 23 (the 5 passes are the unchanged positional forms and unknown-object errors).
 
 ## Date: 2026-11-08 — feat/s3-identifiers (shared identifier resolution, spec S3)
 
@@ -140,6 +140,7 @@ Exact Next Steps: twin gate, operator merges. S9 and S11 build on `identifiers.p
 ### Gates
 
 pytest 300 passed (+23 in `tests/test_identifiers.py`), ruff check + format --check clean, mypy clean. Negative control: `tests/test_identifiers.py` against a detached worktree of origin/main fails 18 of 23 (the 5 passes are the unchanged positional forms and unknown-object errors).
+
 
 ## Date: 2026-11-08 — feat/s6-bootstrap (non-interactive, atomic bootstrap, spec S6)
 
@@ -172,6 +173,7 @@ Review round (Codex): rollback now finishes even if a restore fails (successful 
 Round 3: rollback also runs on KeyboardInterrupt/BaseException (re-raised as is) and covers an in-flight replace that landed; writes go through symlinks to the resolved target (link untouched, rollback restores target bytes); `--repo` declares `STRATA_REPO_PATH` on `mcp config`, `conductor init/new-slice/status`. Not changed (outside this PR's files): `strata clean --repo`, `generate-schema --repo` still lack the envvar.
 Round 4: rollback is one rule — snapshot each resolved destination (bytes + mode, or absent) before its first write, first snapshot wins, restore anything that differs through the same atomic writer (mode kept). Replaces the created/overwritten/in-flight bookkeeping.
 
+
 ## Date: 2026-11-08 — feat/s4-check-gate (`strata check` is a real CI gate, spec S4)
 
 Commit: d86b7ac
@@ -201,6 +203,7 @@ Exact Next Steps: twin gate on the PR, operator merges. Then S5 (`check --baseli
 
 pytest 241 passed (231 before; +6 in `tests/test_cli.py`, +4 in `tests/test_scenarios.py`), ruff check + format --check clean, mypy clean, `gen_reference.py --check` clean, dashboard JS check pass, the three CI `strata check` steps pass, `strata validate` 10 passed / 1 warning (handoff hash not reachable before this commit). Against the origin/main check.py all 6 CLI tests fail. Mutations, each failing its own test: resolution-error loop removed, fixture requirement removed, `fail_on` ignored (drift ids + JSON), default `all` (thelook default), lkml check removed in pipeline (empty dir), drift findings dropped (all 4 scenarios).
 
+
 ## Date: 2026-11-08 — feat/s2-mcp-envelope (MCP list envelope + agent descriptions, spec S2)
 
 Commit: 315b540
@@ -226,6 +229,7 @@ Exact Next Steps: twin gate on the PR, operator merges. If another wave-B lane l
 ### Gates
 
 pytest 249 passed (+18 in `tests/test_mcp_envelope.py`), ruff check + format --check clean, mypy clean. Negative control: with `src/` reverted to origin/main all 18 new tests fail, restored they pass. Tests run the real server through an in-process `mcp.Client` (mcp 2.3).
+
 
 ## Date: 2026-11-08 — feat/s1-error-contract (one error contract for MCP and CLI, spec S1)
 
@@ -253,6 +257,7 @@ Exact Next Steps: twin gate on the PR, operator merges. If S0 (generated referen
 
 pytest 229 passed (217 before; +12 in `tests/test_error_contract.py`), ruff check + format --check clean, mypy clean, dashboard JS check pass, the three CI `strata check` scenarios pass, `strata validate` 10 passed. All 12 new tests fail against the pre-change tree (origin/main 5ac4572). Seam mutations, each failing only its own test: StrataError base → Exception (5 MCP cases), StrataGroup catch removed (CLI envelope/hint), `as_json` gate removed (navigate human stdout), lkml check removed (empty repo), repo-dir check removed (`/nonexistent` → not_found), strata-chart catch removed, auth pre-check removed, view_sources model check removed, eager errors import in pipeline (L0 test).
 
+
 ## Date: 2026-11-08 — feat/s0-generated-reference (generated CLI/MCP reference + drift check, spec slice S0)
 
 Commit: ac022ce
@@ -272,6 +277,7 @@ Exact Next Steps: operator reviews/merges; then S1 (spec) — D10 hides `lint`, 
 ### Gates
 
 ruff check + format --check clean, mypy clean, pytest 219 passed. Negative control: editing the `auth logout` help string without regenerating fails `test_reference_is_current` and `gen_reference.py --check` (exit 1); regenerating passes; mutation reverted.
+
 
 ## Date: 2026-11-08 — feat/dashboard-polish (dashboard redesign: graph legibility + polish)
 
@@ -295,6 +301,7 @@ Exact Next Steps: operator approved the preview ("way better"); PR open on the t
 ### Gates
 
 ruff check + format --check clean, mypy clean, pytest 217 passed (209 before; +2 root-route host tests, +2 palette/attention tests, +2 coverage/not-run tests, +2 explore-population/pinned-filter tests), dashboard JS `node --check` pass. Negative controls: population test fails with the old JS subtraction, with a usage-row population, and pre-fix; pinned-filter test fails without the pin clear and pre-fix; not-run test fails with the clean-headline gate removed, with KPI coverage forced on, and against the pre-fix dashboard; root-route test fails with the rewrite removed; legend-token test fails with a hand-copied hex; attention test fails with the flag removed.
+
 
 ## Date: 2026-11-08 — docs/claims-match-code (docs match the code)
 
@@ -333,6 +340,7 @@ Test-only. The escaping guardrail no longer trusts a `forEach/map` callback inde
 
 New scoped/still-trusted tests; re-adding block-wide trust makes the scoped test fail. ruff check/format, mypy src clean; full pytest 183 passed (submodules initialized).
 
+
 ## Date: 2026-11-08 — fix/validate-active-slice (validate Active slice annotation)
 
 Commit: 4db71ea
@@ -351,6 +359,7 @@ Exact Next Steps: operator merges after the gate passes; no follow-up work.
 
 New tests in tests/test_cli.py (plain, annotated, backticked, missing-file); with src reverted 3 fail. ruff check/format, mypy src clean; full pytest 185 passed (submodules initialized).
 
+
 ## Date: 2026-11-08 — fix/list-orphans-kind (narrow strata_list_orphans kind)
 
 Commit: c17676f
@@ -368,6 +377,7 @@ Exact Next Steps: operator merges after the gate passes; no follow-up work.
 ### Gates
 
 New `test_strata_list_orphans_rejects_unsupported_kind` fails with src reverted (3 failed), passes with the fix. ruff check/format, mypy src clean; full pytest 184 passed (submodules initialized).
+
 
 ## Date: 2026-11-08 — fix/chart-output-path (chart output: no fixed /tmp path, no symlink following)
 
@@ -397,6 +407,7 @@ Exact Next Steps: operator merges after twins/Codex pass; CHANGELOG Unreleased >
   makes the behavior tests fail; restored, all pass.
 - Full suite 186 passed (with test submodules initialised), ruff, ruff format, mypy clean.
 
+
 ## Date: 2026-11-08 — fix/dashboard-host-check (DNS-rebinding guard on `strata dashboard`)
 
 Commit: e73ccd9 (first implementation commit; review-fix commits follow. The PR squash-merges;
@@ -420,6 +431,7 @@ Exact Next Steps: operator merges after the gates pass; the fix rides the next r
 
 - Negative control: with the allowlist check disabled, the refusal tests fail (7 of the first 11).
 - Gates (with submodules initialized): pytest, ruff check, ruff format --check, mypy src.
+
 
 ## Date: 2026-11-04 — fix/security-0.1.9 (security hardening before the 0.1.9 tag)
 
@@ -491,6 +503,7 @@ CI round 2 (e701a84): Artemis SHIP (one should_fix: `localhost` redirect vs IPv4
   fixed, receiver now accepts only 127.0.0.1); Apollo ACCEPT (note: gate lines not visible to it
   -> now inlined here); Codex P2 (POSIX SO_REUSEADDR) fixed + resolved.
 
+
 ## Date: 2026-11-04 — docs/legal-0.1.9 (legal-readiness docs + shipped third-party notices)
 
 Commit: e6da3ab (implementation commit; the PR squash-merges, resolve the landed anchor with
@@ -519,6 +532,7 @@ Exact Next Steps: merge; after the security PR lands, tag v0.1.9 and confirm the
 copies and no tests/ fixtures; tests/test_docs_consistency.py 5 passed; README fences balanced;
 PR CI (test, pr-analysis, review) green.
 
+
 ## Date: 2026-11-04 — ci/release-mcp-registry-oidc (MCP Registry publish in release.yml)
 
 Commit: eb8ebee (implementation commit; the PR squash-merges, resolve the landed anchor with
@@ -540,6 +554,7 @@ Exact Next Steps: merge, tag v0.1.9 as already planned, then verify the registry
 ### Gates
 
 actionlint on release.yml clean; YAML parse OK; PR CI (test, pr-analysis, review) green.
+
 
 ## Date: 2026-11-03 — chore/release-0.1.9 (version bump, stacked on #46)
 
@@ -585,6 +600,7 @@ Release guard, extracted verbatim from release.yml and run locally: `GITHUB_REF_
   exit 1 naming only that field; `packages: []` -> "server.json has no packages entry", exit 1.
 Build: sdist + wheel `strata_lookml-0.1.9`; installed beside `strata==26.0.0`, MCP initialize
   reports serverInfo version 0.1.9, tools/list = 18 (18 titles, 18 annotations, 18 descriptions).
+
 
 ## Date: 2026-11-03 — chore/release-0.1.9-readiness (PR #46, stacked on #45)
 
@@ -646,6 +662,7 @@ Final tree (after merging the updated #45): ruff check "All checks passed!", ruf
 Wheel re-proof beside `strata==26.0.0`: 0 entries under `strata/`, 166 under `strata_lookml/`; all
   four `--help` exit 0 (`strata-mcp --help` prints usage); MCP stdio tools/list = 18 tools, 18 with
   title, 18 with annotations, 18 with a description.
+
 
 ## Date: 2026-11-03 — refactor/import-strata-lookml (PR #45, import rename strata -> strata_lookml)
 
@@ -713,6 +730,7 @@ Wheel re-proof: 0 entries under `strata/`, 166 under `strata_lookml/`; installed
   exit 0, MCP stdio initialize + tools/list = 18 tools via strata-mcp, strata-lookml and the mcpb
   shim. Local twins: Apollo PASS, Artemis PASS (two P3s fixed: live starter-prompt template paths,
   this gate block).
+
 
 ## Date: 2026-11-03 — fix/batch-2026-11 (batch of ten correctness fixes)
 

@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
+from strata_lookml.config import ensure_private_dir
 from strata_lookml.l1.replay import _latest_iso
 from strata_lookml.l1.types import ContentReference, ExploreUsage, PDTBuild
 
@@ -141,25 +142,25 @@ def load_token(path: str | Path = DEFAULT_TOKEN_PATH) -> LookerToken:
 def prepare_token_dir(path: str | Path = DEFAULT_TOKEN_PATH) -> Path:
     """Make sure the token's directory is private before anything is written there (POSIX).
 
-    A missing directory is created 0700. Strata's own `~/.strata` is tightened to 0700. Any
+    A missing directory (and any missing parent) is created 0700. Strata's own `~/.strata` is tightened to 0700. Any
     other existing directory is never chmod-ed: if group or others can access it, the token
     path is refused, so pick a dedicated directory.
     """
     token_path = Path(path).expanduser()
     parent = token_path.parent
-    if not parent.exists():
-        parent.mkdir(parents=True, mode=0o700)
-        if os.name == "posix":
-            os.chmod(parent, 0o700)  # umask can only narrow mkdir mode; make it exactly 0700
-    elif os.name == "posix":
-        if parent.resolve() == DEFAULT_TOKEN_PATH.parent.resolve():
-            os.chmod(parent, 0o700)
-        elif stat.S_IMODE(parent.stat().st_mode) & 0o077:
-            raise LiveLookerNotConfigured(
-                f"refusing to store the token in {parent}: the directory is accessible by "
-                "group/other. Use a dedicated directory with mode 0700 (the default is "
-                f"{DEFAULT_TOKEN_PATH})"
-            )
+    own = parent.exists() and parent.resolve() == DEFAULT_TOKEN_PATH.parent.resolve()
+    if (
+        parent.exists()
+        and os.name == "posix"
+        and not own
+        and stat.S_IMODE(parent.stat().st_mode) & 0o077
+    ):
+        raise LiveLookerNotConfigured(
+            f"refusing to store the token in {parent}: the directory is accessible by "
+            "group/other. Use a dedicated directory with mode 0700 (the default is "
+            f"{DEFAULT_TOKEN_PATH})"
+        )
+    ensure_private_dir(parent, tighten=own)
     return token_path
 
 

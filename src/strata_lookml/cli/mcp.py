@@ -9,7 +9,7 @@ from pathlib import Path
 
 import click
 
-from strata_lookml.config import _read_config, load_repo_path
+from strata_lookml.config import _read_config, load_cache_path, load_repo_path
 
 
 @click.group()
@@ -80,14 +80,13 @@ def mcp_validate() -> None:
         click.secho("  ✓ repo path exists", fg="green")
 
     # IR cache
-    cache = repo / "strata_ir.db"
-    if cache.exists():
-        import time
+    from strata_lookml.ir.store import cache_age_seconds
 
-        age = int(time.time() - cache.stat().st_mtime)
-        click.secho(f"  ✓ IR cache found (age: {age}s)", fg="green")
+    age = cache_age_seconds(load_cache_path(repo))
+    if age is not None:
+        click.secho(f"  ✓ IR cache found (age: {int(age)}s)", fg="green")
     else:
-        click.secho("  ✗ IR cache not found — run `strata build` or `strata outputs`", fg="yellow")
+        click.secho("  ✗ IR cache not found — run `strata build`", fg="yellow")
 
     # Skills
     try:
@@ -211,7 +210,7 @@ def mcp_config(
         "skills_path": os.environ.get("STRATA_SKILLS_PATH", "(bundled)"),
         "charts_path": os.environ.get("STRATA_CHARTS_PATH", "(bundled)"),
         "conductor_path": os.environ.get("STRATA_CONDUCTOR_PATH", str(repo / "conductor")),
-        "cache_path": os.environ.get("STRATA_CACHE_PATH", str(repo / "strata_ir.db")),
+        "cache_path": str(load_cache_path(repo)),
         "usage_fixture": os.environ.get("STRATA_USAGE_FIXTURE", "(none)"),
         "schema_fixture": os.environ.get("STRATA_SCHEMA_FIXTURE", "(none)"),
         "bq_project": load_bq_project() or "(not set — gcloud default used)",

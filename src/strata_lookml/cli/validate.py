@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
 import re
 import subprocess
@@ -13,7 +12,7 @@ from pathlib import Path
 
 import click
 
-from strata_lookml.config import load_repo_path
+from strata_lookml.config import ensure_private_dir, load_repo_path, repo_key, strata_home
 
 
 @click.command("validate")
@@ -302,10 +301,9 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
             log_path = Path(env_path)
         else:
             # Never write into the user's project: the log lives under ~/.strata/logs/.
-            digest = hashlib.sha256(str(project).encode()).hexdigest()[:12]
-            log_dir = Path.home() / ".strata" / "logs"
-            log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-            log_path = log_dir / f"validation-{project.name}-{digest}.log"
+            log_dir = strata_home() / "logs"
+            ensure_private_dir(log_dir, tighten=True)
+            log_path = log_dir / f"validation-{repo_key(project)}.log"
         status = "reject" if failed_count > 0 else "pass"
         ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         row = f"{ts},{status},{passed_count},{warned_count},{failed_count},{skipped_count}\n"

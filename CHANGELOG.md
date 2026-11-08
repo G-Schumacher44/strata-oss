@@ -37,6 +37,20 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- The IR cache moves out of the LookML repo: the default is
+  `~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db` (directory 0700, file 0600 on
+  POSIX); `--cache` and `STRATA_CACHE_PATH` still win, and `strata build`, the MCP server and
+  `strata mcp validate|config` now resolve it in one place (`mcp validate` and `strata build`
+  previously ignored `STRATA_CACHE_PATH`). The cache records the repo path, a fingerprint of
+  its `.lkml` files (count, newest mtime, total size, paths) and the fixture paths + mtimes it
+  was built from, and the MCP server reuses it only when they match and it is younger
+  than the max age: `strata build` without fixtures followed by a server start with
+  `STRATA_USAGE_FIXTURE` no longer serves a graph with no usage data. `strata clean` removes
+  the repo's cache entry, and `--repo` now reads `STRATA_REPO_PATH`. A `--cache` / `STRATA_CACHE_PATH` that is a
+  symlink, a `.lkml`/`.lookml` file, a directory or an existing file that is not a Strata IR cache (an unrelated SQLite database included) is refused
+  before anything is written (the same guard as `--write-baseline`). Compat: an existing
+  `<repo>/strata_ir.db` is ignored (the first run rebuilds into `~/.strata/cache/`); `strata
+  clean` deletes it.
 - `strata dashboard` falls back to the next free port (8766-8785) when the default 8765 is busy and `--port` was not passed, and prints the URL it bound; the Host allow-list uses the bound port. An explicit `--port` that is busy exits 1 with a clear error.
 - `strata lint` is hidden from `--help` and the docs (contributor-only; still invocable).
 - `strata validate` resolves the user's project (`CONDUCTOR_PROJECT_ROOT` → configured repo → cwd), never Strata's own tree, and prints real relative paths.

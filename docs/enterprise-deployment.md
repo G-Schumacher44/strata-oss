@@ -27,11 +27,12 @@ LookML repository or warehouse control plane.
   network access.
 - Live Looker runs are opt-in via `--looker-url` after `strata auth login`.
 - Strata does not write to Looker or BigQuery, and never modifies `.lkml` files. It
-  does write local files, some inside the LookML checkout: the IR cache
-  (`strata_ir.db` in the repo root, from the MCP server or `strata build`, unless
-  `STRATA_CACHE_PATH` / `--cache` is set), `conductor/` files (`strata bootstrap`,
-  `strata conductor`, `strata validate`'s log), and `strata bootstrap`'s agent/MCP
-  config files. `strata clean` deletes caches. The full list is in
+  does write local files. Outside the LookML checkout: the IR cache (from the MCP
+  server or `strata build`, at `~/.strata/cache/<repo-name>-<hash>.db`, directory
+  0700 and file 0600, unless `STRATA_CACHE_PATH` / `--cache` is set). Inside it:
+  `conductor/` files (`strata bootstrap`, `strata conductor`, `strata validate`'s
+  log) and `strata bootstrap`'s agent/MCP config files. `strata clean` deletes the
+  repo's cache entry and any legacy in-repo `strata_ir.db`. The full list is in
   [Security Hardening](./security-hardening.md#what-strata-reads-and-writes).
 - Local listeners: `strata dashboard` serves on `127.0.0.1` (default port 8765);
   `strata auth login` listens on its loopback redirect port until the redirect

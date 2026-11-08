@@ -116,7 +116,8 @@ strata mcp run
 ### Clean up generated artifacts
 ```bash
 strata clean
-strata clean --repo /path/to/your/lookml   # strata_ir.db + __pycache__ swept inside the repo;
+strata clean --repo /path/to/your/lookml   # the repo's ~/.strata/cache entry, plus legacy
+                                           # strata_ir.db + __pycache__ swept inside the repo;
                                            # output/ is only ever removed from the cwd
 ```
 
@@ -141,7 +142,7 @@ Strata resolves config in this order for most commands:
 | `STRATA_REPO_PATH` | MCP server, CLI | Path to the LookML repo |
 | `STRATA_USAGE_FIXTURE` | MCP server | Usage facts JSON for L1 enrichment |
 | `STRATA_SCHEMA_FIXTURE` | MCP server | Schema facts JSON for drift detection |
-| `STRATA_CACHE_PATH` | MCP server | Override default strata_ir.db path |
+| `STRATA_CACHE_PATH` | MCP server, `strata build`, `strata mcp` | Override the IR cache path (default `~/.strata/cache/<repo-name>-<hash>.db`) |
 | `STRATA_SKILLS_PATH` | MCP server | Override bundled skills directory |
 | `STRATA_CHARTS_PATH` | MCP server | Override bundled chart templates |
 | `STRATA_CONDUCTOR_PATH` | MCP server | Override conductor directory path |
