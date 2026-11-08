@@ -4,7 +4,7 @@
 > change the help string or tool docstring, then run `python scripts/gen_reference.py`.
 > `tests/test_docs_consistency.py` fails when this file is stale.
 
-At a glance: 39 CLI commands (incl. subcommands), 18 MCP tools (17 read-only).
+At a glance: 38 CLI commands (incl. subcommands), 18 MCP tools (17 read-only).
 
 ## CLI
 
@@ -232,22 +232,11 @@ Build all artifacts and open an interactive observability dashboard.
 
 Pull schema facts from BigQuery INFORMATION_SCHEMA.
 
-- `--repo TEXT` — required — Path to LookML repo root
+- `--repo TEXT` — required — env `STRATA_REPO_PATH` — Path to LookML repo root
 - `--out TEXT` — required — Output schema_facts.json path
 - `--bq-project TEXT` — GCP project for 2-part table names (dataset.table)
 - `--existing TEXT` — Existing schema_facts.json to diff against
 - `--dry-run` — flag — Print query plan without hitting BQ
-
-### `strata lint`
-
-`strata lint [OPTIONS]`
-
-Run ruff and mypy checks on src/ and tests/.
-
-- `--fix` — flag — Attempt to fix violations automatically (ruff check --fix)
-- `--format` — flag — Format the codebase (ruff format)
-- `--mypy` — flag — Run mypy type checks (default: true)
-- `--ruff` — flag — Run ruff lint checks (default: true)
 
 ### `strata mcp`
 
@@ -419,9 +408,9 @@ List bundled skills, or print one skill's full procedure.
 
 Validate the Conductor spine and (optionally) replay L1 facts.
 
-- `--project-root TEXT` — env `CONDUCTOR_PROJECT_ROOT` — Project root to validate (defaults to repo root)
+- `--project-root TEXT` — env `CONDUCTOR_PROJECT_ROOT` — Project root to validate (default: STRATA_REPO_PATH / configured repo / cwd)
 - `--check-replay` — flag — Also validate tests/fixtures/replay_facts.json
-- `--replay TEXT` — Path to replay facts JSON (used with --check-replay)
+- `--replay TEXT` — Replay facts JSON (with --check-replay; default: <project>/tests/fixtures/replay_facts.json if present)
 
 ## MCP tools
 

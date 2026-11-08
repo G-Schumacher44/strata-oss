@@ -12,16 +12,22 @@ from pathlib import Path
 
 import click
 
+from strata_lookml.config import load_repo_path
+
 
 @click.command("validate")
 @click.option(
     "--project-root",
     default=None,
     envvar="CONDUCTOR_PROJECT_ROOT",
-    help="Project root to validate (defaults to repo root)",
+    help="Project root to validate (default: STRATA_REPO_PATH / configured repo / cwd)",
 )
 @click.option("--check-replay", is_flag=True, help="Also validate tests/fixtures/replay_facts.json")
-@click.option("--replay", default=None, help="Path to replay facts JSON (used with --check-replay)")
+@click.option(
+    "--replay",
+    default=None,
+    help="Replay facts JSON (with --check-replay; default: <project>/tests/fixtures/replay_facts.json if present)",
+)
 def validate(project_root: str | None, check_replay: bool, replay: str | None) -> None:
     """Validate the Conductor spine and (optionally) replay L1 facts.
 
@@ -35,8 +41,8 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
     strata validate --check-replay
     strata validate --project-root /path/to/my-project
     """
-    repo_root = Path(__file__).resolve().parents[3]
-    project = Path(project_root).expanduser().resolve() if project_root else repo_root
+    project = Path(project_root).expanduser().resolve() if project_root else load_repo_path()
+    repo_root = project
     project_deployed = project.exists()
 
     results: list[dict] = []
@@ -50,7 +56,7 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
 
     # ── Spine structure ───────────────────────────────────────────────────
     check(
-        "project/ directory",
+        "project directory",
         lambda: (
             ("pass", "", None)
             if project_deployed
@@ -60,9 +66,9 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
 
     for rel in ["AGENTS.md", "conductor/index.md", "conductor/handoff-log.md"]:
         check(
-            f"project/{rel}",
+            rel,
             lambda p=rel: (
-                ("skip", "project/ not deployed", None)
+                ("skip", "project directory not found", None)
                 if not project_deployed
                 else ("pass", "", None)
                 if (project / p).exists()
@@ -73,7 +79,7 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
     # ── Handoff format ────────────────────────────────────────────────────
     def check_handoff():
         if not project_deployed:
-            return "skip", "project/ not deployed", None
+            return "skip", "project directory not found", None
         f = project / "conductor" / "handoff-log.md"
         if not f.exists():
             return "fail", "missing", None
@@ -93,7 +99,7 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
 
     def check_handoff_ttl():
         if not project_deployed:
-            return "skip", "project/ not deployed", None
+            return "skip", "project directory not found", None
         f = project / "conductor" / "handoff-log.md"
         if not f.exists():
             return "skip", "handoff-log.md missing", None
@@ -121,7 +127,7 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
 
     def check_commit_hash():
         if not project_deployed:
-            return "skip", "project/ not deployed", None
+            return "skip", "project directory not found", None
         f = project / "conductor" / "handoff-log.md"
         if not f.exists():
             return "skip", "handoff-log.md missing", None
@@ -160,7 +166,7 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
     # ── CI workflow stub ──────────────────────────────────────────────────
     def check_ci_stub():
         if not project_deployed:
-            return "skip", "project/ not deployed", None
+            return "skip", "project directory not found", None
         workflows = project / ".github" / "workflows"
         if not workflows.exists() or not any(workflows.iterdir()):
             return "warn", "no .github/workflows — stub recommended", None
@@ -200,7 +206,7 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
 
     def check_active_slice():
         if not project_deployed:
-            return "skip", "project/ not deployed", None
+            return "skip", "project directory not found", None
         if not active_slice_rel:
             return "warn", "could not parse from conductor/index.md", None
         if active_slice_rel.lower().startswith("none"):
@@ -261,13 +267,16 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
 
     # ── Replay facts (optional) ───────────────────────────────────────────
     if check_replay:
+        default_replay = project / "tests" / "fixtures" / "replay_facts.json"
         replay_path = (
             Path(replay).expanduser().resolve()
             if replay
-            else (repo_root / "tests" / "fixtures" / "replay_facts.json")
+            else (default_replay if default_replay.exists() else None)
         )
 
         def check_replay_facts():
+            if replay_path is None:
+                return "fail", "no replay facts — pass --replay <file>", None
             if not replay_path.exists():
                 return "fail", f"replay facts not found: {replay_path}", None
             from strata_lookml.l1.provider import UsageFacts
