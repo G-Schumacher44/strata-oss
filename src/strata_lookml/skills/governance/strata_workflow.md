@@ -42,15 +42,13 @@ strata dashboard \
   --schema-fixture tests/fixtures/gcs_schema_facts.json
 ```
 
-Opens `http://127.0.0.1:8765/dashboard.html` in your browser. The dashboard is
+Opens `http://127.0.0.1:8765/dashboard.html` in your browser (the URL printed is the one bound). The dashboard is
 self-contained HTML — you can also open `output/gcs_analytics/dashboard.html`
 directly without the server.
 
-If you get `OSError: [Errno 48] Address already in use`, kill the old server:
-```bash
-lsof -ti:8765 | xargs kill -9
-strata dashboard ...
-```
+If 8765 is busy, `strata dashboard` falls back to the next free port (8766-8785) and prints
+the URL it bound. An explicit `--port` that is busy fails with an error instead, so pick another
+port or omit the flag.
 
 ---
 

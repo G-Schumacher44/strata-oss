@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import http.server
 import json
-import socketserver
 import threading
 import webbrowser
 from pathlib import Path
 from typing import Any
 
 import click
+
+from strata_lookml.errors import StrataError
+from strata_lookml.loopback import ExclusiveHTTPServer, port_in_use
+
+DEFAULT_PORT = 8765
+# Tried in order when the default port is busy and `--port` was not passed.
+FALLBACK_PORTS = range(8766, 8786)
 
 
 def allowed_hosts(port: int) -> frozenset[str]:
@@ -48,6 +54,35 @@ def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:
     return QuietHandler
 
 
+def bind_server(
+    port: int, explicit: bool, fallback_ports: range | None = None
+) -> ExclusiveHTTPServer:
+    """Bind the loopback server, with the Host allow-list built from the port actually bound.
+
+    An explicit ``--port`` that is busy fails; the default port falls back through the range.
+    """
+    fallback = FALLBACK_PORTS if fallback_ports is None else fallback_ports
+    candidates = [port] if explicit else [port, *fallback]
+    for candidate in candidates:
+        try:
+            # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
+            return ExclusiveHTTPServer(("127.0.0.1", candidate), make_handler(candidate))
+        except OSError as exc:
+            if not port_in_use(exc):
+                raise
+    if explicit:
+        raise StrataError(
+            f"Port {port} is already in use.",
+            hint="Pass a different --port, or omit --port to use the first free port from "
+            f"{port} up.",
+        )
+    tried = f"{port} and {candidates[1]}-{candidates[-1]}" if len(candidates) > 1 else str(port)
+    raise StrataError(
+        f"No free port for the dashboard (tried {tried}).",
+        hint="Free a port, or pass --port with one that is open.",
+    )
+
+
 @click.command("dashboard")
 @click.option(
     "--repo", required=True, envvar="STRATA_REPO_PATH", show_envvar=True, help="Path to LookML repo"
@@ -73,7 +108,12 @@ def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:
 )
 @click.option("--days", default=30, show_default=True, help="Looker usage window in days")
 @click.option("--out", default=None, help="Output directory (default: output/<repo-name>)")
-@click.option("--port", default=8765, show_default=True, help="Local server port")
+@click.option(
+    "--port",
+    default=DEFAULT_PORT,
+    show_default=True,
+    help="Local server port (without --port, the next free port is used if the default is busy)",
+)
 @click.option("--no-browser", is_flag=True, help="Skip opening the browser")
 def dashboard(
     repo: str,
@@ -124,16 +164,20 @@ def dashboard(
     dashboard_path.write_text(html, encoding="utf-8")
     click.secho(f"Dashboard: {dashboard_path}", fg="green")
 
-    url = f"http://127.0.0.1:{port}/dashboard.html"
-    click.echo(f"\nServing at {url}  (Ctrl+C to stop)\n")
-
+    explicit = (
+        click.get_current_context().get_parameter_source("port")
+        is not click.core.ParameterSource.DEFAULT
+    )
     import os
 
     os.chdir(out_dir)
 
-    socketserver.TCPServer.allow_reuse_address = True
-    # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
-    server = http.server.HTTPServer(("127.0.0.1", port), make_handler(port))
+    server = bind_server(port if explicit else DEFAULT_PORT, explicit)
+    bound = server.server_address[1]
+    url = f"http://127.0.0.1:{bound}/dashboard.html"
+    if bound != DEFAULT_PORT and not explicit:
+        click.echo(f"Port {DEFAULT_PORT} is busy; using {bound}.")
+    click.echo(f"\nServing at {url}  (Ctrl+C to stop)\n")
 
     if not no_browser:
         threading.Timer(0.4, webbrowser.open, args=[url]).start()
