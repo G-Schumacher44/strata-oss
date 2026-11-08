@@ -169,3 +169,59 @@ def test_bound_dashboard_port_cannot_be_bound_twice(ports: tuple[int, range]) ->
             dash.bind_server(base, explicit=True)
     finally:
         first.server_close()
+
+
+def _windows_busy(monkeypatch: pytest.MonkeyPatch, busy: set[int]) -> None:
+    """Make binding any port in `busy` fail the way an exclusive Windows listener does."""
+    import errno
+    import sys
+
+    real = dash.ExclusiveHTTPServer
+
+    def fake(addr: tuple[str, int], handler: type) -> http.server.HTTPServer:
+        if addr[1] in busy:
+            err = OSError(errno.EACCES, "Permission denied")
+            err.winerror = 10013  # type: ignore[attr-defined]
+            raise err
+        return real(addr, handler)
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(dash, "ExclusiveHTTPServer", fake)
+
+
+def test_windows_wsaeacces_triggers_fallback(
+    monkeypatch: pytest.MonkeyPatch, ports: tuple[int, range]
+) -> None:
+    base, fallback = ports
+    _windows_busy(monkeypatch, {base})
+    server = dash.bind_server(base, explicit=False)
+    try:
+        assert server.server_address[1] == fallback[0]
+    finally:
+        server.server_close()
+
+
+def test_windows_wsaeacces_explicit_port_is_already_in_use(
+    monkeypatch: pytest.MonkeyPatch, ports: tuple[int, range]
+) -> None:
+    from strata_lookml.errors import StrataError
+
+    base, _ = ports
+    _windows_busy(monkeypatch, {base})
+    with pytest.raises(StrataError, match="already in use"):
+        dash.bind_server(base, explicit=True)
+
+
+def test_eacces_off_windows_is_not_a_busy_port(
+    monkeypatch: pytest.MonkeyPatch, ports: tuple[int, range]
+) -> None:
+    import errno
+
+    base, _ = ports
+    monkeypatch.setattr(
+        dash,
+        "ExclusiveHTTPServer",
+        lambda *a: (_ for _ in ()).throw(OSError(errno.EACCES, "denied")),
+    )
+    with pytest.raises(OSError):
+        dash.bind_server(base, explicit=False)

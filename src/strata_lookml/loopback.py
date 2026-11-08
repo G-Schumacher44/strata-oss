@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import http.server
 import os
 import socket
+import sys
 
 
 class ExclusiveHTTPServer(http.server.HTTPServer):
@@ -21,3 +23,15 @@ class ExclusiveHTTPServer(http.server.HTTPServer):
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows only
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
+
+
+def port_in_use(exc: OSError) -> bool:
+    """True when a bind failed because another socket holds the port.
+
+    Windows reports an exclusive listener on the same port as WSAEACCES (10013), not EADDRINUSE.
+    """
+    if exc.errno == errno.EADDRINUSE:
+        return True
+    return sys.platform == "win32" and (
+        exc.errno == errno.EACCES or getattr(exc, "winerror", None) == 10013
+    )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import errno
 import http.server
 import json
 import threading
@@ -13,7 +12,7 @@ from typing import Any
 import click
 
 from strata_lookml.errors import StrataError
-from strata_lookml.loopback import ExclusiveHTTPServer
+from strata_lookml.loopback import ExclusiveHTTPServer, port_in_use
 
 DEFAULT_PORT = 8765
 # Tried in order when the default port is busy and `--port` was not passed.
@@ -69,7 +68,7 @@ def bind_server(
             # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
             return ExclusiveHTTPServer(("127.0.0.1", candidate), make_handler(candidate))
         except OSError as exc:
-            if exc.errno != errno.EADDRINUSE:
+            if not port_in_use(exc):
                 raise
     if explicit:
         raise StrataError(
