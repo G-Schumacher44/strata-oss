@@ -13,7 +13,8 @@ LookML repository or warehouse control plane.
   client app to a group (below).
 - Use GitHub OIDC or workload identity for CI integrations; do not commit service
   account keys.
-- Keep Slack/Jira tokens scoped to notification delivery only.
+- Strata does not send Slack or Jira notifications (payload generation only), so it needs
+  no Slack/Jira token. If you add delivery yourself, scope that token to it alone.
 - Local Looker tokens live at `~/.strata/tokens.json`, outside the repo: file 0600,
   directory 0700 (POSIX), refused on read if group/world accessible, sent only to the
   Looker origin that issued them. `strata auth logout` deletes the local copy only;
@@ -56,10 +57,14 @@ LookML repository or warehouse control plane.
 - Keep BigQuery schema fact export as a separate read-only producer feeding
   Strata JSON fixtures.
 
-## Audit Trail
+## Change Records (not an audit log)
 
-Every conductor run writes a handoff with a real commit anchor, exact next steps,
-and gate results. Treat those handoffs as the operational audit trail.
+By project convention, each Conductor work session ends with a handoff in
+`conductor/handoff-log.md` recording a commit anchor, next steps, and gate results.
+This is a process convention, not an enforced audit log: nothing in Strata requires a
+handoff, and the files are ordinary repo text that can be edited. `strata validate`
+checks that the latest handoff's `Commit:` hash exists in git, nothing more. For an
+audit trail, rely on your git host's history and Looker's own System Activity.
 
 ---
 

@@ -18,7 +18,7 @@
 
 | Doc | Description |
 |---|---|
-| [Enterprise Deployment](./enterprise-deployment.md) | IAM, ADC, OIDC for GH Actions, Google Workspace path |
+| [Enterprise Deployment](./enterprise-deployment.md) | IAM, OIDC for GH Actions, Google Workspace path |
 | [Notifications Setup](./notifications-setup.md) | Slack/email alerting for CI artifact delivery |
 
 ## Security

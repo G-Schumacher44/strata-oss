@@ -104,7 +104,7 @@ One sentence. Confidence: high / medium / low.
 ## Escalation
 
 > "Halt. Table `[ref]` could not be resolved. Confirm the fully-qualified name
-> (`project.dataset.table`) and that your ADC credentials have read access."
+> (`project.dataset.table`) and that your gcloud credentials have read access."
 
 > "Halt. Grain is ambiguous between `[key_a]` (suggesting row = X) and `[key_b]`
 > (suggesting row = Y). Which is the intended grain for this analysis?"

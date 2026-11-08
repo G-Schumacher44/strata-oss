@@ -29,6 +29,15 @@ All notable changes to `strata-lookml` are documented here. The format follows
   variable to that callback's body instead of the whole enclosing block, so an outer data-derived
   binding with the same name is no longer wrongly treated as safe (#31).
 
+### Documentation
+
+- Docs now match the code on four claims: `strata mcp` help and GOVERNANCE.md say 17 read-only
+  tools plus `strata_render_chart` (writes HTML under `~/.strata/output/` or `/tmp/`), not "18
+  read-only"; the Slack/Jira GitHub-secret rows are gone (delivery is not implemented, no workflow
+  uses them); Conductor handoffs are described as a process convention, not an audit log; and
+  `generate-schema` names the real prerequisite, `gcloud auth login` (the `bq` CLI uses gcloud's
+  own credentials, not ADC). No behavior change.
+
 ## [0.1.9] - 2026-11-03
 
 ### Security

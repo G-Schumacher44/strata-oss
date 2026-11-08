@@ -109,8 +109,8 @@ def _bq_query(argv: list[str]) -> list[dict]:
     try:
         result = subprocess.run(argv, capture_output=True, text=True, check=True)
     except FileNotFoundError:
-        click.echo("ERROR: `bq` CLI not found. Install Google Cloud SDK and run:", err=True)
-        click.echo("  gcloud auth application-default login", err=True)
+        click.echo("ERROR: `bq` CLI not found. Install the Google Cloud CLI and run:", err=True)
+        click.echo("  gcloud auth login", err=True)
         sys.exit(1)
     except subprocess.CalledProcessError as exc:
         click.echo(f"ERROR: bq query failed:\n{exc.stderr}", err=True)
@@ -186,7 +186,8 @@ def generate_schema(
     INFORMATION_SCHEMA.COLUMNS for only the tables referenced in LookML,
     and writes schema_facts.json for use with strata check/outputs.
 
-    Requires: google-cloud-sdk in PATH + ADC configured.
+    Requires: the Google Cloud CLI in PATH, signed in with `gcloud auth login`
+    (`bq` uses gcloud's own credentials, not Application Default Credentials).
 
     \b
     strata generate-schema --repo /path/to/lookml --out schema_facts.json --dry-run
@@ -244,7 +245,7 @@ def generate_schema(
                     click.echo(f"    {t}")
             click.echo()
         click.echo(
-            "Run without --dry-run (with ADC configured) to execute and write schema_facts.json."
+            "Run without --dry-run (signed in to gcloud) to execute and write schema_facts.json."
         )
         return
 

@@ -119,10 +119,11 @@ input to your agent.
 | Credential | Location | Required For | Notes |
 |---|---|---|---|
 | Looker OAuth access token | `~/.strata/tokens.json` | Live System Activity (`--looker-url`) | 0600/0700, origin-bound, redacted by `auth status`. MCP tools never read it. |
-| gcloud / ADC credentials | gcloud's own store | `strata generate-schema` | Used by the `bq` CLI, not by Strata directly. |
-| Slack token | GitHub secret | Notification delivery | Not used by dry-run payload generation. |
-| Jira token | GitHub secret | Ticket creation | Not used by dry-run payload generation. |
+| gcloud CLI credentials (`gcloud auth login`, or a service account via gcloud) | gcloud's own store | `strata generate-schema` | Used by the `bq` CLI, not by Strata directly. Application Default Credentials are not what `bq` uses. |
 | GCP identity | GitHub OIDC | Future schema/weekly integrations | Prefer workload identity, not key files. |
+
+Slack and Jira delivery is not implemented (see above), so Strata uses no Slack or Jira token
+and no workflow references one. If you wire delivery yourself, the token is yours to scope.
 
 ## MCP Model
 

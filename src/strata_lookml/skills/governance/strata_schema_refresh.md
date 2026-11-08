@@ -9,7 +9,7 @@ or the quarterly governance review is due.
 ## Prerequisites
 
 - Google Cloud SDK in PATH (`bq --version` must work)
-- ADC configured: `gcloud auth application-default login`
+- Signed in to gcloud: `gcloud auth login` (`bq` uses gcloud's credentials, not ADC)
 - Strata installed: `.venv/bin/strata --help`
 - LookML repo cloned at a known path
 

@@ -16,9 +16,11 @@ from strata_lookml.config import _read_config, load_repo_path
 def mcp() -> None:
     """Local MCP server for AI clients (Claude, Cursor, Gemini).
 
-    Exposes 18 read-only LookML analysis tools over stdio. Configure your
-    AI client to launch `strata-mcp` via .mcp.json, then ask it to audit
-    dead code, PDT costs, schema drift, or explore dependencies.
+    Exposes 18 LookML analysis tools over stdio: 17 read-only, plus
+    strata_render_chart, which writes one HTML file under ~/.strata/output/
+    or /tmp/. Configure your AI client to launch `strata-mcp` via .mcp.json,
+    then ask it to audit dead code, PDT costs, schema drift, or explore
+    dependencies.
     """
 
 

@@ -500,7 +500,7 @@ for `localhost`/`127.0.0.1`), and requests do not follow redirects. The MCP tool
 token. `strata auth logout` deletes the local copy only — revocation is done by a Looker admin.
 Full model: [`docs/security-hardening.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md).
 
-For enterprise: ADC, OIDC for GitHub Actions, and Google Workspace IAM path in
+For enterprise: identity and access, OIDC for GitHub Actions, and Google Workspace IAM path in
 [`docs/enterprise-deployment.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/enterprise-deployment.md).
 
 ### Skills — Structured Investigation Procedures
@@ -734,7 +734,7 @@ Full index: [**docs/README.md**](https://github.com/G-Schumacher44/strata-oss/bl
 | [`docs/testing.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing.md) | Playgrounds, scenarios, how to run them |
 | [`docs/testing-findings.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/testing-findings.md) | Full findings — real numbers, drift breakdowns, agentic benchmarks |
 | [`docs/security-hardening.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md) | What Strata reads and writes, OAuth + token handling, query construction, MCP security model |
-| [`docs/enterprise-deployment.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/enterprise-deployment.md) | IAM, ADC, OIDC for GH Actions, Google Workspace path |
+| [`docs/enterprise-deployment.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/enterprise-deployment.md) | IAM, OIDC for GH Actions, Google Workspace path |
 | [`docs/CONTRIBUTING.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/CONTRIBUTING.md) | Contribution guide |
 
 </details>
