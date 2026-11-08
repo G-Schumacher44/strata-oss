@@ -35,13 +35,14 @@ jobs:
       - name: Mypy check
         run: mypy src/strata_lookml --ignore-missing-imports
 
+      # Includes tests/test_scenarios.py: each playground still shows its dead code / PDT / drift.
       - name: Run tests
         run: python -m pytest
 
       - name: Dashboard generated JS syntax check
         run: python scripts/check_dashboard_js_syntax.py
 
-      - name: Strata check — gcs_analytics
+      - name: Strata check (integrity gate) — gcs_analytics
         run: |
           strata check \
             --repo tests/lookml/gcs_analytics \
@@ -56,7 +57,7 @@ jobs:
             --schema-fixture tests/fixtures/gcs_schema_facts.json \
             --out output/gcs_analytics
 
-      - name: Strata check — thelook
+      - name: Strata check (integrity gate) — thelook
         run: |
           strata check \
             --repo tests/lookml/thelook \
@@ -71,7 +72,7 @@ jobs:
             --schema-fixture tests/fixtures/playground_schema_facts.json \
             --out output/thelook
 
-      - name: Strata check — enterprise_mono
+      - name: Strata check (integrity gate) — enterprise_mono
         run: |
           strata check \
             --repo tests/lookml/enterprise_mono \

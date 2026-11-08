@@ -33,25 +33,25 @@ jobs:
             repo: tests/lookml/enterprise_mono
             usage: tests/fixtures/enterprise_usage_facts.json
             schema: tests/fixtures/enterprise_schema_facts.json
-            gate: true   # the rich playground built to exercise ALL signal types → runs the strict gate
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive   # gcs_analytics and thelook are submodules; without them the repo is empty
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -e ".[dev]"
-      # Strict scenario gate (asserts ≥1 each of dead-code / PDT-ledger / schema-drift) runs ONLY on the
-      # playground designed to have all three. Sparse playgrounds (gcs_analytics, thelook) don't reliably
-      # produce every signal type — gating them made the canary fragile (and exposed a Py3.11 L1 emptiness
-      # bug, tracked separately). They still exercise the full pipeline via `strata outputs` below.
-      - name: Run Strata check (strict gate)
-        if: ${{ matrix.gate }}
+      # The gate: integrity (resolution errors, verdict evidence, a repo with .lkml files).
+      - name: Run Strata check
         run: |
           strata check \
             --repo ${{ matrix.repo }} \
             --usage-fixture ${{ matrix.usage }} \
             --schema-fixture ${{ matrix.schema }}
+      # The scenario canary: the playground still shows the signals it was built to show.
+      - name: Scenario assertions
+        run: python -m pytest tests/test_scenarios.py -k ${{ matrix.name }}
       - name: Run Strata outputs
         run: |
           strata outputs \

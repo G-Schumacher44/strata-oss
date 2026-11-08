@@ -24,9 +24,9 @@ strata check \
 ```
 
 This runs in order:
-1. `pytest` — unit + integration tests (must all pass)
+1. `pytest` — unit + integration tests, incl. the playground scenarios (must all pass)
 2. `strata validate --check-replay` — Conductor spine + replay facts gate
-3. `strata check` — scenario gates on gcs_analytics playground
+3. `strata check` — integrity gate on gcs_analytics (unresolved extends, verdict evidence); prints finding counts
 4. `strata outputs` — writes 8 JSON artifacts to `output/gcs_analytics/`
 
 If any step fails, stop and report the error. Do not proceed to the dashboard.
