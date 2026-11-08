@@ -15,7 +15,11 @@ import click
 
 def allowed_hosts(port: int) -> frozenset[str]:
     """Host header values accepted for a loopback server bound to ``port`` (lowercase)."""
-    return frozenset(f"{h}:{port}" for h in ("127.0.0.1", "localhost", "[::1]"))
+    hosts = ("127.0.0.1", "localhost", "[::1]")
+    permitted = {f"{h}:{port}" for h in hosts}
+    if port == 80:  # browsers omit the default port from Host
+        permitted.update(hosts)
+    return frozenset(permitted)
 
 
 def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:

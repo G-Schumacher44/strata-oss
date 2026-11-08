@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from strata_lookml.cli.dashboard import make_handler
+from strata_lookml.cli.dashboard import allowed_hosts, make_handler
 
 
 @pytest.fixture
@@ -61,3 +61,10 @@ def test_missing_host_refused(server: int) -> None:
     status, body = _get(server, None)
     assert status == 403
     assert b'"k"' not in body
+
+
+def test_portless_hosts_only_permitted_on_port_80() -> None:
+    portless = {"127.0.0.1", "localhost", "[::1]"}
+    assert portless <= allowed_hosts(80)
+    assert "127.0.0.1:80" in allowed_hosts(80)
+    assert not portless & allowed_hosts(8765)
