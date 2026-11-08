@@ -35,6 +35,7 @@ KNOWN_EVIDENCE_NAMESPACES = frozenset(
 NODE_PALETTE = {
     "explore_active": "#3fbf8f",
     "explore_dead": "#f06b5d",
+    "explore_unknown": "#8f9aab",  # usage facts not loaded: activity is unknown, not active
     "view_active": "#6aa5e0",
     "view_orphan": "#7c8696",
     "zombie": "#a98bf5",
@@ -116,7 +117,8 @@ def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
     migration = _embed_json(artifacts.get("migration_impact", []))
     graph_json = _embed_json(graph_data)
     l1_facts = _embed_json(_build_l1_facts(graph))
-    coverage = _embed_json(analysis_coverage(graph))
+    coverage_flags = analysis_coverage(graph)
+    coverage = _embed_json(coverage_flags)
     data_block = (
         f"const CATALOG       = {catalog};\n"
         f"const DEAD_CODE     = {dead_code};\n"
@@ -141,6 +143,7 @@ def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
         _HTML_TEMPLATE.replace("/*__DATA__*/", data_block)
         .replace("/*__SCRIPTS__*/", scripts)
         .replace("/*__PALETTE__*/", _palette_css())
+        .replace("/*__USAGE_NOTE_HIDDEN__*/", " hidden" if coverage_flags["usage"] else "")
     )
 
 
@@ -154,6 +157,8 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
         else {f"{r['model']}.{r['explore']}": r["query_count"] for r in _eu if isinstance(r, dict)}
     )
     pdt_records = {r["view"]: r for r in l1.get("pdt_ledger", [])}
+    # Dead status needs usage evidence; with none loaded an explore is "unknown", never green.
+    usage_loaded = analysis_coverage(graph)["usage"]
 
     # One edge pass builds every cross-kind lookup the node-detail panel needs — computed
     # once here so the panel never re-derives a fact JS-side that L1 already established
@@ -218,7 +223,14 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             extra["pdt_dependencies"] = sorted(
                 {view_pdt[v] for v in views_for_explore if v in view_pdt}
             )
-            color = NODE_PALETTE["explore_dead" if is_dead else "explore_active"]
+            extra["status"] = "dead" if is_dead else "active" if usage_loaded else "unknown"
+            color = NODE_PALETTE[
+                "explore_dead"
+                if is_dead
+                else "explore_active"
+                if usage_loaded
+                else "explore_unknown"
+            ]
             shape = "ellipse"
             # Demand reads as size, capped so a heavy explore can't crowd its rank.
             size = max(14, min(28, 14 + qcount // 50))
@@ -474,6 +486,7 @@ a.kpi-card:hover { border-color: var(--kpi-accent, var(--muted)); background: va
 .legend-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
 .legend-group .lg-title { font-size: 12px; color: var(--text-2); font-weight: 600; }
 .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.legend-item[hidden] { display: none; }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .legend-rect { width: 14px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 .legend-diamond { width: 9px; height: 9px; transform: rotate(45deg); border-radius: 1px; flex-shrink: 0; margin: 0 1px; }
@@ -646,6 +659,8 @@ tr:hover .copy-link-btn, li:hover .copy-link-btn, .copy-link-btn:focus-visible {
     <div class="legend-group"><span class="lg-title">Explores</span>
       <div class="legend-item"><div class="legend-dot" style="background:var(--n-explore-active)"></div> Active explore</div>
       <div class="legend-item"><div class="legend-dot" style="background:var(--n-explore-dead)"></div> Dead explore</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--n-explore-unknown)"></div> Unknown (no usage facts)</div>
+      <div class="legend-item" id="legend-usage-note"/*__USAGE_NOTE_HIDDEN__*/>Usage facts not loaded &mdash; explore activity unknown</div>
     </div>
     <div class="legend-group"><span class="lg-title">Views</span>
       <div class="legend-item"><div class="legend-rect" style="background:var(--n-view-active)"></div> View</div>
@@ -1753,6 +1768,7 @@ function applyGraphState(cy, state) {
   }
   function statusBadge(d) {
     if (d.kind === 'explore') {
+      if (d.status === 'unknown') return '<span class="badge badge-gray">UNKNOWN</span>';
       return d.dead ? '<span class="badge badge-red">DEPRECATE</span>' : '<span class="badge badge-green">KEEP</span>';
     }
     if (d.kind === 'pdt') {
