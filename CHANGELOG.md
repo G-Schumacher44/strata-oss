@@ -25,6 +25,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - `strata validate`: the "Active slice file" check takes the first path token of the `Active slice:`
   line in `conductor/index.md`, so an annotated line (`path.md (review — PR open; ...)`) no longer
   fails as a missing file (#47).
+- Test-only: the dashboard innerHTML escaping guardrail now scopes a `forEach`/`map` callback's index
+  variable to that callback's body instead of the whole enclosing block, so an outer data-derived
+  binding with the same name is no longer wrongly treated as safe (#31).
 
 ### Documentation
 
