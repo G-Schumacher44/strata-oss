@@ -37,6 +37,12 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- `strata mcp validate` is honest about readiness: it builds the IR graph and reports node counts;
+  a missing cache, missing Looker token or unset fixtures are `~` advisories (exit 0, no `✗`),
+  while a missing repo, no `.lkml` files, a configured-but-missing or unparseable usage/schema
+  fixture, or a graph build error is `✗` and exits 1. New `--json` emits
+  `{ready, checks: [{name, status, message, hint}], counts}`. The cache check follows
+  `STRATA_CACHE_PATH`.
 - The IR cache moves out of the LookML repo: the default is
   `~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db` (directory 0700, file 0600 on
   POSIX); `--cache` and `STRATA_CACHE_PATH` still win, and `strata build`, the MCP server and
