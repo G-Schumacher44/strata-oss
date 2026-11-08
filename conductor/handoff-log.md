@@ -2,33 +2,29 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/s6-bootstrap (non-interactive, atomic bootstrap, spec S6)
+## Date: 2026-11-08 — feat/s5-check-baseline (`strata check --baseline`, spec S5)
 
-Commit: 226be98
+Commit: 4d71071
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — spec S6 (D6; findings B2, U10) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
-Context Budget: medium
-Context Loaded: AGENTS.md, handoff-log, the spec (§1, B2/U10, D6, S6), cli/{bootstrap,conductor,mcp,_contract}.py, errors.py, config.py, bootstrap templates, tests/test_cli.py.
-Exact Next Steps: twin gate, operator merges. After S2 (U10 partial: MCP side of fixture env) and S4 land, merge `origin/main`, hand-resolve handoff/CHANGELOG, re-run `python scripts/gen_reference.py`. S7 (after S2+S6) and S9 build on `--yes` and `render_mcp_client_config`.
+Conductor Mode: feature — spec S5 (D1 rest) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
+Context Budget: small
+Context Loaded: AGENTS.md, the spec (D1, S4, S5), gate.py, cli/check.py, tests/test_cli.py, README CI Gate.
+Exact Next Steps: twin gate, operator merges. Merge `origin/main` when S3/S7/#68 land (hand-resolve handoff/CHANGELOG, `python scripts/gen_reference.py`).
 
 ### What changed
 
-- New `bootstrap/plan.py`: `FileOp` (write/mkdir/skip), `apply_plan` (temp file + `os.replace` per file; on any failure removes files and dirs created this run and restores overwritten bytes, then raises `StrataError`), `render_mcp_client_config(repo, usage, schema, client)` (the one renderer), `report_ops`.
-- `cli/conductor.py`: `plan_conductor_init(target, force)` plain function; `conductor init` plans then applies. `cli/bootstrap.py` no longer uses CliRunner: gather inputs (`_gather_config`) → `plan_bootstrap` → apply. No tty and no `--yes` → `UsageError` (exit 2) before any write; `--dry-run` implies no prompts and prints the plan.
-- Flags: `--yes/-y --bq-project --cost-threshold-gb --set-default-repo/--no-set-default-repo --usage-fixture --schema-fixture --dry-run`. Fixture paths must be existing files (exit 2). Fixture env goes into `.mcp.json` and `.cursor/mcp.json` (U10).
-- `strata mcp config --client claude|cursor [--repo --usage-fixture --schema-fixture]` prints the bootstrap file byte-for-byte. The `mcp.json`/`cursor_mcp.json` templates are deleted (rendered in code).
-- README Quick Start (`--yes`, submodule init for playgrounds), CHANGELOG, regenerated `docs/reference.md`.
+- `gate.py` owns the baseline: `write_baseline`/`baseline_document`, `load_baseline` (`BaselineError`), `findings_by_category` (was private), and `evaluate_gate(..., baseline=)` which subtracts known ids from the `--fail-on` categories before failing. `cli/check.py` only parses flags and formats.
+- File format: JSON `{"version": 1, "findings": {category: [sorted unique ids]}}`, trailing newline; only categories whose facts were loaded are written.
+- With `--baseline` the result adds `baselined` and `stale_baseline_ids` (stale = baselined id absent from a loaded category; a category not loaded this run is not judged). Without it the `--json` shape is unchanged.
+- README CI Gate section (legacy-repo adoption), CHANGELOG Added, regenerated `docs/reference.md`.
 
 ### Deviations from the spec
 
-- Rollback also restores files overwritten (`--force`, `.gitignore` append, existing config), not only files created; "created files removed" alone would leave a half-applied `--force` run.
-- `--dry-run` skips prompts (it would be useless on a script otherwise). With `--yes`, existing config keeps its `repo_path` unless `--set-default-repo` is passed; flags still update bq_project/threshold, other keys are preserved (the old prompt path rewrote the file from scratch).
+- Ids are stored per category, not one flat list, so stale detection cannot misfire on a category whose fixture is not loaded in the checking run.
+- `--write-baseline` also runs the gate afterwards (integrity failure still exits 1); it is mutually exclusive with `--baseline`.
+- Unreadable/invalid baseline exits 2 via `click.UsageError` (a `StrataError` would exit 1 per the CLI contract).
 
 ### Gates
 
-pytest 239 passed (+8 in `tests/test_bootstrap.py`), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: old `cli/bootstrap.py` against the new tests fails 7 of 8 (the conductor regression test is a guard that passes on both); disabling the rollback unlink fails both atomicity tests.
-
-Review round (Codex): rollback now finishes even if a restore fails (successful replacements tracked separately, each undo step independent, one StrataError summarising failures); fixture options declare `envvar` + `show_envvar` on bootstrap and `mcp config --client` (also `--repo` there); `resolve_fixture` is the one path normaliser for both commands. Fix commit: d5bf6c2.
-Round 3: rollback also runs on KeyboardInterrupt/BaseException (re-raised as is) and covers an in-flight replace that landed; writes go through symlinks to the resolved target (link untouched, rollback restores target bytes); `--repo` declares `STRATA_REPO_PATH` on `mcp config`, `conductor init/new-slice/status`. Not changed (outside this PR's files): `strata clean --repo`, `generate-schema --repo` still lack the envvar.
-Round 4: rollback is one rule — snapshot each resolved destination (bytes + mode, or absent) before its first write, first snapshot wins, restore anything that differs through the same atomic writer (mode kept). Replaces the created/overwritten/in-flight bookkeeping.
+pytest 285 passed (+8 in `tests/test_cli.py`), ruff check + format --check clean, mypy clean (CI invocation), `gen_reference.py --check` clean. Negative controls: the new tests run against a detached `origin/main` worktree fail 8 of 8 (the bad-baseline cases assert our message names the file, so click's "no such option" cannot satisfy them).
