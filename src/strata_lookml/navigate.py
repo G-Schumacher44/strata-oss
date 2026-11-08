@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from strata_lookml.errors import NotFound
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_id
 from strata_lookml.mcp.tools import (
     strata_explore_deps,
     strata_find_field,
@@ -104,7 +104,7 @@ def build_navigate_brief(
             deps = strata_explore_deps(graph, explore_name, model_name)
         except NotFound:
             continue  # a dotted model name splits wrong; skip it as before rather than fail
-        node = graph.get_node(f"explore:{model_name}:{explore_name}")
+        node = graph.get_node(explore_id(model_name, explore_name))
         explore_details.append(
             {
                 "name": ex,

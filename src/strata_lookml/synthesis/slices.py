@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_key
 from strata_lookml.mcp.tools import strata_explore_deps
 
 
 def build_explore_slice(graph: IRGraph, model: str, explore: str) -> dict[str, Any]:
     """Create a compact, evidence-only slice for one explore."""
 
-    key = f"{model}.{explore}"
+    key = explore_key(model, explore)
     deps = strata_explore_deps(graph, explore, model)
     l1 = graph.metadata.get("l1", {})
     dead_code = [
@@ -29,7 +29,7 @@ def build_explore_slice(graph: IRGraph, model: str, explore: str) -> dict[str, A
         "content_references": [
             item
             for item in l1.get("content_references", [])
-            if f"{item['model']}.{item['explore']}" == key
+            if explore_key(item["model"], item["explore"]) == key
         ],
         "dead_code_evidence": dead_code,
         "pdt_evidence": pdt_ledger,

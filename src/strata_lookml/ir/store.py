@@ -36,6 +36,10 @@ CREATE TABLE ir_cache (
 _SQLITE_MAGIC = b"SQLite format 3\x00"
 # Columns every Strata cache has had; `inputs` was added with the input-keyed reuse.
 _CACHE_COLUMNS = frozenset({"id", "built_at", "payload"})
+# The resolver's output format. Recorded in every cache's inputs, so a cache written by a
+# resolver that builds a different graph from the same .lkml is a miss, never served.
+# 2: explores resolve per model (N9); a version-1 cache merged same-named explores.
+IR_FORMAT = 2
 _REPLACE_ATTEMPTS = 3
 _REPLACE_BACKOFF_SECONDS = 0.05
 
@@ -49,7 +53,8 @@ def describe_inputs(
 
     A fixture is recorded with its mtime, so editing it in place invalidates the cache. A
     missing fixture records mtime None (the build itself then fails loudly). The repo is
-    recorded by path plus `lookml_fingerprint`, so a .lkml edit invalidates it too.
+    recorded by path plus `lookml_fingerprint`, so a .lkml edit invalidates it too, and
+    `IR_FORMAT` makes a cache from an older resolver a miss.
     """
 
     def fixture(path: str | Path | None) -> dict[str, Any] | None:
@@ -64,6 +69,7 @@ def describe_inputs(
 
     repo = Path(repo_path).expanduser().resolve()
     return {
+        "ir_format": IR_FORMAT,
         "repo": str(repo),
         "lookml": lookml_fingerprint(repo),
         "usage_fixture": fixture(usage_fixture),

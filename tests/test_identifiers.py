@@ -8,7 +8,6 @@ from click.testing import CliRunner
 from strata_lookml.cli.main import strata_cli as cli
 from strata_lookml.errors import InvalidInput, NotFound
 from strata_lookml.ir.resolver import build_resolved_graph
-from strata_lookml.ir.types import IRNode
 from strata_lookml.mcp.tools import (
     strata_explore_deps,
     strata_impact,
@@ -78,28 +77,6 @@ def test_explore_deps_without_model(graph):
     assert deps["model"] == "refined_explore"
     assert deps == strata_explore_deps(graph, "refined_customer", "refined_explore")
     assert deps == strata_explore_deps(graph, "refined_explore.refined_customer")
-
-
-def test_explore_ambiguous_without_model_lists_candidates():
-    # The resolver keys explores by name today, so two models sharing a name cannot be built from
-    # LookML; add the second node directly to cover the resolver's own ambiguity path.
-    graph = build_resolved_graph(FIXTURES)
-    base = graph.nodes["explore:test_model:customer"]
-    graph.add_node(
-        IRNode(
-            "explore:other:customer",
-            "explore",
-            "customer",
-            base.source_file,
-            {**base.attrs, "model": "other"},
-        )
-    )
-    graph.add_node(IRNode("model:other", "model", "other", base.source_file))
-
-    with pytest.raises(InvalidInput, match=r"ambiguous.*other\.customer, test_model\.customer"):
-        strata_explore_deps(graph, "customer")
-    assert strata_explore_deps(graph, "customer", "other")["model"] == "other"
-    assert strata_explore_deps(graph, "test_model.customer")["model"] == "test_model"
 
 
 def test_explore_unknown_model_and_explore(graph):

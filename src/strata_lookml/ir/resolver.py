@@ -10,7 +10,7 @@ from typing import Any
 
 import networkx as nx
 
-from strata_lookml.ir.types import IREdge, IRGraph, IRNode
+from strata_lookml.ir.types import IREdge, IRGraph, IRNode, explore_id
 
 FIELD_KEYS = ("dimension", "measure", "filter", "parameter")
 
@@ -31,10 +31,9 @@ def resolve_graph(raw_graph: IRGraph) -> IRGraph:
     )
     models = _collect_models(parsed_files)
     view_defs, view_refinements = _collect_declarations(parsed_files, "view")
-    explore_defs, explore_refinements = _collect_declarations(parsed_files, "explore")
 
     resolved_views = _resolve_named_objects(view_defs, view_refinements, "view")
-    resolved_explores = _resolve_named_objects(explore_defs, explore_refinements, "explore")
+    resolved_explores = _resolve_explores(parsed_files)
     resolved.metadata["resolution_errors"].extend(resolved_views.errors)
     resolved.metadata["resolution_errors"].extend(resolved_explores.errors)
 
@@ -65,10 +64,12 @@ def _collect_models(parsed_files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for parsed in parsed_files:
         if parsed.get("file_type") != "model":
             continue
-        path = str(parsed["path"])
-        name = Path(path).name.replace(".model.lkml", "")
         models.append(
-            {"name": name, "source_file": path, "properties": parsed.get("properties", {})}
+            {
+                "name": _model_name(parsed),
+                "source_file": str(parsed["path"]),
+                "properties": parsed.get("properties", {}),
+            }
         )
     return models
 
@@ -81,7 +82,7 @@ def _collect_declarations(
     for parsed in parsed_files:
         model_name = ""
         if parsed.get("file_type") == "model":
-            model_name = Path(str(parsed["path"])).name.replace(".model.lkml", "")
+            model_name = _model_name(parsed)
         for declaration in parsed.get("declarations", []):
             if declaration.get("kind") != kind:
                 continue
@@ -102,16 +103,105 @@ def _collect_declarations(
     return definitions, refinements
 
 
+def _resolve_explores(parsed_files: list[dict[str, Any]]) -> _ResolvedSet:
+    """Resolve explores per model; the result is keyed by explore node id.
+
+    Looker names an explore `model.explore`, so two models may each declare `orders` and
+    those are two explores (N9: keyed by name alone, the second became a refinement of the
+    first). Each model resolves its own explores, extends and refinements in its own
+    namespace. Explores declared outside a model file (an included `.explore.lkml`) form a
+    shared namespace every model falls back to for an `extends` base or a refinement target
+    it does not define itself; a refinement never reaches another model's explore. The IR
+    does not resolve includes, so a shared explore stays one model-less node, as before. An
+    `extends` base found in neither falls back to the one other model that defines it
+    (cross-model extends, which thelook and enterprise_mono exercise); a base two other
+    models define is ambiguous and stays a missing extends target. Each namespace resolves
+    only its own explores and the ancestors they reach, so a fallback explore it never
+    extends cannot add a resolution error.
+    """
+    shared_defs, shared_refs = _collect_declarations(
+        [parsed for parsed in parsed_files if parsed.get("file_type") != "model"], "explore"
+    )
+    by_model: dict[str, list[dict[str, Any]]] = {}
+    for parsed in parsed_files:
+        if parsed.get("file_type") == "model":
+            by_model.setdefault(_model_name(parsed), []).append(parsed)
+    scopes: dict[str, tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]] = {}
+    owners: dict[str, list[str]] = {}
+    for model, files in sorted(by_model.items()):
+        defs, refs = _collect_declarations(files, "explore")
+        for name in sorted((set(refs) - set(defs)) & set(shared_defs)):
+            # Refines an included explore, not one this model defines.
+            shared_refs.setdefault(name, []).extend(refs.pop(name))
+        scopes[model] = (defs, refs)
+        for name in defs:
+            owners.setdefault(name, []).append(model)
+
+    objects: dict[str, dict[str, Any]] = {}
+    errors: list[dict[str, Any]] = []
+    seen_errors: set[tuple[Any, ...]] = set()
+
+    def resolve_scope(model: str, defs: dict[str, dict[str, Any]], refs: dict[str, Any]) -> None:
+        """Resolve one namespace's own explores (`defs`) against its fallback layers."""
+        # Another model's explore, as an extends base: its own refinements, plus any this
+        # namespace declares for it (they never reach the other model's node). A name two
+        # other models define is ambiguous and is left out.
+        layers = [
+            (
+                {name: scopes[others[0]][0][name]},
+                {name: scopes[others[0]][1].get(name, []) + refs.get(name, [])},
+            )
+            for name, models in sorted(owners.items())
+            if len(others := [m for m in models if m != model]) == 1
+        ]
+        scope_defs: dict[str, dict[str, Any]] = {}
+        scope_refs: dict[str, list[dict[str, Any]]] = {}
+        # Later layers win: another model's explore < a shared one < this namespace's own.
+        for layer_defs, layer_refs in [*layers, (shared_defs, {}), (defs, refs)]:
+            for name, record in layer_defs.items():
+                scope_defs[name] = record
+                scope_refs[name] = shared_refs.get(name, []) + layer_refs.get(name, [])
+        result = _resolve_named_objects(scope_defs, scope_refs, "explore", roots=set(defs))
+        for name, obj in result.objects.items():
+            if name in defs:
+                objects[explore_id(model, name)] = obj
+        for error in result.errors:
+            # A chain through a shared or another model's explore is found again per namespace.
+            key = (error["type"], error.get("name"), tuple(sorted(error.get("chain", []))))
+            if key not in seen_errors:
+                seen_errors.add(key)
+                errors.append(error)
+
+    # The shared namespace resolves like a model's, with "" as its model: any explore exactly
+    # one model defines can be its extends base.
+    resolve_scope("", shared_defs, {})
+    for model, (defs, refs) in scopes.items():
+        resolve_scope(model, defs, refs)
+    # Emitted by name, then model: deterministic, and every same-named explore side by side.
+    ordered = sorted(objects.items(), key=lambda item: (item[1]["name"], item[1]["model"]))
+    return _ResolvedSet(dict(ordered), errors)
+
+
+def _model_name(parsed: dict[str, Any]) -> str:
+    return Path(str(parsed["path"])).name.replace(".model.lkml", "")
+
+
 def _resolve_named_objects(
     definitions: dict[str, dict[str, Any]],
     refinements: dict[str, list[dict[str, Any]]],
     kind: str,
+    roots: set[str] | None = None,
 ) -> _ResolvedSet:
+    """Resolve every definition, or only `roots` and the ancestors they extend: a fallback
+    definition nothing in `roots` reaches is neither resolved nor reported."""
     extends_graph = nx.DiGraph()
     for name, record in definitions.items():
         extends_graph.add_node(name)
         for base in _as_list(record["body"].get("extends")):
             extends_graph.add_edge(str(base), name)
+    if roots is not None:
+        reached = set(roots).union(*(nx.ancestors(extends_graph, root) for root in roots))
+        extends_graph = extends_graph.subgraph(reached).copy()
 
     errors: list[dict[str, Any]] = []
     try:
@@ -167,7 +257,7 @@ def _resolve_named_objects(
         }
         return copy.deepcopy(resolved[name])
 
-    for name in sorted(definitions):
+    for name in sorted(definitions if roots is None else roots):
         resolve_one(name)
     return _ResolvedSet(resolved, errors)
 
@@ -294,7 +384,7 @@ def _emit_explores(
     model_by_source = {model["source_file"]: model["name"] for model in models}
     for explore in explores.values():
         model = explore.get("model") or model_by_source.get(explore["source_file"], "")
-        explore_id = f"explore:{model}:{explore['name']}"
+        node_id = explore_id(model, explore["name"])
         body = explore["body"]
         base_view = str(body.get("from") or explore["name"])
         joins = [
@@ -304,7 +394,7 @@ def _emit_explores(
         ]
         graph.add_node(
             IRNode(
-                id=explore_id,
+                id=node_id,
                 kind="explore",
                 name=explore["name"],
                 source_file=explore["source_file"],
@@ -319,13 +409,13 @@ def _emit_explores(
             )
         )
         graph.add_edge(
-            IREdge(explore_id, f"view:{base_view}", "explore→base_view", explore["source_file"])
+            IREdge(node_id, f"view:{base_view}", "explore→base_view", explore["source_file"])
         )
         for join in joins:
             joined_view = str(join.get("from") or join["name"])
             graph.add_edge(
                 IREdge(
-                    explore_id,
+                    node_id,
                     f"view:{joined_view}",
                     "explore→joined_view",
                     explore["source_file"],

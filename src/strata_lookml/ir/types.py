@@ -8,6 +8,17 @@ from typing import Any
 import networkx as nx
 
 
+def explore_id(model: str, name: str) -> str:
+    """The IR node id of an explore. Explores are model-scoped (Looker names them
+    `model.explore`), so the model is part of the identity: `explore:<model>:<name>`."""
+    return f"explore:{model}:{name}"
+
+
+def explore_key(model: str, name: str) -> str:
+    """The `model.explore` key L1 facts (usage, content, dead code) use for the same explore."""
+    return f"{model}.{name}"
+
+
 @dataclass(frozen=True)
 class IRNode:
     """A canonical LookML object in the resolved IR graph."""
