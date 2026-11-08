@@ -214,3 +214,71 @@ def test_repo_env_var_selects_the_bootstrap_target(repo, home, monkeypatch):
     assert invoke("--yes").exit_code == 0
     assert (repo / ".mcp.json").exists()
     assert not (home / ".mcp.json").exists()
+
+
+def _fail_on(monkeypatch, n, exc, after=False):
+    real = plan_mod._replace
+    calls = {"n": 0}
+
+    def flaky(src, dst):
+        calls["n"] += 1
+        if calls["n"] == n and not after:
+            raise exc
+        real(src, dst)
+        if calls["n"] == n:
+            raise exc
+
+    monkeypatch.setattr(plan_mod, "_replace", flaky)
+
+
+def test_keyboard_interrupt_rolls_back_and_propagates(repo, home, monkeypatch):
+    (repo / "AGENTS.md").write_text("mine\n")
+    before = snapshot(repo, home)
+    _fail_on(monkeypatch, 3, KeyboardInterrupt())
+    result = invoke("--repo", str(repo), "--yes", "--force")
+    assert isinstance(result.exception, KeyboardInterrupt) or result.exit_code == 1
+    assert snapshot(repo, home) == before
+
+
+def test_symlinked_config_keeps_link_and_writes_target(repo, home):
+    (home / ".strata").mkdir()
+    real = home / "dotfiles" / "strata.json"
+    real.parent.mkdir()
+    real.write_text(json.dumps({"repo_path": "/elsewhere"}))
+    link = home / ".strata" / "config.json"
+    link.symlink_to(real)
+    assert invoke("--repo", str(repo), "--yes", "--bq-project", "p").exit_code == 0
+    assert link.is_symlink() and link.resolve() == real.resolve()
+    assert json.loads(real.read_text())["bq_project"] == "p"
+
+
+def test_symlinked_config_survives_failed_run(repo, home, monkeypatch):
+    (home / ".strata").mkdir()
+    real = home / "dotfiles" / "strata.json"
+    real.parent.mkdir()
+    original = json.dumps({"repo_path": "/elsewhere"})
+    real.write_text(original)
+    link = home / ".strata" / "config.json"
+    link.symlink_to(real)
+    before = snapshot(repo)
+    # 13th replace = the config write (gitignore, AGENTS, CLAUDE, 7 conductor, 2 mcp); fail
+    # right after it landed so the rollback has to restore through the link
+    _fail_on(monkeypatch, 13, KeyboardInterrupt(), after=True)
+    invoke("--repo", str(repo), "--yes", "--bq-project", "p")
+    assert link.is_symlink() and link.resolve() == real.resolve()
+    assert real.read_text() == original
+    assert snapshot(repo) == before
+
+
+def test_repo_option_declares_env_var_everywhere():
+    runner = CliRunner()
+    for args in (["mcp", "config"], ["bootstrap"], ["conductor", "init"]):
+        out = runner.invoke(cli, [*args, "--help"]).output
+        assert "STRATA_REPO_PATH" in out, args
+    result = runner.invoke(
+        cli, ["mcp", "config", "--client", "claude"], env={"STRATA_REPO_PATH": "/tmp"}
+    )
+    assert json.loads(result.output)["mcpServers"]["strata"]["env"]["STRATA_REPO_PATH"] in (
+        "/tmp",
+        "/private/tmp",
+    )

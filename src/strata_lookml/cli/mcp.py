@@ -144,7 +144,12 @@ def mcp_validate() -> None:
     help="Print the MCP client config (.mcp.json / .cursor/mcp.json) instead of resolved paths",
 )
 @click.option(
-    "--repo", "repo_arg", default=None, help="With --client: LookML repo path (default: resolved)"
+    "--repo",
+    "repo_arg",
+    default=None,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="With --client: LookML repo path (default: resolved)",
 )
 @click.option(
     "--usage-fixture",

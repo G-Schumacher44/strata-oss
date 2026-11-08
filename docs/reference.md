@@ -173,7 +173,7 @@ Slice-based workflow system for governing AI agent sessions.
 
 Set up the conductor/ directory with modes, templates, and handoff log.
 
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 - `--force` — flag — Overwrite existing conductor/ files
 
 ### `strata conductor new-slice`
@@ -183,7 +183,7 @@ Set up the conductor/ directory with modes, templates, and handoff log.
 Create the next numbered slice file from the slice template.
 
 - `TITLE` — argument — required
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 - `--mode [patch|slice|full|audit]` — default `slice` — patch=one-file fix, slice=planned feature, full=cross-layer change, audit=review only
 - `--budget [low|medium|high]` — default `medium` — Expected context spend for this slice
 
@@ -193,7 +193,7 @@ Create the next numbered slice file from the slice template.
 
 Show the active slice, execution mode, and next steps from handoff-log.
 
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 
 ### `strata dashboard`
 
@@ -246,7 +246,7 @@ Local MCP server for AI clients (Claude, Cursor, Gemini).
 Show resolved paths and env vars the MCP server will use.
 
 - `--client [claude|cursor]` — Print the MCP client config (.mcp.json / .cursor/mcp.json) instead of resolved paths
-- `--repo TEXT` — With --client: LookML repo path (default: resolved)
+- `--repo TEXT` — env `STRATA_REPO_PATH` — With --client: LookML repo path (default: resolved)
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — With --client: usage_facts.json
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — With --client: schema_facts.json
 

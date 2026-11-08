@@ -50,7 +50,14 @@ def plan_conductor_init(target: Path, force: bool = False) -> list[FileOp]:
 
 
 @conductor.command("init")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 @click.option("--force", is_flag=True, help="Overwrite existing conductor/ files")
 def conductor_init(repo: str, force: bool) -> None:
     """Set up the conductor/ directory with modes, templates, and handoff log."""
@@ -65,7 +72,14 @@ def conductor_init(repo: str, force: bool) -> None:
 
 @conductor.command("new-slice")
 @click.argument("title")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 @click.option(
     "--mode",
     default="slice",
@@ -137,7 +151,14 @@ def conductor_new_slice(title: str, repo: str, mode: str, budget: str) -> None:
 
 
 @conductor.command("status")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 def conductor_status(repo: str) -> None:
     """Show the active slice, execution mode, and next steps from handoff-log."""
     target = Path(repo).expanduser().resolve()

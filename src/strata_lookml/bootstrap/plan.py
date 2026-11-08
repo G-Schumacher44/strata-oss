@@ -115,6 +115,7 @@ def apply_plan(ops: Sequence[FileOp]) -> None:
     created_files: list[Path] = []
     created_dirs: list[Path] = []
     overwritten: dict[Path, bytes] = {}
+    inflight: tuple[Path, bytes | None] | None = None
     try:
         for op in ops:
             if op.action == "skip":
@@ -123,16 +124,27 @@ def apply_plan(ops: Sequence[FileOp]) -> None:
                 _make_dirs(op.path, created_dirs)
                 continue
             assert op.content is not None
-            _make_dirs(op.path.parent, created_dirs)
-            prior = op.path.read_bytes() if op.path.exists() else None
-            _write_atomic(op.path, op.content)
+            # Write through a symlink: the link stays a link, its target gets the content.
+            dest = Path(os.path.realpath(op.path))
+            _make_dirs(dest.parent, created_dirs)
+            prior = dest.read_bytes() if dest.exists() else None
+            inflight = (dest, prior)
+            _write_atomic(dest, op.content)
+            inflight = None
             # Recorded only once the replace succeeded: a failed write changed nothing.
             if prior is None:
-                created_files.append(op.path)
+                created_files.append(dest)
             else:
-                overwritten[op.path] = prior
-    except Exception as exc:
+                overwritten[dest] = prior
+    except BaseException as exc:  # incl. KeyboardInterrupt: undo, then re-raise it as is
         problems: list[str] = []
+        if inflight is not None:
+            # The replace may have landed just before the interrupt; undo it only if it did.
+            path, prior = inflight
+            if prior is None:
+                created_files.append(path)
+            elif path.exists() and path.read_bytes() != prior:
+                overwritten[path] = prior
         for path, data in overwritten.items():
             try:
                 path.write_bytes(data)
@@ -146,6 +158,8 @@ def apply_plan(ops: Sequence[FileOp]) -> None:
         for d in reversed(created_dirs):
             with contextlib.suppress(OSError):
                 d.rmdir()
+        if not isinstance(exc, Exception):
+            raise
         message = f"Write failed ({exc})."
         if problems:
             message += " Rollback incomplete: " + "; ".join(problems)
