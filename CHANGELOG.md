@@ -111,6 +111,10 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Fixed
 
+- The dashboard's dependency graph no longer colours every explore green when no usage facts are
+  loaded: explores render in a neutral "unknown" state (palette entry, legend swatch, note and
+  UNKNOWN badge). With usage loaded, active/dead colouring is unchanged.
+
 - A chart whose encoding names a column missing from the data (for example `strata chart line`
   on `month`/`revenue` data) used to render a blank chart and exit 0. `render_chart` now raises
   `InvalidInput` listing the missing and the available columns, so the CLI exits 1 and

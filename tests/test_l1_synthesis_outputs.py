@@ -12,7 +12,7 @@ from strata_lookml.l1.fixtures import load_usage_facts
 from strata_lookml.l1.types import ExploreUsage
 from strata_lookml.mcp.tools import strata_impact
 from strata_lookml.outputs import build_artifacts, write_artifacts
-from strata_lookml.outputs.dashboard import NODE_PALETTE, build_dashboard_html
+from strata_lookml.outputs.dashboard import NODE_PALETTE, _build_graph_data, build_dashboard_html
 from strata_lookml.pipeline import build_graph
 from strata_lookml.synthesis.slices import build_explore_slice
 from strata_lookml.synthesis.verdicts import (
@@ -1797,3 +1797,40 @@ console.log(JSON.stringify({{ kept, pinKept, afterSearch,
     assert r["kept"] is False and r["pinKept"] is True
     assert r["afterSearch"] == {"pinned": None, "bMatch": True, "bFaded": False, "aHl": False}
     assert r["reselect"] == {"aHl": True, "aFaded": False}
+
+
+def test_explores_are_unknown_not_active_when_usage_facts_not_loaded():
+    """N7: dead status needs usage evidence, so with none loaded every explore used to render
+    green "active". Without usage they carry the neutral "unknown" status/colour (from
+    COVERAGE, serialized — not inferred in JS), the legend shows the state and the note;
+    with usage loaded the active/dead colours are unchanged."""
+    gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
+    usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
+
+    def page(graph):
+        html = build_dashboard_html(build_artifacts(graph), graph)
+        explores = [
+            n["data"] for n in _build_graph_data(graph)["nodes"] if n["data"]["kind"] == "explore"
+        ]
+        return html, explores
+
+    html, explores = page(build_graph(gcs))
+    assert explores
+    assert {e["status"] for e in explores} == {"unknown"}
+    assert {e["color"] for e in explores} == {NODE_PALETTE["explore_unknown"]}
+    assert NODE_PALETTE["explore_unknown"] not in (
+        NODE_PALETTE["explore_active"],
+        NODE_PALETTE["explore_dead"],
+    )
+    assert "Usage facts not loaded" in html
+    assert 'id="legend-usage-note" hidden' not in html
+    assert "var(--n-explore-unknown)" in html
+    assert f"--n-explore-unknown: {NODE_PALETTE['explore_unknown']};" in html
+
+    html, explores = page(build_graph(gcs, usage))
+    assert {e["status"] for e in explores} == {"active", "dead"}
+    assert {e["color"] for e in explores} == {
+        NODE_PALETTE["explore_active"],
+        NODE_PALETTE["explore_dead"],
+    }
+    assert 'id="legend-usage-note" hidden' in html
