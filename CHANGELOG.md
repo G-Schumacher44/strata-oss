@@ -114,6 +114,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Fixed
 
+- The dashboard's dependency graph no longer colours every explore green when no usage facts are
+  loaded: explores render in a neutral "unknown" state (palette entry, legend swatch, note and
+  UNKNOWN badge). With usage loaded, active/dead colouring is unchanged.
 - `strata conductor status` and MCP `strata_conductor_status` share one parser; `active_slice` is null when absent instead of capturing prose.
 - `strata validate --check-replay` no longer silently reads Strata's own fixture; without a replay file it fails with "pass --replay".
 
