@@ -19,6 +19,11 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- Workbench rendering foundation (`strata_lookml.workbench`): one Jinja2 environment (autoescape on for every
+  template extension, `StrictUndefined`, no extensions) over packaged `workbench/templates/`, a `render()` helper,
+  and `safe_svg()` as the only place `markupsafe.Markup` may be built. Guard tests ban `|safe`,
+  `{% autoescape false %}` and stray `Markup(`. **New runtime dependency: `jinja2>=3.1.3,<4`** (the range
+  dbt-core uses; brings MarkupSafe). The existing dashboard is unchanged and jinja2 stays out of the L0 import graph.
 - `strata chart bar|line|scatter|heatmap` take `--x`, `--y` and `--color` to map the template's
   channels onto your own columns, and each subcommand's help lists the template's required
   columns, read from its YAML.
