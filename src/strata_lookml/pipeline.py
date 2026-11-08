@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from strata_lookml.ir.parser import lkml_paths
@@ -77,7 +78,10 @@ def load_or_build(
     """Reuse the cache only if it was built from these exact inputs and is young enough."""
     inputs = describe_inputs(repo_path, usage_fixture, schema_fixture)
     if cache_is_fresh(cache_path, inputs, max_age_seconds):
-        return load_ir(cache_path)
+        try:
+            return load_ir(cache_path)
+        except (OSError, sqlite3.DatabaseError, ValueError):
+            pass  # removed or replaced since the freshness check: a miss, rebuild below
     return build_and_cache(repo_path, usage_fixture, schema_fixture, cache_path)
 
 

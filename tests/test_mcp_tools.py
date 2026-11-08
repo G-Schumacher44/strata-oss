@@ -382,8 +382,7 @@ def test_load_ir_open_cannot_create_the_cache_even_if_exists_check_races(tmp_pat
     monkeypatch.setattr(Path, "exists", lambda self: True)
     with pytest.raises((FileNotFoundError, sqlite3.OperationalError)):
         load_ir(missing)
-    with pytest.raises((FileNotFoundError, sqlite3.OperationalError)):
-        cache_age_seconds(missing)
+    assert cache_age_seconds(missing) is None  # an unopenable cache is a miss, not a crash
     assert not os.path.exists(missing)
 
 

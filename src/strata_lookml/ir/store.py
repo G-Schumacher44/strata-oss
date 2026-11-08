@@ -10,10 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from strata_lookml.config import ensure_private_dir, strata_home
 from strata_lookml.ir.parser import lkml_paths
@@ -85,28 +86,39 @@ def lookml_fingerprint(repo: Path) -> dict[str, Any]:
 
 
 def save_ir(graph: IRGraph, cache_path: str | Path, inputs: dict[str, Any] | None = None) -> None:
-    """Write the graph as the cache's single row, file mode 0600.
+    """Write the graph as the cache's single row, file mode 0600, replacing the file atomically.
 
-    A missing directory is created 0700; Strata's own ~/.strata/cache is tightened to 0700. A
-    cache from an older schema is replaced, not migrated (the cache is disposable).
+    The new cache is written to a temp file beside the target and `os.replace`d over it, so a
+    concurrent reader sees the previous complete cache or the new one, never a half-written
+    state, and an interrupted write leaves the old cache untouched. Whatever was at the path
+    before (an older schema, a corrupt file) is replaced, not migrated (the cache is
+    disposable). A missing directory is created 0700; Strata's own ~/.strata/cache is
+    tightened to 0700.
     """
     path = Path(cache_path)
     cache_dir = strata_home() / "cache"
     ensure_private_dir(path.parent, tighten=path.parent.resolve() == cache_dir.resolve())
-    # Create the file 0600 before sqlite opens it (sqlite would create it 0644 & ~umask);
-    # sqlite's journal inherits the database file's mode.
-    os.close(os.open(path, os.O_CREAT | os.O_WRONLY, 0o600))
-    if os.name == "posix":
-        os.chmod(path, 0o600)
     graph.cache_path = str(path)
     payload = json.dumps(graph.to_dict(), sort_keys=True)
-    with sqlite3.connect(path) as conn:
-        conn.execute("DROP TABLE IF EXISTS ir_cache")
-        conn.execute(SCHEMA)
-        conn.execute(
-            "INSERT INTO ir_cache (id, built_at, inputs, payload) VALUES (1, ?, ?, ?)",
-            (graph.built_at, json.dumps(inputs, sort_keys=True), payload),
-        )
+    tmp = path.parent / f".{path.name}.{secrets.token_hex(8)}.tmp"
+    # Created 0600 with O_EXCL before sqlite opens it (sqlite would create it 0644 & ~umask);
+    # sqlite's journal inherits the database file's mode.
+    os.close(os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+    try:
+        conn = sqlite3.connect(tmp)
+        try:
+            with conn:
+                conn.execute(SCHEMA)
+                conn.execute(
+                    "INSERT INTO ir_cache (id, built_at, inputs, payload) VALUES (1, ?, ?, ?)",
+                    (graph.built_at, json.dumps(inputs, sort_keys=True), payload),
+                )
+        finally:
+            conn.close()
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def load_ir(cache_path: str | Path) -> IRGraph:
@@ -121,17 +133,11 @@ def load_ir(cache_path: str | Path) -> IRGraph:
 
 
 def cache_age_seconds(cache_path: str | Path) -> float | None:
-    path = Path(cache_path)
-    try:
-        conn = _connect_existing(path)
-    except FileNotFoundError:
-        return None
-    with conn:
-        row = conn.execute("SELECT built_at FROM ir_cache WHERE id = 1").fetchone()
+    row = _read_cache_column(Path(cache_path), "built_at")
     if row is None:
         return None
     try:
-        built_at = datetime.fromisoformat(row[0])
+        built_at = datetime.fromisoformat(row)
     except (TypeError, ValueError):
         return None
     if built_at.tzinfo is None:
@@ -144,19 +150,11 @@ def cache_age_seconds(cache_path: str | Path) -> float | None:
 
 def cache_inputs(cache_path: str | Path) -> dict[str, Any] | None:
     """The inputs a cache recorded, or None (missing file, no row, pre-inputs schema)."""
-    try:
-        conn = _connect_existing(Path(cache_path))
-    except FileNotFoundError:
-        return None
-    with conn:
-        try:
-            row = conn.execute("SELECT inputs FROM ir_cache WHERE id = 1").fetchone()
-        except sqlite3.OperationalError:
-            return None  # an older cache without the inputs column
+    row = _read_cache_column(Path(cache_path), "inputs")
     if row is None:
         return None
     try:
-        inputs = json.loads(row[0])
+        inputs = json.loads(row)
     except (TypeError, ValueError):
         return None
     return inputs if isinstance(inputs, dict) else None
@@ -168,6 +166,26 @@ def cache_is_fresh(cache_path: str | Path, inputs: dict[str, Any], max_age_secon
     if age is None or age >= max_age_seconds:
         return False
     return cache_inputs(cache_path) == inputs
+
+
+def _read_cache_column(path: str | Path, column: Literal["built_at", "inputs"]) -> Any:
+    """One column of the cache row, or None when there is no usable cache.
+
+    A missing file, a missing row, a missing table or column (an older or hand-damaged
+    cache) and a file that is not a SQLite database are all a cache miss: the caller
+    rebuilds rather than failing.
+    """
+    try:
+        conn = _connect_existing(Path(path))
+    except (FileNotFoundError, sqlite3.DatabaseError):
+        return None
+    try:
+        row = conn.execute(f"SELECT {column} FROM ir_cache WHERE id = 1").fetchone()
+    except sqlite3.DatabaseError:
+        return None
+    finally:
+        conn.close()
+    return None if row is None else row[0]
 
 
 def _connect_existing(path: Path) -> sqlite3.Connection:

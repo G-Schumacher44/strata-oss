@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import shutil
+import sqlite3
 import stat
 from pathlib import Path
 
@@ -139,3 +140,49 @@ def test_clean_repo_honours_strata_repo_path(env, monkeypatch):
     monkeypatch.chdir(home)  # a cwd that does not contain the repo
     _strata("clean")
     assert not legacy.exists()
+
+
+class _FailOnInsert(sqlite3.Connection):
+    def execute(self, sql, *args):
+        if sql.lstrip().upper().startswith("INSERT"):
+            raise sqlite3.OperationalError("simulated crash mid-write")
+        return super().execute(sql, *args)
+
+
+def test_interrupted_cache_write_leaves_the_previous_cache_whole(env, monkeypatch):
+    # The old write dropped the table in autocommit before re-creating it, so a crash (or a
+    # concurrent reader) in between saw no ir_cache table at all.
+    from strata_lookml.ir.store import cache_age_seconds, load_ir, save_ir
+
+    home, repo = env
+    _strata("build", "--repo", str(repo))
+    cache = default_cache_path(repo)
+    views = load_ir(cache).node_counts()["view"]
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(
+        sqlite3, "connect", lambda *a, **k: real_connect(*a, **{**k, "factory": _FailOnInsert})
+    )
+    with pytest.raises(sqlite3.OperationalError, match="simulated"):
+        save_ir(load_ir(cache), cache, {})
+    monkeypatch.setattr(sqlite3, "connect", real_connect)
+    assert cache_age_seconds(cache) is not None
+    assert load_ir(cache).node_counts()["view"] == views
+    assert sorted(p.name for p in cache.parent.iterdir()) == [cache.name]  # no temp left
+
+
+@pytest.mark.parametrize("damage", ["drop_table", "not_a_database"])
+def test_server_rebuilds_a_damaged_cache_instead_of_failing(env, monkeypatch, damage):
+    from strata_lookml.ir.store import cache_age_seconds
+    from strata_lookml.mcp.server import load_configured_graph
+
+    _, repo = env
+    _strata("build", "--repo", str(repo))
+    cache = default_cache_path(repo)
+    if damage == "drop_table":
+        with sqlite3.connect(cache) as conn:
+            conn.execute("DROP TABLE ir_cache")
+    else:
+        cache.write_bytes(b"this is not a sqlite database" * 20)
+    monkeypatch.setenv("STRATA_REPO_PATH", str(repo))
+    assert load_configured_graph().node_counts()["view"] > 0
+    assert cache_age_seconds(cache) is not None  # rebuilt in place
