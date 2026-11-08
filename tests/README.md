@@ -55,6 +55,7 @@ python -m pytest -x       # stop on first failure
 - `enterprise_mono` — 19 models, 34 explores, cross-model extends, 3 legacy clusters
 - `gcs_analytics` — gold/silver BQ layer, mixed active and legacy
 - `thelook` — Looker's public demo repo, structural baseline
+- `twin_models` — two models that each declare an `orders` explore (in-tree, not a submodule; N9)
 
 ## Adding tests
 

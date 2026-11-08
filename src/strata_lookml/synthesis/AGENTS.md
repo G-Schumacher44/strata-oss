@@ -41,7 +41,7 @@ one — but that path is agent-driven, not automated.
 ## Evidence IDs
 
 `evidence_ids` is a list of string IDs that reference specific records in the L1 output:
-- `explore:<model>.<name>` — IR node
+- `explore:<model>:<name>` — IR node (model-scoped: `ir.types.explore_id`)
 - `schema_table:<physical_table>` — schema drift record
 - `field:<view>.<field>` — field-level evidence
 

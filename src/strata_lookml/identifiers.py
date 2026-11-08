@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from strata_lookml.errors import InvalidInput, NotFound
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_id, explore_key
 
 _CHANGED_HINT = 'Pass "<kind>:<name>" (e.g. "view:orders"), {"kind", "name"}, a .lkml path, or a bare view name.'
 _MAX_CANDIDATES = 10
@@ -56,9 +56,9 @@ def resolve_explore(graph: IRGraph, explore: str, model: str | None = None) -> t
         if graph.get_node(f"model:{model}") is None:
             models = sorted(node.name for node in graph.nodes_by_kind("model"))
             raise NotFound(f"model not found: {model}", hint=f"Known models: {', '.join(models)}.")
-        if graph.get_node(f"explore:{model}:{explore}") is None:
+        if graph.get_node(explore_id(model, explore)) is None:
             raise NotFound(
-                f"explore not found: {model}.{explore}",
+                f"explore not found: {explore_key(model, explore)}",
                 hint="strata_navigate finds an explore by name.",
             )
         return model, explore

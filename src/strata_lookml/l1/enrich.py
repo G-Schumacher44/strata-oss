@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_key
 from strata_lookml.l1.types import (
     ContentReference,
     DeadCodeEvidence,
@@ -77,7 +77,7 @@ def _dead_code(
 
     dead_explore_keys: set[str] = set()
     for node in graph.nodes_by_kind("explore"):
-        key = f"{node.attrs.get('model')}.{node.name}"
+        key = explore_key(node.attrs.get("model", ""), node.name)
         item = usage_by_key.get(key)
         zero_queries = item is None or item.query_count == 0
         not_in_content = content_keys is not None and key not in content_keys
@@ -202,7 +202,7 @@ def direct_view_consumers(graph: IRGraph) -> dict[str, list[str]]:
         node = graph.get_node(edge.source)
         if node and node.kind == "explore":
             direct.setdefault(edge.target.removeprefix("view:"), []).append(
-                f"{node.attrs.get('model')}.{node.name}"
+                explore_key(node.attrs.get("model", ""), node.name)
             )
     return {name: sorted(set(keys)) for name, keys in direct.items()}
 
@@ -257,7 +257,7 @@ def evidence_facts(graph: IRGraph) -> dict[str, dict]:
 
     content_reference_counts: dict[str, int] = {}
     for ref in l1.get("content_references", []):
-        key = f"{ref['model']}.{ref['explore']}"
+        key = explore_key(ref["model"], ref["explore"])
         content_reference_counts[key] = content_reference_counts.get(key, 0) + 1
 
     schema_table_facts = {
@@ -283,7 +283,7 @@ def evidence_facts(graph: IRGraph) -> dict[str, dict]:
     for node in graph.nodes.values():
         if node.kind != "explore":
             continue
-        key = f"{node.attrs.get('model', '')}.{node.name}"
+        key = explore_key(node.attrs.get("model", ""), node.name)
         explore_usage_evidence.setdefault(
             key,
             {

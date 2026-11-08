@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from strata_lookml.ir.types import explore_key
+
 
 @dataclass(frozen=True)
 class ExploreUsage:
@@ -15,7 +17,7 @@ class ExploreUsage:
 
     @property
     def key(self) -> str:
-        return f"{self.model}.{self.explore}"
+        return explore_key(self.model, self.explore)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -31,7 +33,7 @@ class ContentReference:
 
     @property
     def explore_key(self) -> str:
-        return f"{self.model}.{self.explore}"
+        return explore_key(self.model, self.explore)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

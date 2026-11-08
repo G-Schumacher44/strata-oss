@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from strata_lookml.ir.types import explore_key
+
 
 def build_pr_comment(
     changed_files: list[str],
@@ -31,7 +33,7 @@ def build_pr_comment(
     else:
         view_to_explores: dict[str, list[str]] = {}
         for exp in explores:
-            label = f"{exp['model']}.{exp['explore']}"
+            label = explore_key(exp["model"], exp["explore"])
             for view in exp.get("impacted_views", []):
                 view_to_explores.setdefault(view, []).append(label)
 
@@ -53,7 +55,7 @@ def build_pr_comment(
         lines.append(f"<details><summary>Explores to revalidate ({len(explores)})</summary>")
         lines.append("")
         for exp in sorted(explores, key=lambda e: (e["model"], e["explore"])):
-            label = f"{exp['model']}.{exp['explore']}"
+            label = explore_key(exp["model"], exp["explore"])
             dead_flag = " ⚠️ **dead code**" if label in dead_names else ""
             via = ", ".join(f"`{v}`" for v in exp.get("impacted_views", []))
             lines.append(f"- `{label}`{dead_flag} — via {via}")
@@ -61,7 +63,7 @@ def build_pr_comment(
         lines.append("</details>")
         lines.append("")
 
-    dead_touched = [e for e in explores if f"{e['model']}.{e['explore']}" in dead_names]
+    dead_touched = [e for e in explores if explore_key(e["model"], e["explore"]) in dead_names]
     if dead_touched:
         names = ", ".join(f"`{e['explore']}`" for e in dead_touched)
         verb = "is" if len(dead_touched) == 1 else "are"

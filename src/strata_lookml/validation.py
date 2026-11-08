@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from strata_lookml.identifiers import parse_changed
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_key
 
 
 @dataclass(frozen=True)
@@ -117,5 +117,5 @@ def _explores_using_view(graph: IRGraph, edges_by_target: dict[str, list], view:
             continue
         node = graph.get_node(edge.source)
         if node and node.kind == "explore":
-            explores.add(f"{node.attrs.get('model')}.{node.name}")
+            explores.add(explore_key(node.attrs.get("model", ""), node.name))
     return sorted(explores)

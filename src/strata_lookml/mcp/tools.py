@@ -9,7 +9,7 @@ from typing import Any
 
 from strata_lookml.errors import InvalidInput, NotFound
 from strata_lookml.identifiers import resolve_explore, resolve_field, resolve_table
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_id, explore_key
 from strata_lookml.l1.enrich import analysis_coverage
 from strata_lookml.validation import validation_scope
 
@@ -75,7 +75,7 @@ def strata_list_orphans(graph: IRGraph, kind: str = "all") -> list[dict[str, Any
 
 def strata_explore_deps(graph: IRGraph, explore: str, model: str | None = None) -> dict[str, Any]:
     model, explore = resolve_explore(graph, explore, model)
-    node = graph.nodes[f"explore:{model}:{explore}"]
+    node = graph.nodes[explore_id(model, explore)]
     joins = [
         {
             "name": join["name"],
@@ -194,7 +194,7 @@ def strata_impact(graph: IRGraph, physical_table: str) -> dict[str, Any]:
             if edge.relation in {"explore→base_view", "explore→joined_view"}:
                 node = graph.get_node(edge.source)
                 if node:
-                    explores.add(f"{node.attrs.get('model')}.{node.name}")
+                    explores.add(explore_key(node.attrs.get("model", ""), node.name))
         prefix = f"field:{view}."
         fields.update(
             node_id.removeprefix("field:") for node_id in graph.nodes if node_id.startswith(prefix)

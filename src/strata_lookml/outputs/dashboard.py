@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from strata_lookml.ir.types import IRGraph
+from strata_lookml.ir.types import IRGraph, explore_key
 from strata_lookml.l1.enrich import analysis_coverage, evidence_facts, view_consumer_map
 
 # Evidence-id namespaces the embedded JS's evidenceSentence() dispatcher must handle —
@@ -154,7 +155,11 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
     usage_map = (
         {k: v["query_count"] for k, v in _eu.items()}
         if isinstance(_eu, dict)
-        else {f"{r['model']}.{r['explore']}": r["query_count"] for r in _eu if isinstance(r, dict)}
+        else {
+            explore_key(r["model"], r["explore"]): r["query_count"]
+            for r in _eu
+            if isinstance(r, dict)
+        }
     )
     pdt_records = {r["view"]: r for r in l1.get("pdt_ledger", [])}
     # Dead status needs usage evidence; with none loaded an explore is "unknown", never green.
@@ -199,6 +204,10 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
     def consumers(keys: list[str]) -> list[dict[str, Any]]:
         return [{"key": k, "dead": k in dead_ids} for k in keys]
 
+    # An explore's label is its bare name unless another model has an explore of that name.
+    explore_names = Counter(node.name for node in graph.nodes_by_kind("explore"))
+    shared_explore_names = {name for name, count in explore_names.items() if count > 1}
+
     nodes = []
     for node in graph.nodes.values():
         if node.kind not in {"explore", "view", "physical_table", "pdt"}:
@@ -209,11 +218,11 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
         # rendered green/KEEP in the graph (caught regenerating the README screenshots on
         # PR #21: dead_finance_v2 showed QUERY COUNT 0 with a KEEP badge).
         is_dead = (
-            (f"{model}.{node.name}" in dead_ids)
+            (explore_key(model, node.name) in dead_ids)
             if node.kind == "explore"
             else (node.name in dead_ids)
         )
-        qcount = usage_map.get(f"{model}.{node.name}", 0) if node.kind == "explore" else 0
+        qcount = usage_map.get(explore_key(model, node.name), 0) if node.kind == "explore" else 0
         is_orphan_struct = bool(node.attrs.get("orphan", False))
         orphan = is_orphan_struct or is_dead
 
@@ -289,7 +298,9 @@ def _build_graph_data(graph: IRGraph) -> dict[str, Any]:
             {
                 "data": {
                     "id": node.id,
-                    "label": node.name,
+                    "label": explore_key(model, node.name)
+                    if node.kind == "explore" and node.name in shared_explore_names
+                    else node.name,
                     "kind": node.kind,
                     "source_file": node.source_file,
                     "dead": is_dead,
