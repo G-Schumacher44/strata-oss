@@ -30,7 +30,21 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - `strata mcp config --client claude|cursor [--repo --usage-fixture --schema-fixture]` prints
   the exact client config bootstrap writes (one shared renderer). `strata conductor init`
   uses the same plan/apply path (`plan_conductor_init`).
-
+- **Breaking, MCP output shape** (release will be 0.2.0). The six list tools
+  (`strata_list_orphans`, `strata_dead_code_register`, `strata_pdt_costs`,
+  `strata_schema_drift`, `strata_list_skills`, `strata_chart_templates`) now return one JSON
+  object `{"items": [...], "count": N}` instead of a bare list, which the SDK split into one
+  content block per element (concatenated objects like `}{`). The three L1 tools also return
+  `usage_checked` (dead code, PDT costs) or `schema_checked` (schema drift) and, when that check
+  did not run, a `hint` naming `STRATA_USAGE_FIXTURE` / `STRATA_SCHEMA_FIXTURE`: an empty list
+  now says "not checked" instead of looking like a clean result. `strata_usage_summary` gains
+  `usage_checked`, `schema_checked` and `hint` (from `analysis_coverage`); `has_l1` is
+  deprecated (true on a schema-only build, where `dead_code_count: 0` is not a clean usage
+  result) and kept for compatibility. CLI output is unchanged.
+- MCP agent-facing descriptions: the server sends `instructions`, every tool parameter has a
+  description (and examples where useful), tool descriptions state input format, failure modes
+  and prerequisites, and `strata_find_field` takes `limit` (default 50, max 200) and requires a
+  `query` of at least 2 characters.
 - CLI exits non-zero on not-found/invalid input; MCP tool errors now reach the client. Every
   anticipated failure raises one error type (`strata_lookml.errors`: `NotFound`, `InvalidInput`,
   each with a `code`, `message` and `hint`). The CLI prints `Error:` / `Hint:` on stderr and

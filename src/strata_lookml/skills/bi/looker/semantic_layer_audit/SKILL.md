@@ -52,7 +52,7 @@ version: 0.1.0
 ## Procedure
 
 1. `strata_ir_status` → node counts, cache age. Flag stale cache (> 24h) as caveat.
-2. `strata_usage_summary` → confirm L1 data present. If `has_l1: false` → note limited visibility (no usage data).
+2. `strata_usage_summary` → confirm L1 data present. If `usage_checked: false` → note limited visibility (no usage data; set `STRATA_USAGE_FIXTURE`).
 3. `strata_dead_code_register` → count dead explores, zombie views. Compute % of total explores.
 4. `strata_schema_drift` → group drift hits by view. Flag views with > `drift_threshold` hits as HIGH RISK.
 5. `strata_pdt_costs` → count unused PDTs and estimated build cost.

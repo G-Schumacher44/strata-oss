@@ -28,3 +28,5 @@ Exact Next Steps: twin gate, operator merges. After S2 (U10 partial: MCP side of
 ### Gates
 
 pytest 239 passed (+8 in `tests/test_bootstrap.py`), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: old `cli/bootstrap.py` against the new tests fails 7 of 8 (the conductor regression test is a guard that passes on both); disabling the rollback unlink fails both atomicity tests.
+
+Review round (Codex): rollback now finishes even if a restore fails (successful replacements tracked separately, each undo step independent, one StrataError summarising failures); fixture options declare `envvar` + `show_envvar` on bootstrap and `mcp config --client` (also `--repo` there); `resolve_fixture` is the one path normaliser for both commands. Fix commit: d5bf6c2.
