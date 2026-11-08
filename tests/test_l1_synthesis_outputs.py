@@ -1194,7 +1194,9 @@ def _find_unescaped_innerhtml_interpolations(html):
                 continue
             if name in template_vars:
                 for p in template_vars[name]:
-                    if not _is_safe_expr(p, safe_vars):
+                    # Resolve at the placeholder's DECLARATION position, not the sink's: an
+                    # index var in scope at the sink says nothing about the declaring scope.
+                    if not _is_safe_expr(p, _safe_vars_at(block_safe_vars, scopes, p.pos)):
                         offenders.append((line_no, p.strip()[:80]))
                 continue
             # Neither a provably-safe local nor a traceable template-literal declaration —
@@ -1514,3 +1516,21 @@ def test_guardrail_callback_index_is_still_trusted_inside_its_callback():
     # The first (item) param is never trusted.
     item = _wrap_in_scope("li.innerHTML = `${(xs || []).map((x, i) => `<td>${x}</td>`).join('')}`;")
     assert _find_unescaped_innerhtml_interpolations(item)
+
+
+def test_guardrail_variable_template_resolves_at_declaration_position():
+    """Codex PR #63: a template assigned via a variable is checked where it was DECLARED. An
+    outer data-derived `i` interpolated in the template must stay unsafe even when the sink
+    that uses the variable sits inside a callback whose own index is also called `i`."""
+    shadowed = _wrap_in_scope(
+        "const i = r.name;\n"
+        "const t = `<b>${i}</b>`;\n"
+        "xs.forEach((x, i) => {\n  li.innerHTML = t;\n});"
+    )
+    assert [e for _, e in _find_unescaped_innerhtml_interpolations(shadowed)] == ["i"]
+
+    # Declared inside the callback, the index is legitimately trusted.
+    declared_inside = _wrap_in_scope(
+        "xs.forEach((x, i) => {\n  const t = `<b>${i}</b>`;\n  li.innerHTML = t;\n});"
+    )
+    assert _find_unescaped_innerhtml_interpolations(declared_inside) == []
