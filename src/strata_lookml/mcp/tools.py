@@ -25,8 +25,11 @@ def strata_query_field(graph: IRGraph, view: str, field: str) -> dict[str, Any]:
 
 
 def strata_list_orphans(graph: IRGraph, kind: str = "all") -> list[dict[str, Any]]:
-    if kind not in {"all", "view", "explore", "field"}:
-        raise ValueError("kind must be one of: all, view, explore, field")
+    if kind not in {"all", "view"}:
+        raise ValueError(
+            "kind must be one of: all, view (only orphan views are detected; "
+            f"explore/field orphans are not supported). Got: {kind!r}"
+        )
     orphans = graph.metadata.get("orphans", [])
     if kind == "all":
         return list(orphans)

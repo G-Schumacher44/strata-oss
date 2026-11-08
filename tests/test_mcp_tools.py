@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from strata_lookml.ir.resolver import build_resolved_graph
 from strata_lookml.mcp.tools import (
     strata_chart_templates,
@@ -48,7 +50,16 @@ def test_strata_list_orphans():
     graph = build_resolved_graph(FIXTURES)
 
     assert strata_list_orphans(graph, "view")[0]["name"] == "orphan_view"
-    assert strata_list_orphans(graph, "field") == []
+    assert strata_list_orphans(graph, "all") == strata_list_orphans(graph, "view")
+
+
+@pytest.mark.parametrize("kind", ["explore", "field", "bogus"])
+def test_strata_list_orphans_rejects_unsupported_kind(kind):
+    # Only view orphans are detected; an empty [] for explore/field would read as "none exist".
+    graph = build_resolved_graph(FIXTURES)
+
+    with pytest.raises(ValueError, match="only orphan views are detected"):
+        strata_list_orphans(graph, kind)
 
 
 def test_strata_explore_deps():

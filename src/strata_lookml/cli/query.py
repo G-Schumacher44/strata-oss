@@ -114,9 +114,9 @@ def query_explore(
 @click.option(
     "--kind",
     default="all",
-    type=click.Choice(["all", "explore", "view", "field"]),
+    type=click.Choice(["all", "view"]),
     show_default=True,
-    help="Filter by node kind",
+    help="Filter by node kind (only orphan views are detected)",
 )
 @_repo_opt
 @_usage_opt
@@ -124,7 +124,7 @@ def query_explore(
 def query_orphans(
     kind: str, repo: str | None, usage_fixture: str | None, schema_fixture: str | None
 ) -> None:
-    """List orphaned explores, views, or fields with no live dependencies."""
+    """List orphaned views (no explore uses them as base, join, or extends ancestor)."""
     graph = _build(repo, usage_fixture, schema_fixture)
     from strata_lookml.mcp.tools import strata_list_orphans
 

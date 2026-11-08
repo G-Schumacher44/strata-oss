@@ -17,6 +17,12 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` for the bound port, closing a
   DNS-rebinding path to the artifact JSON.
 
+### Fixed
+
+- `strata_list_orphans` / `strata query orphans` no longer accept `kind=explore|field`, which always
+  returned an empty list (only orphan views are detected); `kind` is now `all|view` and other
+  values are rejected with a clear error (#49).
+
 ## [0.1.9] - 2026-11-03
 
 ### Security
