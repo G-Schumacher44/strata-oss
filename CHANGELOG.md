@@ -6,6 +6,17 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `strata lint` is hidden from `--help` and the docs (contributor-only; still invocable).
+- `strata validate` resolves the user's project (`CONDUCTOR_PROJECT_ROOT` → configured repo → cwd), never Strata's own tree, and prints real relative paths.
+- `strata generate-schema --repo` reads `STRATA_REPO_PATH`.
+
+### Fixed
+
+- `strata conductor status` and MCP `strata_conductor_status` share one parser; `active_slice` is null when absent instead of capturing prose.
+- `strata validate --check-replay` no longer silently reads Strata's own fixture; without a replay file it fails with "pass --replay".
+
 ### Security
 
 - `strata chart` / `strata-chart` no longer default to the fixed, world-guessable
