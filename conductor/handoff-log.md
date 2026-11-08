@@ -29,4 +29,4 @@ Exact Next Steps: twin gate, operator merges. S8 (`mcp validate` readiness) buil
 
 ### Gates
 
-pytest 284 passed (277 before, +7 in `tests/test_cache_location.py`), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: the new tests against `origin/main` code (detached worktree) fail 6 of 7 — the server test fails `usage_checked False is True`; the passing one is the same-name-repos invariant of the new resolver. Mutations: `cache_is_fresh` ignoring inputs fails the N1 test; dropping the 0600 create/chmod fails the mode test. Real `~/.strata` untouched by the suite (no `cache/` dir).
+pytest 284 passed (277 before, +7 in `tests/test_cache_location.py`); 307 after merging S3 (#73), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: the new tests against `origin/main` code (detached worktree) fail 6 of 7 — the server test fails `usage_checked False is True`; the passing one is the same-name-repos invariant of the new resolver. Mutations: `cache_is_fresh` ignoring inputs fails the N1 test; dropping the 0600 create/chmod fails the mode test. Real `~/.strata` untouched by the suite (no `cache/` dir).

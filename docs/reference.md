@@ -286,24 +286,24 @@ Inspect the LookML IR from the terminal (no AI client needed).
 
 ### `strata query explore`
 
-`strata query explore [OPTIONS] EXPLORE MODEL`
+`strata query explore [OPTIONS] EXPLORE [MODEL]`
 
 Show an explore's join graph, base view, and field count.
 
 - `EXPLORE` — argument — required
-- `MODEL` — argument — required
+- `[MODEL]` — argument — optional
 - `--repo TEXT` — env `STRATA_REPO_PATH` — LookML repo path (overrides config)
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON for query counts + PDT costs
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON for drift detection
 
 ### `strata query field`
 
-`strata query field [OPTIONS] VIEW FIELD`
+`strata query field [OPTIONS] VIEW [FIELD]`
 
 Show a field's full definition: type, SQL, tags, and usage.
 
 - `VIEW` — argument — required
-- `FIELD` — argument — required
+- `[FIELD]` — argument — optional
 - `--repo TEXT` — env `STRATA_REPO_PATH` — LookML repo path (overrides config)
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON for query counts + PDT costs
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON for drift detection
@@ -363,7 +363,7 @@ List orphaned views (no explore uses them as base, join, or extends ancestor).
 
 `strata query scope [OPTIONS] FILES...`
 
-Show which explores are impacted by a set of changed .lkml files.
+Show which explores are impacted by a set of changed objects.
 
 - `FILES...` — argument — required
 - `--repo TEXT` — env `STRATA_REPO_PATH` — LookML repo path (overrides config)
@@ -447,11 +447,11 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Explore Dependencies** (read-only)
 
-Get an explore's base view, joins (name, view, type), resolution_chain, and total field_count. Both explore and model are required; errors with not_found if the pair does not exist (strata_navigate finds an explore by name).
+Get an explore's model, base view, joins (name, view, type), resolution_chain, and total field_count. model is optional: omit it when the explore name is unique, or pass 'model.explore'. An ambiguous name fails with invalid_input listing the candidates; an unknown one with not_found (strata_navigate finds an explore by name).
 
 Parameters:
 - `explore` — string — required — Explore name.
-- `model` — string — required — LookML model name (the .model.lkml file stem).
+- `model` — string | null — optional — default `None` — LookML model name; optional when the explore name is unique, or pass 'model.explore' as explore.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -472,10 +472,10 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Table Impact** (read-only)
 
-Get the downstream impact of a physical table (physical_table, views, explores, fields). Errors with not_found if the table is not in the IR.
+Get the downstream impact of a physical table (physical_table, views, explores, fields). The result echoes the resolved physical_table (resolved_from is the input when it differed). An ambiguous suffix fails with invalid_input listing candidates; an unknown table with not_found.
 
 Parameters:
-- `physical_table` — string — required — Table exactly as written in sql_table_name (strata_view_sources lists them).
+- `physical_table` — string — required — Table as written in sql_table_name, or a unique dataset.table / table suffix (strata_view_sources lists them).
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -537,11 +537,11 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Query Field** (read-only)
 
-Get one field's resolved definition (sql, type, tags, source_file, resolution_chain). Errors with not_found if the view.field pair is absent; use strata_find_field to locate a field by fragment.
+Get one field's resolved definition (sql, type, tags, source_file, resolution_chain). Accepts view + field, or one 'view.field' argument. Errors with not_found if the pair is absent; use strata_find_field to locate a field by fragment.
 
 Parameters:
 - `view` — string — required — View name as written in LookML.
-- `field` — string — required — Field name within the view.
+- `field` — string | null — optional — default `None` — Field name within the view; omit when view is given as view.field.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
@@ -593,10 +593,10 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Validation Scope** (read-only)
 
-Determine blast radius for changes (impacted_views, impacted_explores, impacted_fields). Malformed entries fail with invalid_input naming the accepted '<kind>:<name>' form.
+Determine blast radius for changes (impacted_views, impacted_explores, impacted_fields). Malformed entries fail with invalid_input naming the accepted forms.
 
 Parameters:
-- `changed` — array of string | object — required — Changed objects, each '<kind>:<name>' (kinds: view, explore, field, ...) or {"kind": ..., "name": ...}.
+- `changed` — array of string | object — required — Changed objects, each '<kind>:<name>' (kinds: view, explore, physical_table), {"kind": ..., "name": ...}, a .lkml path, or a bare view name.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 

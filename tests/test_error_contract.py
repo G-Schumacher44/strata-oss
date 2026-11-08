@@ -32,7 +32,7 @@ def _call_tool(name: str, arguments: dict):
 @pytest.mark.parametrize(
     ("name", "arguments", "message"),
     [
-        ("strata_validation_scope", {"changed": ["bogus"]}, "'<kind>:<name>'"),
+        ("strata_validation_scope", {"changed": ["view:"]}, "'<kind>:<name>'"),
         (
             "strata_render_chart",
             {"spec_yaml": "mark: bar", "data_json": "[]", "out_path": "/etc/x.html"},
