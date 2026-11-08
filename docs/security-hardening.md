@@ -11,7 +11,7 @@ or Jira. Its writes are local files. Every command that writes or deletes files,
 | `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
 | `strata build` | The IR cache: `<repo>/strata_ir.db`, or `--cache`. |
 | `strata outputs` / `strata dashboard` | JSON artifacts and `dashboard.html` under `--out` (dashboard default: `./output/<repo-name>`). |
-| `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default `/tmp/strata_chart.html`); any path the user names. |
+| `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default: a fresh `strata_chart_*.html` in the system temp dir, path printed); any path the user names, never written through a symlink at the final component. |
 | `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
 | `strata conductor init` / `new-slice` | `conductor/` files in the target repo. |
 | `strata validate` | Appends one row to `<project>/conductor/.validation-log` (or `CONDUCTOR_VALIDATION_LOG`). |
@@ -34,7 +34,8 @@ actual delivery yourself.
 - **Outbound, BigQuery:** `strata generate-schema` shells out to the `bq` CLI with your gcloud
   credentials; it does not use the Looker token.
 - **Listening:** `strata dashboard` serves its output directory on `127.0.0.1` (default port
-  8765) until you stop it; it does not check the `Host` header. `strata auth login` listens on
+  8765) until you stop it, and answers 403 to any request whose `Host` header is not
+  `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` (DNS-rebinding guard). `strata auth login` listens on
   `127.0.0.1` at the redirect port until a request with the matching `state` arrives on the
   redirect path, or `--timeout` passes (each connection gets at most 5 seconds to send its
   request); requests to other paths get 404 and requests with a wrong `state` get 400 and are

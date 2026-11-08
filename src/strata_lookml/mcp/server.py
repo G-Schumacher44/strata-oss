@@ -112,7 +112,7 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
         return query_field(ir_graph, view, field)
 
     @server.tool(title="List Orphans", annotations=_READ_ONLY)
-    def strata_list_orphans(kind: str = "all") -> list[dict[str, Any]]:
+    def strata_list_orphans(kind: Literal["all", "view"] = "all") -> list[dict[str, Any]]:
         """List orphan views (no explore uses them as base, join, or extends ancestor); only views are detected."""
         return query_list_orphans(ir_graph, kind)
 

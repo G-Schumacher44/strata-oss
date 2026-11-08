@@ -4,7 +4,9 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — fix/escaping-callback-scope (scope callback index vars)
 
-Commit: resolve the landed anchor with `gh pr view 63 --json mergeCommit` (the PR squash-merges).
+Commit: cc9bb22
+  (Implementation commit; the PR squash-merges, post-merge resolve the landed anchor with
+  `gh pr view 63 --json mergeCommit`.)
 Conductor Mode: patch — no version bump.
 Context Budget: low
 Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, tests/test_l1_synthesis_outputs.py.
