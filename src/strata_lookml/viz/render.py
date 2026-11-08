@@ -233,7 +233,7 @@ def _apply_auto_labels(spec: dict[str, Any]) -> dict[str, Any]:
     """Set axis title from field name (snake_case → Title Case) when no title provided."""
     for enc in spec.get("encoding", {}).values():
         if isinstance(enc, dict) and enc.get("field") and "title" not in enc:
-            enc["title"] = enc["field"].replace("_", " ").title()
+            enc["title"] = enc["field"].replace("\\", "").replace("_", " ").title()
     return spec
 
 

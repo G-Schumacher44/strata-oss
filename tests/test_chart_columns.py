@@ -216,3 +216,23 @@ def test_show_labels_templates_are_still_checked(tmp_path):
     spec = _load_spec(_CHARTS_DIR / "bar.yml")
     spec["show_labels"] = True
     assert "category" in _raises(spec, tmp_path)
+
+
+def test_override_of_a_dotted_column_name_is_a_literal_key(tmp_path):
+    data = tmp_path / "looker.json"
+    data.write_text(
+        json.dumps([{"orders.month": "2026-01-01", "orders.revenue": 10}]), encoding="utf-8"
+    )
+    out = tmp_path / "c.html"
+    result = _cli(
+        "chart", "line", str(data), "--x", "orders.month", "--y", "orders.revenue",
+        "--out", str(out),
+    )  # fmt: skip
+
+    assert result.returncode == 0, result.stderr
+    html = out.read_text(encoding="utf-8")
+    assert '"field": "orders\\\\.month"' in html
+    assert '"field": "orders\\\\.revenue"' in html
+    missing = _cli("chart", "line", str(data), "--x", "orders.nope", "--y", "orders.revenue")
+    assert missing.returncode == 1
+    assert "orders.nope" in missing.stderr

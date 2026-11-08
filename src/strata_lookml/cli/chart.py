@@ -88,6 +88,7 @@ def _template_command(name: str, summary: str) -> None:
         out: str | None,
         open_browser: bool,
     ) -> None:
+        """Render the bundled template (help text is set per template by `_template_help`)."""
         _render(name, data, {"x": x_col, "y": y_col, "color": color_col}, title, out, open_browser)
 
 
@@ -131,13 +132,26 @@ def _render(
     rows = _load_data(Path(data))
     if title:
         vl_spec["title"] = title
-    _apply_overrides(vl_spec, overrides)
+    _apply_overrides(vl_spec, overrides, {key for row in rows for key in row})
     render_chart(vl_spec, rows, Path(out) if out else None, open_browser=open_browser)
 
 
-def _apply_overrides(spec: dict[str, Any], overrides: dict[str, str | None]) -> None:
+def _field_for(column: str, row_keys: set[str]) -> str:
+    """An exact column name is a literal key, so escape the Vega path punctuation in it
+    (`orders.revenue` would otherwise read key `orders`); anything else passes as a path.
+    """
+    if column not in row_keys:
+        return column
+    return "".join(f"\\{ch}" if ch in "\\.[]" else ch for ch in column)
+
+
+def _apply_overrides(
+    spec: dict[str, Any], overrides: dict[str, str | None], row_keys: set[str]
+) -> None:
     """Point template channels at the user's columns (no renaming of the data)."""
     encoding = spec.setdefault("encoding", {})
     for channel, column in overrides.items():
         if column:
-            encoding.setdefault(channel, {"type": "nominal"})["field"] = column
+            encoding.setdefault(channel, {"type": "nominal"})["field"] = _field_for(
+                column, row_keys
+            )
