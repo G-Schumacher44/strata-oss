@@ -129,6 +129,20 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Fixed
 
+- Explores with the same name in different models are now separate explores. The resolver
+  collected explores by name across models, so a second model's `orders` became a refinement of
+  the first: one IR node with the second model's base view and joins, the first model's view
+  reported as an orphan, and dead code, usage, impact and the dashboard merged across the two.
+  Each model now resolves its own explores, extends and refinements (explores in included
+  non-model files and cross-model `extends` bases still resolve), and `strata_explore_deps` /
+  `strata query explore` with a bare shared name return the ambiguity error listing
+  `model.explore` candidates. Compat note for 0.2.0: explore ids keep their format
+  (`explore:<model>:<name>`, evidence `dead:explore:<model>.<name>`), so artifacts and dashboard
+  anchors for repos without shared names are unchanged; where a name is shared, the second
+  explore now appears with its own id, and its dashboard label is `model.explore`. IR caches
+  written before this release are rebuilt on first use (the cache inputs now record the IR
+  format).
+
 - The dashboard's dependency graph no longer colours every explore green when no usage facts are
   loaded: explores render in a neutral "unknown" state (palette entry, legend swatch, note and
   UNKNOWN badge). With usage loaded, active/dead colouring is unchanged.
