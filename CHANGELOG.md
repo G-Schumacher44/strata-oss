@@ -6,17 +6,6 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [Unreleased]
 
-### Changed
-
-- `strata lint` is hidden from `--help` and the docs (contributor-only; still invocable).
-- `strata validate` resolves the user's project (`CONDUCTOR_PROJECT_ROOT` → configured repo → cwd), never Strata's own tree, and prints real relative paths.
-- `strata generate-schema --repo` reads `STRATA_REPO_PATH`.
-
-### Fixed
-
-- `strata conductor status` and MCP `strata_conductor_status` share one parser; `active_slice` is null when absent instead of capturing prose.
-- `strata validate --check-replay` no longer silently reads Strata's own fixture; without a replay file it fails with "pass --replay".
-
 ### Security
 
 - `strata chart` / `strata-chart` no longer default to the fixed, world-guessable
@@ -47,6 +36,10 @@ All notable changes to `strata-lookml` are documented here. The format follows
   unreadable baseline is a usage error (exit 2).
 
 ### Changed
+
+- `strata lint` is hidden from `--help` and the docs (contributor-only; still invocable).
+- `strata validate` resolves the user's project (`CONDUCTOR_PROJECT_ROOT` → configured repo → cwd), never Strata's own tree, and prints real relative paths.
+- `strata generate-schema --repo` reads `STRATA_REPO_PATH`.
 
 - `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered
   before the first write; the writes are a planned list applied with temp file + `os.replace`
@@ -120,6 +113,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
   stays at its own paths, and the `Host` check still applies.
 
 ### Fixed
+
+- `strata conductor status` and MCP `strata_conductor_status` share one parser; `active_slice` is null when absent instead of capturing prose.
+- `strata validate --check-replay` no longer silently reads Strata's own fixture; without a replay file it fails with "pass --replay".
 
 - A chart whose encoding names a column missing from the data (for example `strata chart line`
   on `month`/`revenue` data) used to render a blank chart and exit 0. `render_chart` now raises
