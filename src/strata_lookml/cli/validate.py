@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 import re
 import subprocess
@@ -297,13 +298,21 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
         from datetime import datetime
 
         env_path = os.environ.get("CONDUCTOR_VALIDATION_LOG")
-        log_path = Path(env_path) if env_path else (project / "conductor" / ".validation-log")
+        if env_path:
+            log_path = Path(env_path)
+        else:
+            # Never write into the user's project: the log lives under ~/.strata/logs/.
+            digest = hashlib.sha256(str(project).encode()).hexdigest()[:12]
+            log_dir = Path.home() / ".strata" / "logs"
+            log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            log_path = log_dir / f"validation-{project.name}-{digest}.log"
         status = "reject" if failed_count > 0 else "pass"
         ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         row = f"{ts},{status},{passed_count},{warned_count},{failed_count},{skipped_count}\n"
         new_file = not log_path.exists()
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as fh:
+        fd = os.open(log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
             if new_file:
                 fh.write("timestamp,status,passed,warnings,failed,skipped\n")
             fh.write(row)

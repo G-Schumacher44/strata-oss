@@ -736,3 +736,26 @@ def test_lint_hidden_but_invocable():
 
 def test_generate_schema_repo_shows_envvar():
     assert "STRATA_REPO_PATH" in run("generate-schema", "--help").stdout
+
+
+def test_validate_writes_nothing_into_the_project(tmp_path, monkeypatch):
+    import hashlib
+
+    from click.testing import CliRunner
+
+    from strata_lookml.cli.validate import validate
+
+    home, proj = tmp_path / "home", tmp_path / "proj"
+    home.mkdir()
+    proj.mkdir()
+    (proj / "stuff.txt").write_text("x")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("CONDUCTOR_VALIDATION_LOG", raising=False)
+    before = sorted(p.relative_to(proj) for p in proj.rglob("*"))
+    CliRunner().invoke(validate, ["--project-root", str(proj)], env={"CI": "1"})
+    assert sorted(p.relative_to(proj) for p in proj.rglob("*")) == before
+    digest = hashlib.sha256(str(proj.resolve()).encode()).hexdigest()[:12]
+    log = home / ".strata" / "logs" / f"validation-proj-{digest}.log"
+    assert log.read_text().count("\n") == 2  # header + one row
+    assert oct(log.stat().st_mode & 0o777) == "0o600"
+    assert oct(log.parent.stat().st_mode & 0o777) == "0o700"
