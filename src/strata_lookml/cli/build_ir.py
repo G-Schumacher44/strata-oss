@@ -6,8 +6,10 @@ import json
 
 import click
 
+from strata_lookml.cli._contract import JsonCommand
 
-@click.command("build")
+
+@click.command("build", cls=JsonCommand)
 @click.option(
     "--repo", required=True, envvar="STRATA_REPO_PATH", show_envvar=True, help="Path to LookML repo"
 )
@@ -50,8 +52,6 @@ def build_ir(
     from strata_lookml.pipeline import build_graph
 
     repo_path = Path(repo).expanduser().resolve()
-    if not repo_path.exists():
-        raise click.ClickException(f"repo does not exist: {repo_path}")
 
     cache_path = Path(cache).expanduser().resolve() if cache else repo_path / "strata_ir.db"
 

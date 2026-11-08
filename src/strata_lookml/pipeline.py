@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from strata_lookml.ir.parser import lkml_paths
 from strata_lookml.ir.resolver import build_resolved_graph
 from strata_lookml.ir.types import IRGraph
 from strata_lookml.l1.enrich import enrich_graph
@@ -17,13 +18,31 @@ from strata_lookml.l1.schema import (
     load_schema_facts,
 )
 
+_REPO_HINT = "Pass --repo or set STRATA_REPO_PATH to the LookML project root."
+
+
+def _repo_graph(repo_path: str | Path) -> IRGraph:
+    """The resolved IR for a LookML repo; every pipeline entry point builds through here."""
+    # Imported at raise time: errors.py subclasses the MCP SDK's ToolError, and importing the
+    # SDK pulls httpx into the L0 import graph (test_l0_no_network_imports guards that).
+    root = Path(repo_path)
+    if not root.is_dir():
+        from strata_lookml.errors import NotFound
+
+        raise NotFound(f"LookML repo not found: {root}", hint=_REPO_HINT)
+    if not lkml_paths(root):
+        from strata_lookml.errors import InvalidInput
+
+        raise InvalidInput(f"no .lkml files under {root}", hint=_REPO_HINT)
+    return build_resolved_graph(root)
+
 
 def build_graph(
     repo_path: str | Path,
     usage_fixture: str | Path | None = None,
     schema_fixture: str | Path | None = None,
 ) -> IRGraph:
-    graph = build_resolved_graph(repo_path)
+    graph = _repo_graph(repo_path)
     if usage_fixture:
         facts = load_usage_facts(usage_fixture)
         graph = enrich_graph(graph, **facts)
@@ -33,7 +52,7 @@ def build_graph(
 
 
 def build_graph_with_provider(repo_path: str | Path, provider: UsageProvider) -> IRGraph:
-    graph = build_resolved_graph(repo_path)
+    graph = _repo_graph(repo_path)
     facts = UsageFacts.from_provider(provider)
     mapping = facts.to_mapping()
     return enrich_graph(
@@ -46,7 +65,7 @@ def build_graph_with_provider(repo_path: str | Path, provider: UsageProvider) ->
 
 
 def build_graph_with_schema_provider(repo_path: str | Path, provider: SchemaProvider) -> IRGraph:
-    graph = build_resolved_graph(repo_path)
+    graph = _repo_graph(repo_path)
     facts = SchemaFacts.from_provider(provider)
     return enrich_schema_drift(graph, facts)
 

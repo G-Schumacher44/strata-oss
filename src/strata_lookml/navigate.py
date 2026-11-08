@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from strata_lookml.errors import NotFound
 from strata_lookml.ir.types import IRGraph
 from strata_lookml.mcp.tools import (
     strata_explore_deps,
@@ -23,6 +24,10 @@ from strata_lookml.mcp.tools import (
 )
 
 MAX_EXPLORES = 5
+_ANCHOR_HINT = (
+    "Anchors are a BQ table (project.dataset.table), view.field, a view or explore name, "
+    "or a .lkml filename; strata_find_field searches by fragment."
+)
 
 
 def build_navigate_brief(
@@ -46,8 +51,6 @@ def build_navigate_brief(
 
     if anchor_type == "bq_table":
         result = strata_impact(graph, anchor)
-        if "error" in result:
-            return {"error": result["error"]}
         views_hit = result.get("views", [])
         explores_hit = result.get("explores", [])
         brief["bq_fields"] = result.get("fields", [])
@@ -59,7 +62,7 @@ def build_navigate_brief(
         result = strata_find_field(graph, anchor, "all")
         matches = result.get("matches", [])
         if not matches:
-            return {"error": f"No fields matching {anchor!r} found in IR"}
+            raise NotFound(f"No fields matching {anchor!r} found in IR", hint=_ANCHOR_HINT)
         brief["field_matches"] = matches
         views_hit = list({m["view"] for m in matches})
         if f"physical_table:{anchor}" in graph.nodes:
@@ -85,7 +88,10 @@ def build_navigate_brief(
                 brief["field_matches"] = field_matches
                 views_hit = list({m["view"] for m in field_matches})
             else:
-                return {"error": f"No view, explore, or field matching {anchor!r} found in IR"}
+                raise NotFound(
+                    f"No view, explore, or field matching {anchor!r} found in IR",
+                    hint=_ANCHOR_HINT,
+                )
 
     if anchor_type == "explore" and not explores_hit:
         explores_hit = _match_explores(graph, _anchor_to_name(anchor, anchor_type))
@@ -94,19 +100,21 @@ def build_navigate_brief(
     truncated_explores = len(explores_hit) > MAX_EXPLORES
     for ex in explores_hit[:MAX_EXPLORES]:
         model_name, explore_name = ex.split(".", 1)
-        deps = strata_explore_deps(graph, explore_name, model_name)
-        if "error" not in deps:
-            node = graph.get_node(f"explore:{model_name}:{explore_name}")
-            explore_details.append(
-                {
-                    "name": ex,
-                    "base_view": deps.get("base_view"),
-                    "field_count": deps.get("field_count"),
-                    "joins": [j["name"] for j in deps.get("joins", [])],
-                    "source_file": node.source_file if node else None,
-                    "source_line": node.attrs.get("source_line") if node else None,
-                }
-            )
+        try:
+            deps = strata_explore_deps(graph, explore_name, model_name)
+        except NotFound:
+            continue  # a dotted model name splits wrong; skip it as before rather than fail
+        node = graph.get_node(f"explore:{model_name}:{explore_name}")
+        explore_details.append(
+            {
+                "name": ex,
+                "base_view": deps.get("base_view"),
+                "field_count": deps.get("field_count"),
+                "joins": [j["name"] for j in deps.get("joins", [])],
+                "source_file": node.source_file if node else None,
+                "source_line": node.attrs.get("source_line") if node else None,
+            }
+        )
     if explore_details:
         brief["explores"] = explore_details
 

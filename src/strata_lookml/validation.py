@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from strata_lookml.errors import InvalidInput
 from strata_lookml.ir.types import IRGraph
+
+_FORMAT_HINT = 'Pass "<kind>:<name>" strings or {"kind", "name"} objects, e.g. "view:orders".'
 
 
 @dataclass(frozen=True)
@@ -17,9 +20,15 @@ class ChangedObject:
     def from_value(cls, value: str | dict[str, Any]) -> ChangedObject:
         if isinstance(value, str):
             kind, _, name = value.partition(":")
-            if not name:
-                raise ValueError("changed object strings must use '<kind>:<name>'")
+            if not kind or not name:
+                raise InvalidInput(
+                    f"changed object must use '<kind>:<name>'. Got: {value!r}", hint=_FORMAT_HINT
+                )
             return cls(kind=kind, name=name)
+        if not isinstance(value, dict) or "kind" not in value or "name" not in value:
+            raise InvalidInput(
+                f"changed object must have 'kind' and 'name'. Got: {value!r}", hint=_FORMAT_HINT
+            )
         return cls(kind=str(value["kind"]), name=str(value["name"]))
 
     def to_dict(self) -> dict[str, Any]:

@@ -87,6 +87,7 @@ def main() -> None:
     usage_fixture = ROOT / cfg["usage"]
     schema_fixture = ROOT / cfg["schema"]
 
+    from strata_lookml.errors import StrataError
     from strata_lookml.mcp.tools import (
         strata_dead_code_register,
         strata_explore_deps,
@@ -179,7 +180,7 @@ def main() -> None:
         chain = deps.get("resolution_chain", [])
         if chain:
             print(f"   chain     : {chain}")
-    except KeyError as e:
+    except StrataError as e:
         print(f"   ERROR: {e}")
     print()
 
@@ -190,7 +191,7 @@ def main() -> None:
         print(f"   type   : {field.get('type', '?')}")
         print(f"   sql    : {str(field.get('sql', ''))[:60]}")
         print(f"   source : {field.get('source_file', '?')}")
-    except KeyError as e:
+    except StrataError as e:
         print(f"   not found (skipped): {e}")
     print()
 
@@ -222,7 +223,7 @@ def main() -> None:
         print(f"    views    : {len(impact.get('views', []))}")
         print(f"    explores : {len(impact.get('explores', []))}")
         print(f"    fields   : {len(impact.get('fields', []))}")
-    except KeyError as e:
+    except StrataError as e:
         print(f"    table not in IR (skipped): {e}")
     print()
 

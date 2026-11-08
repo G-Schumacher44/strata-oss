@@ -40,8 +40,9 @@ dependencies = [
   # 2.x migration landed (server.py uses mcp.server.mcpserver.MCPServer). Upper bound stays
   # as policy: a major-version resolver surprise is exactly what broke fresh installs once
   # (PR #18's dead-on-arrival strata-mcp under an unbounded pin) — lift <3 only with a 3.x
-  # migration, never by widening.
-  "mcp>=2,<3",
+  # migration, never by widening. Floor 2.3: from there the SDK masks every tool exception
+  # that is not a ToolError, and strata_lookml.errors relies on ToolError reaching the client.
+  "mcp>=2.3,<3",
   "click>=8.0",
   "pyyaml>=6.0",
   "anyio>=4.0",

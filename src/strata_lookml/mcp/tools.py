@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from strata_lookml.errors import InvalidInput, NotFound
 from strata_lookml.ir.types import IRGraph
 from strata_lookml.l1.enrich import analysis_coverage
 from strata_lookml.validation import validation_scope
@@ -15,7 +16,10 @@ from strata_lookml.validation import validation_scope
 def strata_query_field(graph: IRGraph, view: str, field: str) -> dict[str, Any]:
     node = graph.get_node(f"field:{view}.{field}")
     if node is None:
-        return {"error": f"field not found: {view}.{field}"}
+        raise NotFound(
+            f"field not found: {view}.{field}",
+            hint="Search field names with strata_find_field (CLI: strata query find-field).",
+        )
     return {
         "sql": node.attrs.get("sql"),
         "type": node.attrs.get("type"),
@@ -27,7 +31,7 @@ def strata_query_field(graph: IRGraph, view: str, field: str) -> dict[str, Any]:
 
 def strata_list_orphans(graph: IRGraph, kind: str = "all") -> list[dict[str, Any]]:
     if kind not in {"all", "view"}:
-        raise ValueError(
+        raise InvalidInput(
             "kind must be one of: all, view (only orphan views are detected; "
             f"explore/field orphans are not supported). Got: {kind!r}"
         )
@@ -40,7 +44,11 @@ def strata_list_orphans(graph: IRGraph, kind: str = "all") -> list[dict[str, Any
 def strata_explore_deps(graph: IRGraph, explore: str, model: str) -> dict[str, Any]:
     node = graph.get_node(f"explore:{model}:{explore}")
     if node is None:
-        return {"error": f"explore not found: {model}.{explore}"}
+        raise NotFound(
+            f"explore not found: {model}.{explore}",
+            hint="Arguments are the explore name, then its model; strata_navigate finds an "
+            "explore by name.",
+        )
     joins = [
         {
             "name": join["name"],
@@ -126,7 +134,11 @@ def strata_validation_scope(
 def strata_impact(graph: IRGraph, physical_table: str) -> dict[str, Any]:
     table_id = f"physical_table:{physical_table}"
     if table_id not in graph.nodes:
-        return {"error": f"physical_table not found in IR: {physical_table}"}
+        raise NotFound(
+            f"physical_table not found in IR: {physical_table}",
+            hint="Pass the table as written in sql_table_name; strata_view_sources lists "
+            "every view's table.",
+        )
 
     # Build reverse adjacency index once — O(E) — so inner loops are O(degree) not O(E)
     edges_by_target: dict[str, list] = {}
@@ -170,7 +182,7 @@ def strata_find_field(graph: IRGraph, query: str, kind: str = "all") -> dict[str
     """
     valid_kinds = {"all", "dimension", "measure", "filter", "parameter"}
     if kind not in valid_kinds:
-        return {"error": f"kind must be one of: {', '.join(sorted(valid_kinds))}"}
+        raise InvalidInput(f"kind must be one of: {', '.join(sorted(valid_kinds))}. Got: {kind!r}")
 
     query_lower = query.lower()
     matches: list[dict[str, Any]] = []
@@ -220,6 +232,9 @@ def strata_view_sources(graph: IRGraph, model: str | None = None) -> dict[str, A
     # If model filter requested, collect views reachable from that model's explores
     scoped_views: set[str] | None = None
     if model:
+        if graph.get_node(f"model:{model}") is None:
+            models = sorted(node.name for node in graph.nodes_by_kind("model"))
+            raise NotFound(f"model not found: {model}", hint=f"Known models: {', '.join(models)}.")
         scoped_views = set()
         for node_id, node in graph.nodes.items():
             if node_id.startswith("explore:") and node.attrs.get("model") == model:
@@ -282,24 +297,29 @@ def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[s
     resolved = requested.parent.resolve() / requested.name
     if resolved.is_symlink():
         # Refuse here too, not only in render_chart: O_NOFOLLOW is absent on some platforms.
-        raise ValueError(f"out_path must not be a symlink. Got: {out_path!r}")
+        raise InvalidInput(f"out_path must not be a symlink. Got: {out_path!r}")
     allowed_roots = [
         chart_output_dir(),
         Path("/tmp").resolve(),
     ]
     if not any(resolved.is_relative_to(r) for r in allowed_roots):
-        raise ValueError(f"out_path must be within ~/.strata/output/ or /tmp/. Got: {out_path!r}")
+        raise InvalidInput(
+            f"out_path must be within ~/.strata/output/ or /tmp/. Got: {out_path!r}",
+            hint=f"Write under {chart_output_dir()}/.",
+        )
     if resolved.suffix.lower() != ".html":
-        raise ValueError(f"out_path must end in .html. Got: {out_path!r}")
+        raise InvalidInput(f"out_path must end in .html. Got: {out_path!r}")
+
+    import yaml as _yaml
 
     try:
-        import yaml as _yaml
-
         spec = _yaml.safe_load(spec_yaml)
-    except ImportError:
-        spec = _json.loads(spec_yaml)
-
-    rows = _json.loads(data_json)
+    except _yaml.YAMLError as exc:
+        raise InvalidInput(f"spec_yaml is not valid YAML or JSON: {exc}") from exc
+    try:
+        rows = _json.loads(data_json)
+    except ValueError as exc:
+        raise InvalidInput(f"data_json is not valid JSON: {exc}") from exc
     from strata_lookml.viz.render import render_chart
 
     path = render_chart(spec, rows, resolved)
@@ -340,7 +360,8 @@ def strata_skill(skills_dir: str | Path, name: str) -> str:
     for skill_file in skills_dir.rglob("SKILL.md"):
         if skill_file.parent.name == name:
             return skill_file.read_text(encoding="utf-8")
-    return f"error: skill not found: {name}"
+    names = sorted(skill_file.parent.name for skill_file in skills_dir.rglob("SKILL.md"))
+    raise NotFound(f"skill not found: {name}", hint=f"Available skills: {', '.join(names)}.")
 
 
 def strata_conductor_status(conductor_dir: str | Path) -> dict[str, Any]:

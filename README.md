@@ -619,6 +619,21 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 | `strata skill` | List bundled skills or print a skill procedure |
 | `strata validate` | Conductor spine check — handoff format, active slice, replay facts |
 
+### Error handling
+
+Exit codes: `0` success, `1` failure (not found, invalid input, missing repo or no `.lkml`
+files, failed gate), `2` usage error (unknown option, missing argument). Errors go to stderr as
+`Error: <message>` with a `Hint: <next step>` line when there is one. Commands that print JSON
+(`strata query ...`, `strata build --json`, `strata auth status`) also print the error to stdout
+as JSON, so scripts can branch on `code`:
+
+```json
+{"error": "field not found: orders.nope", "code": "not_found", "hint": "Search field names with strata_find_field (CLI: strata query find-field)."}
+```
+
+`code` is `not_found` or `invalid_input`; `hint` may be `null`. Over MCP the same failures come
+back as tool errors (`isError: true`) with the message and hint as text.
+
 ---
 
 ## CI and Bot Deployment

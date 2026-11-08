@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from strata_lookml.errors import NotFound
 from strata_lookml.l1.enrich import enrich_graph
 from strata_lookml.l1.fixtures import load_usage_facts
 from strata_lookml.l1.types import ExploreUsage
@@ -94,8 +95,8 @@ def test_review_patch_guardrails(tmp_path):
 
     enriched = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
     assert build_explore_slice(enriched, "test_model", "orphan_explore")["pdt_evidence"] == []
-    result = strata_impact(enriched, "analytics.missing_table")
-    assert "error" in result
+    with pytest.raises(NotFound, match="physical_table not found"):
+        strata_impact(enriched, "analytics.missing_table")
 
     keep = deterministic_verdict(build_explore_slice(enriched, "test_model", "customer"))
     assert keep.verdict == "keep"

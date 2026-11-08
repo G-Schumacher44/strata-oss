@@ -81,8 +81,9 @@ The returned brief contains, as applicable:
 - `change_type` + `what_to_touch` — when `ticket_text` was provided
 - `truncated` — set when results were capped (re-run with a `model` filter)
 
-If the brief has an `error` key → halt and report it verbatim (e.g. anchor not found —
-suggest checking spelling or running `strata query status`).
+If the call fails (a tool error over MCP; exit 1 with `{"error", "code", "hint"}` from the CLI)
+→ halt and report the message and hint verbatim (e.g. anchor not found — suggest checking
+spelling or running `strata query status`).
 
 **Step 3 — Optional deep-dive**
 

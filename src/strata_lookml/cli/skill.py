@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 
 import click
@@ -46,8 +45,4 @@ def skill(name: str | None) -> None:
         click.echo(json.dumps(skills, indent=2))
         return
 
-    content = strata_skill(skills_dir, name)
-    if content.startswith("error:"):
-        click.secho(content, fg="red", err=True)
-        sys.exit(1)
-    click.echo(content)
+    click.echo(strata_skill(skills_dir, name))

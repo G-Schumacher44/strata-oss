@@ -9,6 +9,7 @@ from typing import Any
 
 import click
 
+from strata_lookml.cli._contract import JsonCommand
 from strata_lookml.config import load_repo_path
 
 
@@ -62,7 +63,7 @@ _schema_opt = click.option(
 )
 
 
-@query.command("field")
+@query.command("field", cls=JsonCommand)
 @click.argument("view")
 @click.argument("field")
 @_repo_opt
@@ -84,7 +85,7 @@ def query_field(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
-@query.command("explore")
+@query.command("explore", cls=JsonCommand)
 @click.argument("explore")
 @click.argument("model")
 @_repo_opt
@@ -110,7 +111,7 @@ def query_explore(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
-@query.command("orphans")
+@query.command("orphans", cls=JsonCommand)
 @click.option(
     "--kind",
     default="all",
@@ -132,7 +133,7 @@ def query_orphans(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
-@query.command("impact")
+@query.command("impact", cls=JsonCommand)
 @click.argument("physical_table")
 @_repo_opt
 @_usage_opt
@@ -155,7 +156,7 @@ def query_impact(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
-@query.command("scope")
+@query.command("scope", cls=JsonCommand)
 @click.argument("files", nargs=-1, required=True)
 @_repo_opt
 @_usage_opt
@@ -188,7 +189,7 @@ def query_scope(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
-@query.command("find-field")
+@query.command("find-field", cls=JsonCommand)
 @click.argument("query")
 @click.option(
     "--kind",
@@ -223,7 +224,7 @@ def query_find_field(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
-@query.command("view-sources")
+@query.command("view-sources", cls=JsonCommand)
 @click.option("--model", default=None, help="Restrict to views reachable from a specific model")
 @_repo_opt
 @_usage_opt
@@ -250,7 +251,7 @@ def query_view_sources(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
-@query.command("navigate")
+@query.command("navigate", cls=JsonCommand)
 @click.argument("anchor")
 @click.option("--model", default=None, help="Narrow scope to a specific model")
 @click.option("--ticket", default=None, help="Ticket description — infers change type")
@@ -316,10 +317,6 @@ def query_navigate(
         if out_path:
             Path(out_path).write_text(_navigate_markdown(anchor, brief), encoding="utf-8")
             click.secho(f"Wrote {out_path}", fg="green", err=True)
-        return
-
-    if "error" in brief:
-        click.secho(f"Not found: {brief['error']}", fg="red")
         return
 
     for line in _navigate_lines(anchor, brief):
@@ -405,9 +402,6 @@ def _navigate_lines(anchor: str, brief: dict[str, Any]) -> list[str]:
 
 def _navigate_markdown(anchor: str, brief: dict[str, Any]) -> str:
     """Render the brief as a portable markdown artifact."""
-    if "error" in brief:
-        return f"# Navigator Brief — `{anchor}`\n\n> Not found: {brief['error']}\n"
-
     md = [f"# Navigator Brief — `{anchor}`", "", f"**Anchor type:** {brief['anchor_type']}"]
     if brief.get("change_type"):
         md.append(f"**Change type:** {brief['change_type']}")
@@ -497,7 +491,7 @@ def _render_navigate_chart(anchor: str, brief: dict[str, Any], open_browser: boo
         webbrowser.open(f"file://{result['path']}")
 
 
-@query.command("status")
+@query.command("status", cls=JsonCommand)
 @_repo_opt
 @_usage_opt
 @_schema_opt

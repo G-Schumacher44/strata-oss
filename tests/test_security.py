@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from strata_lookml.errors import InvalidInput, NotFound
+
 # --- B1: HTTPS enforcement ---
 
 
@@ -88,36 +90,36 @@ def _make_graph():
     )
 
 
-def test_mcp_query_field_unknown_returns_error():
+def test_mcp_query_field_unknown_raises_not_found():
     from strata_lookml.mcp.tools import strata_query_field
 
     graph = _make_graph()
-    result = strata_query_field(graph, "nonexistent_view", "nonexistent_field")
-    assert "error" in result
+    with pytest.raises(NotFound, match="field not found"):
+        strata_query_field(graph, "nonexistent_view", "nonexistent_field")
 
 
-def test_mcp_explore_deps_unknown_returns_error():
+def test_mcp_explore_deps_unknown_raises_not_found():
     from strata_lookml.mcp.tools import strata_explore_deps
 
     graph = _make_graph()
-    result = strata_explore_deps(graph, "nonexistent_explore", "nonexistent_model")
-    assert "error" in result
+    with pytest.raises(NotFound, match="explore not found"):
+        strata_explore_deps(graph, "nonexistent_explore", "nonexistent_model")
 
 
-def test_mcp_impact_unknown_table_returns_error():
+def test_mcp_impact_unknown_table_raises_not_found():
     from strata_lookml.mcp.tools import strata_impact
 
     graph = _make_graph()
-    result = strata_impact(graph, "nonexistent_table")
-    assert "error" in result
+    with pytest.raises(NotFound, match="physical_table not found"):
+        strata_impact(graph, "nonexistent_table")
 
 
-def test_mcp_skill_unknown_returns_string_error():
+def test_mcp_skill_unknown_raises_not_found():
     from strata_lookml.mcp.tools import strata_skill
 
     skills_dir = Path(__file__).resolve().parent.parent / "src" / "strata_lookml" / "skills"
-    result = strata_skill(str(skills_dir), "nonexistent_skill_xyz")
-    assert "not found" in result
+    with pytest.raises(NotFound, match="skill not found"):
+        strata_skill(str(skills_dir), "nonexistent_skill_xyz")
 
 
 # --- B6: Chart output path ---
@@ -128,7 +130,7 @@ def test_render_chart_rejects_path_escape():
 
     spec_yaml = "mark: bar\nencoding:\n  x:\n    field: category\n  y:\n    field: value"
     data_json = '[{"category": "A", "value": 1}]'
-    with pytest.raises(ValueError, match="out_path must be within"):
+    with pytest.raises(InvalidInput, match="out_path must be within"):
         strata_render_chart(spec_yaml, data_json, "/etc/strata_pwned.html")
 
 
@@ -139,7 +141,7 @@ def test_render_chart_rejects_adjacent_directory_prefix_collision():
 
     spec_yaml = "mark: bar\nencoding:\n  x:\n    field: category\n  y:\n    field: value"
     data_json = '[{"category": "A", "value": 1}]'
-    with pytest.raises(ValueError, match="out_path must be within"):
+    with pytest.raises(InvalidInput, match="out_path must be within"):
         strata_render_chart(spec_yaml, data_json, "/tmp-evil/strata_pwned.html")
 
 
@@ -258,7 +260,7 @@ def test_render_chart_keeps_stdout_clean_and_requires_html(tmp_path, capsys):
         assert str(out) in captured.err
     finally:
         out.unlink(missing_ok=True)
-    with pytest.raises(ValueError, match=r"\.html"):
+    with pytest.raises(InvalidInput, match=r"\.html"):
         strata_render_chart(spec, "[]", "/tmp/strata_test_chart.sh")
 
 
@@ -315,7 +317,7 @@ def test_render_chart_refuses_symlink_at_target(tmp_path):
     victim.write_text("keep", encoding="utf-8")
     link = tmp_path / "c.html"
     link.symlink_to(victim)
-    with pytest.raises(ValueError, match="symlink"):
+    with pytest.raises(InvalidInput, match="symlink"):
         render_chart(dict(_CHART_SPEC), _CHART_ROWS, link)
     assert victim.read_text(encoding="utf-8") == "keep"
 
@@ -330,7 +332,7 @@ def test_mcp_render_chart_refuses_symlink_under_allowed_root(tmp_path, monkeypat
     victim.write_text("keep", encoding="utf-8")
     (out_dir / "c.html").symlink_to(victim)
     spec_yaml = "mark: bar\nencoding:\n  x:\n    field: c\n  y:\n    field: v"
-    with pytest.raises(ValueError, match="symlink"):
+    with pytest.raises(InvalidInput, match="symlink"):
         strata_render_chart(spec_yaml, '[{"c": "A", "v": 1}]', str(out_dir / "c.html"))
     assert victim.read_text(encoding="utf-8") == "keep"
 
@@ -351,8 +353,8 @@ def test_symlink_refused_without_o_nofollow(tmp_path, monkeypatch):
     link = out_dir / "c.html"
     link.symlink_to(victim)
     spec_yaml = "mark: bar\nencoding:\n  x:\n    field: c\n  y:\n    field: v"
-    with pytest.raises(ValueError, match="symlink"):
+    with pytest.raises(InvalidInput, match="symlink"):
         strata_render_chart(spec_yaml, '[{"c": "A", "v": 1}]', str(link))
-    with pytest.raises(ValueError, match="symlink"):
+    with pytest.raises(InvalidInput, match="symlink"):
         render_chart(dict(_CHART_SPEC), _CHART_ROWS, link)
     assert victim.read_text(encoding="utf-8") == "keep"
