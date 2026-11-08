@@ -22,7 +22,7 @@ from typing import Any, Literal
 from strata_lookml.config import ensure_private_dir, strata_home
 from strata_lookml.ir.parser import lkml_paths
 from strata_lookml.ir.types import IRGraph
-from strata_lookml.safe_paths import check_write_destination, is_sqlite_file
+from strata_lookml.safe_paths import check_write_destination
 
 SCHEMA = """
 CREATE TABLE ir_cache (
@@ -33,6 +33,9 @@ CREATE TABLE ir_cache (
 )
 """
 
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+# Columns every Strata cache has had; `inputs` was added with the input-keyed reuse.
+_CACHE_COLUMNS = frozenset({"id", "built_at", "payload"})
 _REPLACE_ATTEMPTS = 3
 _REPLACE_BACKOFF_SECONDS = 0.05
 
@@ -100,8 +103,8 @@ def save_ir(graph: IRGraph, cache_path: str | Path, inputs: dict[str, Any] | Non
     state, and an interrupted write leaves the old cache untouched. If the swap keeps failing
     (Windows, a reader holding the file open) the temp file is dropped, the old cache kept,
     and a RuntimeWarning emitted; the build itself never fails on it. A destination that is a
-    symlink, LookML source, a directory or (outside ~/.strata/cache) a non-SQLite file is
-    refused (`InvalidInput`) before anything is written. Whatever was at the path
+    symlink, LookML source, a directory or (outside ~/.strata/cache) any existing file that is
+    not a Strata IR cache — including an unrelated SQLite database — is refused (`InvalidInput`) before anything is written. Whatever was at the path
     before (an older schema, a corrupt file) is replaced, not migrated (the cache is
     disposable). A missing directory is created 0700; Strata's own ~/.strata/cache is
     tightened to 0700.
@@ -110,8 +113,8 @@ def save_ir(graph: IRGraph, cache_path: str | Path, inputs: dict[str, Any] | Non
 
     def is_ours(target: Path) -> bool:
         # Anything in Strata's own cache dir is Strata's (a damaged entry is rebuilt); at a
-        # user-named path only an existing SQLite file may be replaced.
-        return target.parent == cache_dir.resolve() or is_sqlite_file(target)
+        # user-named path only an existing Strata IR cache may be replaced.
+        return target.parent == cache_dir.resolve() or is_strata_cache(target)
 
     path = check_write_destination(Path(cache_path), what="IR cache", is_ours=is_ours)
     ensure_private_dir(path.parent, tighten=path.parent.resolve() == cache_dir.resolve())
@@ -144,6 +147,33 @@ def save_ir(graph: IRGraph, cache_path: str | Path, inputs: dict[str, Any] | Non
             RuntimeWarning,
             stacklevel=2,
         )
+
+
+def is_strata_cache(path: Path) -> bool:
+    """True only for a SQLite file holding Strata's `ir_cache` table (current or older schema).
+
+    Opened read-only (`mode=ro`) and closed explicitly, so checking never creates, locks for
+    write, or modifies the file. Any other SQLite database is not ours to replace.
+    """
+    try:
+        with path.open("rb") as handle:
+            if handle.read(len(_SQLITE_MAGIC)) != _SQLITE_MAGIC:
+                return False
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    except (OSError, sqlite3.DatabaseError):
+        return False
+    try:
+        tables = {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        if tables != {"ir_cache"}:
+            return False
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(ir_cache)")}
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        conn.close()
+    return _CACHE_COLUMNS <= columns <= _CACHE_COLUMNS | {"inputs"}
 
 
 def _replace_with_retry(tmp: Path, path: Path) -> bool:

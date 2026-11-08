@@ -11,7 +11,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 LOOKML_SUFFIXES = frozenset({".lkml", ".lookml"})
-SQLITE_MAGIC = b"SQLite format 3\x00"
 
 
 def check_write_destination(path: Path, *, what: str, is_ours: Callable[[Path], bool]) -> Path:
@@ -34,12 +33,3 @@ def check_write_destination(path: Path, *, what: str, is_ours: Callable[[Path], 
     if target.exists() and not is_ours(target):
         raise InvalidInput(f"refusing to overwrite {path}: it is not a previous Strata {what}")
     return target
-
-
-def is_sqlite_file(path: Path) -> bool:
-    """True if the file starts with the SQLite 3 header."""
-    try:
-        with path.open("rb") as handle:
-            return handle.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC
-    except OSError:
-        return False

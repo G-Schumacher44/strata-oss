@@ -285,3 +285,18 @@ def test_build_replaces_an_existing_strata_cache_at_a_custom_path(env, tmp_path)
     _strata("build", "--repo", str(repo), "--cache", str(cache))
     _strata("build", "--repo", str(repo), "--cache", str(cache), "--usage-fixture", str(USAGE))
     assert cache_inputs(cache)["usage_fixture"]["path"] == str(USAGE.resolve())
+
+
+def test_build_refuses_to_overwrite_an_unrelated_sqlite_database(env, tmp_path):
+    # Any SQLite file used to count as "ours", so --cache at a user's own database replaced it.
+    _, repo = env
+    other = tmp_path / "app.db"
+    with sqlite3.connect(other) as conn:
+        conn.execute("CREATE TABLE users (name TEXT)")
+        conn.execute("INSERT INTO users VALUES ('ada')")
+    conn.close()
+    result = _build_with_cache(repo, other)
+    assert result.exit_code == 1 and "not a previous Strata IR cache" in result.output
+    with sqlite3.connect(other) as conn:
+        assert conn.execute("SELECT name FROM users").fetchall() == [("ada",)]
+    conn.close()

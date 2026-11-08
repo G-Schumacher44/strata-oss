@@ -9,7 +9,7 @@ or Jira. Its writes are local files. Every command that writes or deletes files,
 |---|---|
 | MCP server (`strata-mcp`) | The IR cache: `~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db` (directory 0700, file 0600 on POSIX), or the path in `STRATA_CACHE_PATH`. Never inside the LookML repo by default. Rebuilt unless it was built from the same repo (path + `.lkml` file count, newest mtime, total size, paths) and fixtures (paths + mtimes) and is younger than the cache max age; a missing, unparseable, or future timestamp also forces a rebuild. |
 | `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
-| `strata build` | The IR cache: the same `~/.strata/cache/` entry as the MCP server, or `--cache` / `STRATA_CACHE_PATH` (refused if that path is a symlink, a `.lkml`/`.lookml` file, a directory, or an existing file that is not a SQLite database). |
+| `strata build` | The IR cache: the same `~/.strata/cache/` entry as the MCP server, or `--cache` / `STRATA_CACHE_PATH` (refused if that path is a symlink, a `.lkml`/`.lookml` file, a directory, or an existing file that is not a Strata IR cache, such as an unrelated SQLite database). |
 | `strata outputs` / `strata dashboard` | JSON artifacts and `dashboard.html` under `--out` (dashboard default: `./output/<repo-name>`). |
 | `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default: a fresh `strata_chart_*.html` in the system temp dir, path printed); any path the user names, never written through a symlink at the final component. |
 | `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
