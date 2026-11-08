@@ -19,7 +19,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
-- `gate.finding_records(graph)`: every opt-in finding as one record with its subject node, source
+- `gate.finding_records(graph)`: every finding, integrity failures included, as one record with its subject node, source
   file and line, evidence ids, a short display label and (PDTs) cost. `strata check` output and the
   baseline file are unchanged: both are projections of it. PDT nodes now carry their view's
   `source_line`.

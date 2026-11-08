@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from strata_lookml.gate import baseline_document, evaluate_gate, finding_records, write_baseline
+from strata_lookml.gate import (
+    _integrity_failures,
+    baseline_document,
+    evaluate_gate,
+    finding_records,
+    write_baseline,
+)
 from strata_lookml.pipeline import build_graph
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -83,3 +89,38 @@ def test_duplicate_ids_keep_every_record_and_the_baseline_dedupes(tmp_path):
         len(v) for v in json.loads(target.read_text())["findings"].values()
     )
     assert evaluate_gate(graph, {"drift"}, {"drift": set(ids)})["passed"]
+
+
+def test_a_resolution_error_is_an_integrity_record_with_no_guessed_location(tmp_path):
+    (tmp_path / "orders.view.lkml").write_text(
+        "view: orders {\n  extends: [gone]\n  dimension: id { sql: ${TABLE}.id ;; }\n}\n",
+        encoding="utf-8",
+    )
+    records = finding_records(build_graph(tmp_path))
+
+    assert [(r["category"], r["id"]) for r in records] == [
+        ("integrity", "resolution:view:missing_extends_target:gone")
+    ]
+    record = records[0]
+    assert record["label"] == "gone: missing extends target"
+    assert record["subject_id"] is None
+    assert record["source_file"] is None and record["source_line"] is None
+    assert _integrity_failures(build_graph(tmp_path)) == [
+        {k: record[k] for k in ("category", "id", "message")}
+    ]
+
+
+def test_an_explore_integrity_failure_cites_its_explore(monkeypatch):
+    graph = _graph("gcs_analytics")
+    monkeypatch.setattr(
+        "strata_lookml.gate.validate_verdict", lambda verdict, evidence: ["bad verdict"]
+    )
+    records = [r for r in finding_records(graph) if r["category"] == "integrity"]
+
+    assert records
+    for r in records:
+        node = graph.get_node(r["subject_id"])
+        assert node is not None and node.kind == "explore" and r["id"] == node.id
+        assert r["source_file"] == node.source_file
+        assert r["source_line"] == node.attrs["source_line"]
+        assert r["message"] == "bad verdict"

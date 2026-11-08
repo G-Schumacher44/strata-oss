@@ -29,23 +29,12 @@ class BaselineError(ValueError):
     """A baseline file that cannot be read or is not a baseline."""
 
 
+def _rows(records: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [{k: r[k] for k in ("category", "id", "message")} for r in records]
+
+
 def _integrity_failures(graph: IRGraph) -> list[dict[str, str]]:
-    failures: list[dict[str, str]] = []
-    for error in graph.metadata.get("resolution_errors", []):
-        subject = error.get("name") or "→".join(error.get("chain", []))
-        failures.append(
-            {
-                "category": INTEGRITY,
-                "id": f"resolution:{error['kind']}:{error['type']}:{subject}",
-                "message": f"{error['kind']} {error['type'].replace('_', ' ')}: {subject}",
-            }
-        )
-    for node in graph.nodes_by_kind("explore"):
-        explore_slice = build_explore_slice(graph, node.attrs["model"], node.name)
-        verdict = deterministic_verdict(explore_slice)
-        for message in validate_verdict(verdict, explore_slice["evidence_ids"]):
-            failures.append({"category": INTEGRITY, "id": node.id, "message": message})
-    return failures
+    return _rows(_integrity_records(graph))
 
 
 def _short_table(table: str, parts: int) -> str:
@@ -82,16 +71,62 @@ def _record(
     return record
 
 
+def _integrity_records(graph: IRGraph) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for error in graph.metadata.get("resolution_errors", []):
+        subject = error.get("name") or "\u2192".join(error.get("chain", []))
+        reason = error["type"].replace("_", " ")
+        # A resolution error names the missing/cyclic object, not where it was declared, so it
+        # has no subject node, file or line: None rather than a guess.
+        records.append(
+            {
+                "category": INTEGRITY,
+                "id": f"resolution:{error['kind']}:{error['type']}:{subject}",
+                "message": f"{error['kind']} {reason}: {subject}",
+                "label": f"{subject}: {reason}",
+                "subject_id": None,
+                "source_file": error.get("source_file"),
+                "source_line": None,
+                "evidence_ids": [],
+            }
+        )
+    for node in graph.nodes_by_kind("explore"):
+        explore_slice = build_explore_slice(graph, node.attrs["model"], node.name)
+        verdict = deterministic_verdict(explore_slice)
+        for message in validate_verdict(verdict, explore_slice["evidence_ids"]):
+            records.append(
+                _record(
+                    graph,
+                    INTEGRITY,
+                    node.id,
+                    message,
+                    f"{node.name}: {message}",
+                    node.id,
+                    None,
+                    explore_slice["evidence_ids"],
+                )
+            )
+    return records
+
+
 def finding_records(graph: IRGraph) -> list[dict[str, Any]]:
-    """Every opt-in finding as a full record, the one source the gate and baseline project from.
+    """Every finding as a full record, integrity failures first, then the opt-in categories.
+
+    The one source the gate and baseline project from.
 
     `{category, id, message, label, subject_id, source_file, source_line, evidence_ids,
     cost_usd?}`: `subject_id` is the IR node the finding is about (resolves via `graph.get_node`),
     `label` the short per-category display string (the full `id` stays the key), `cost_usd` only
-    on PDT findings. Categories whose facts were not loaded contribute no records. Duplicate ids
+    on PDT findings. Integrity records (ids as the gate reports them) have a `subject_id` only
+    for explore failures; resolution errors carry no node, file or line, so those are None.
+    Categories whose facts were not loaded contribute no records. Duplicate ids
     yield one record each (two fields of one name can miss the same column); the baseline
     de-duplicates, ids are never changed.
     """
+    return _integrity_records(graph) + _opt_in_records(graph)
+
+
+def _opt_in_records(graph: IRGraph) -> list[dict[str, Any]]:
     l1 = graph.metadata.get("l1", {})
     explore_ids = {
         explore_key(n.attrs.get("model", ""), n.name): n.id for n in graph.nodes_by_kind("explore")
@@ -175,10 +210,10 @@ def findings_by_category(graph: IRGraph) -> dict[str, list[dict[str, str]] | Non
     findings: dict[str, list[dict[str, str]] | None] = {
         c: [] if loaded[c] else None for c in FINDING_CATEGORIES
     }
-    for record in finding_records(graph):
+    for record in _opt_in_records(graph):
         rows = findings[record["category"]]
         assert rows is not None
-        rows.append({k: record[k] for k in ("category", "id", "message")})
+        rows.extend(_rows([record]))
     return findings
 
 
