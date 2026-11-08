@@ -35,47 +35,17 @@ It never reads raw LookML files directly — it always goes through the IR.
 
 ## Tool contract
 
-### IR / L1 tools (repo brain)
-```
-strata_query_field(view, field)      → sql, type, tags, source_file, resolution_chain
-strata_list_orphans(kind="all")      → [{id, kind, name, source_file, reason}]
-strata_explore_deps(explore, model)  → {base_view, joins, resolution_chain, field_count}
-strata_ir_status()                   → {repo_path, built_at, node_counts, edge_count, cache_path}
-strata_usage_summary()               → {has_l1, explore_count (explores with usage rows), ir_explore_count, dead_explore_count, dead_view_count, active_explore_count (null if usage not checked), total_queries, dead_code_count, ...}
-strata_dead_code_register()          → [{id, kind, name, source_file, evidence_ids, ...}]
-strata_pdt_costs()                   → [{view, build_count, estimated_cost_usd, status, ...}]
-strata_schema_drift()                → [{view, field, drift_type, ...}]
-strata_validation_scope(changed)     → {impacted_views, impacted_explores, impacted_fields}
-strata_impact(physical_table)        → {physical_table, views, explores, fields}
-strata_find_field(query, kind="all") → {query, kind, matches:[{view,field,type,sql,label,description,source_file,source_line}], count}
-strata_view_sources(model=None)      → {model_filter, views:[{name,physical_table,field_count,source_file,source_line,orphan}], count}
-strata_navigate(anchor, model=None,  → {anchor, anchor_type, views/explores/field_matches/bq_fields
-              ticket=None)              with source_file:source_line, change_type, what_to_touch}
-                                       Composite brief — one call replaces hand-orchestrating
-                                       impact/find_field/view_sources/explore_deps.
-```
-
-### Skills tools (agent coordination)
-```
-strata_list_skills()                 → [{name, domain, mode, complexity, trigger}]
-strata_skill(name)                   → full SKILL.md content (pull-on-demand)
-strata_conductor_status()            → {active_slice, next_steps, latest_handoff}
-```
+Tool names, parameters, descriptions and annotations are generated from the registered server —
+see [docs/reference.md](../../../docs/reference.md#mcp-tools). Do not re-list signatures here; a
+tool's docstring in `server.py` is the single source, and `tests/test_docs_consistency.py` fails
+when the generated reference drifts.
 
 Use `strata_list_skills()` first to pick a skill — compact metadata only, no token bloat.
 Call `strata_skill(name)` only for the skill you intend to execute.
 
-### Viz tools (chart rendering)
-```
-strata_chart_templates()             → [{name, mark}]  — bar|line|scatter|heatmap
-strata_render_chart(spec_yaml,       → {path, status}
-                    data_json,
-                    out_path)
-```
-
-`spec_yaml` is a Vega-Lite YAML spec with data fields filled.
-`data_json` is a JSON array of row objects.
-Output is a self-contained HTML file (Vega-Lite via CDN, no install required).
+`strata_render_chart`: `spec_yaml` is a Vega-Lite YAML spec with data fields filled and
+`data_json` is a JSON array of row objects. Output is a self-contained HTML file (Vega-Lite via
+CDN, no install required).
 
 Config via `STRATA_REPO_PATH` env var or `~/.strata/config.json`.
 Optional fixture-backed L1 via `STRATA_USAGE_FIXTURE`.
@@ -84,7 +54,7 @@ Override toolkit root via `STRATA_TOOLKIT_PATH` (skills and chart templates reso
 ## Adding new tools
 
 1. Add implementation in `tools.py` — pure function over `IRGraph`
-2. Register in `server.py`
+2. Register in `server.py`, then run `python scripts/gen_reference.py` to refresh `docs/reference.md`
 3. Add tests in `tests/test_mcp_tools.py` using fixture IR (not a live server)
 4. Update `conductor/slice-*.md` if the tool is part of a slice deliverable
 
