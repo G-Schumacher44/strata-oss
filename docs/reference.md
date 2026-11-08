@@ -153,6 +153,8 @@ Gate a LookML repo in CI: exit 0 pass, 1 gate failed, 2 usage error.
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON — explore query counts and PDT build costs.
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON — warehouse column inventory for drift detection.
 - `--fail-on CATEGORIES` — default `none` — Comma-separated finding categories that also fail the gate: dead-code, unused-pdt, zombie-pdt, drift; or all / none. dead-code and the PDT categories need --usage-fixture; drift needs --schema-fixture.
+- `--baseline FILE` — Baseline file: known finding ids are ignored, so only NEW findings fail --fail-on.
+- `--write-baseline FILE` — Write the current findings' ids to this baseline file (sorted JSON), then gate.
 - `--json` — flag — Print {passed, failures, counts} as JSON
 
 ### `strata clean`

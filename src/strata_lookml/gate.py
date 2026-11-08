@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from strata_lookml.ir.types import IRGraph
@@ -16,6 +18,12 @@ FINDING_CATEGORIES: dict[str, str] = {
     "zombie-pdt": "usage",
     "drift": "schema",
 }
+
+BASELINE_VERSION = 1
+
+
+class BaselineError(ValueError):
+    """A baseline file that cannot be read or is not a baseline."""
 
 
 def _integrity_failures(graph: IRGraph) -> list[dict[str, str]]:
@@ -37,7 +45,7 @@ def _integrity_failures(graph: IRGraph) -> list[dict[str, str]]:
     return failures
 
 
-def _findings(graph: IRGraph) -> dict[str, list[dict[str, str]] | None]:
+def findings_by_category(graph: IRGraph) -> dict[str, list[dict[str, str]] | None]:
     """Every finding category's records, or None where its facts were not loaded."""
     l1 = graph.metadata.get("l1", {})
     findings: dict[str, list[dict[str, str]] | None] = dict.fromkeys(FINDING_CATEGORIES)
@@ -63,16 +71,86 @@ def _findings(graph: IRGraph) -> dict[str, list[dict[str, str]] | None]:
     return findings
 
 
-def evaluate_gate(graph: IRGraph, fail_on: set[str]) -> dict[str, Any]:
+def baseline_document(graph: IRGraph) -> dict[str, Any]:
+    """The baseline for the graph's current findings: sorted, de-duplicated ids per category.
+
+    Only categories whose facts were loaded appear; integrity failures are never baselined.
+    """
+    findings = findings_by_category(graph)
+    return {
+        "version": BASELINE_VERSION,
+        "findings": {
+            c: sorted({f["id"] for f in records})
+            for c, records in sorted(findings.items())
+            if records is not None
+        },
+    }
+
+
+def write_baseline(graph: IRGraph, path: Path) -> int:
+    """Write the baseline file (indented, trailing newline: diff-friendly). Returns the id count."""
+    document = baseline_document(graph)
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return sum(len(ids) for ids in document["findings"].values())
+
+
+def load_baseline(path: Path) -> dict[str, set[str]]:
+    """The baselined ids per finding category; `BaselineError` if the file is not a baseline."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise BaselineError(f"cannot read baseline {path}: {exc}") from exc
+    found = document.get("findings") if isinstance(document, dict) else None
+    if not isinstance(document, dict) or document.get("version") != BASELINE_VERSION:
+        raise BaselineError(f"{path} is not a version {BASELINE_VERSION} Strata baseline")
+    if not isinstance(found, dict):
+        raise BaselineError(f"{path}: 'findings' must be an object of category -> ids")
+    baseline: dict[str, set[str]] = {}
+    for category, ids in found.items():
+        if category not in FINDING_CATEGORIES:
+            raise BaselineError(f"{path}: unknown category {category!r}")
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise BaselineError(f"{path}: {category!r} must be a list of id strings")
+        baseline[category] = set(ids)
+    return baseline
+
+
+def evaluate_gate(
+    graph: IRGraph, fail_on: set[str], baseline: dict[str, set[str]] | None = None
+) -> dict[str, Any]:
     """The gate result: `{passed, failures, counts}`.
 
     Integrity failures always fail; a finding category fails only when named in `fail_on`.
     `counts` has every category; a finding category whose facts were not loaded is null.
+
+    With a `baseline`, known finding ids are subtracted before `fail_on` applies, so only new
+    findings fail; integrity is never subtracted. The result then also carries `baselined` (the
+    findings it suppressed) and `stale_baseline_ids` (baselined ids no longer found, in
+    categories whose facts were loaded; a warning, never a failure).
     """
     integrity = _integrity_failures(graph)
-    findings = _findings(graph)
-    failures = integrity + [f for c in sorted(fail_on) for f in findings[c] or []]
+    findings = findings_by_category(graph)
+    known = baseline or {}
+    baselined = 0
+    failures = list(integrity)
+    for category in sorted(fail_on):
+        for finding in findings[category] or []:
+            if finding["id"] in known.get(category, ()):
+                baselined += 1
+            else:
+                failures.append(finding)
     failures.sort(key=lambda f: (f["category"], f["id"], f["message"]))
     counts: dict[str, int | None] = {INTEGRITY: len(integrity)}
     counts.update({c: None if r is None else len(r) for c, r in findings.items()})
-    return {"passed": not failures, "failures": failures, "counts": counts}
+    result: dict[str, Any] = {"passed": not failures, "failures": failures, "counts": counts}
+    if baseline is not None:
+        result["baselined"] = baselined
+        result["stale_baseline_ids"] = sorted(
+            {
+                i
+                for c, ids in known.items()
+                if findings[c] is not None
+                for i in ids - {f["id"] for f in findings[c] or []}
+            }
+        )
+    return result

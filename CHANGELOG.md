@@ -17,6 +17,14 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` for the bound port, closing a
   DNS-rebinding path to the artifact JSON.
 
+### Added
+
+- `strata check --write-baseline FILE` records the current finding ids (sorted JSON, one list
+  per category) and `--baseline FILE` subtracts them before `--fail-on` applies, so a legacy
+  repo can gate on new findings only. Stale baseline ids warn (text and `stale_baseline_ids`
+  in `--json`); `--json` adds `baselined`; integrity failures are never baselined; an
+  unreadable baseline is a usage error (exit 2).
+
 ### Changed
 
 - `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered
