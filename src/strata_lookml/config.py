@@ -55,15 +55,18 @@ def strata_home() -> Path:
     return Path.home() / ".strata"
 
 
-def default_cache_path(repo: str | Path) -> Path:
-    """Where a repo's IR cache lives when nothing overrides it.
-
-    ~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db: outside the LookML checkout,
-    one entry per repo, and two repos that share a name never share a cache.
-    """
+def repo_key(repo: str | Path) -> str:
+    """`<repo-name>-<sha256(abs repo path)[:12]>`: names a repo's per-user files under
+    ~/.strata (IR cache, validation log) so two repos that share a name never collide."""
     root = Path(repo).expanduser().resolve()
     digest = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
-    return strata_home() / "cache" / f"{root.name}-{digest}.db"
+    return f"{root.name}-{digest}"
+
+
+def default_cache_path(repo: str | Path) -> Path:
+    """Where a repo's IR cache lives when nothing overrides it:
+    ~/.strata/cache/<repo_key>.db, outside the LookML checkout, one entry per repo."""
+    return strata_home() / "cache" / f"{repo_key(repo)}.db"
 
 
 def load_cache_path(repo: str | Path, cache: str | Path | None = None) -> Path:

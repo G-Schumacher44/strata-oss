@@ -405,27 +405,9 @@ def strata_skill(skills_dir: str | Path, name: str) -> str:
 
 def strata_conductor_status(conductor_dir: str | Path) -> dict[str, Any]:
     """Return active slice, mode, and next steps. Capped for small context windows."""
-    conductor_dir = Path(conductor_dir)
-    result: dict[str, Any] = {}
+    from strata_lookml.conductor_state import read_status
 
-    index_path = conductor_dir / "index.md"
-    if index_path.exists():
-        content = index_path.read_text(encoding="utf-8")
-        m = re.search(r"Active slice[:\s=]+(.+)", content, re.IGNORECASE)
-        result["active_slice"] = m.group(1).strip() if m else "none"
-
-    handoff_path = conductor_dir / "handoff-log.md"
-    if handoff_path.exists():
-        content = handoff_path.read_text(encoding="utf-8")
-        # Split on block headers — most recent block is first
-        blocks = re.split(r"(?=^## Date:)", content, flags=re.MULTILINE)
-        latest = next((b.strip() for b in blocks if b.strip().startswith("## Date:")), "")
-        m = re.search(r"Exact Next Steps:\s*(.+?)(?:\n\n|$)", latest, re.DOTALL)
-        if m:
-            result["next_steps"] = m.group(1).strip()[:500]
-        result["latest_handoff"] = "\n".join(latest.splitlines()[:20])
-
-    return result
+    return read_status(conductor_dir)
 
 
 def _parse_skill_meta(content: str) -> dict[str, str]:

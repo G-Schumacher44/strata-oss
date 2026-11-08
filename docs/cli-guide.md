@@ -19,15 +19,6 @@ strata bootstrap --repo /path/to/your/lookml
 strata mcp validate
 ```
 
-### Development and Linting
-For contributors working from a clone (`pip install -e ".[dev]"`); `strata lint` checks Strata's own `src/` and `tests/`, not your LookML repo.
-```bash
-strata lint --fix      # Fix ruff issues automatically
-strata lint --format   # Reformat code
-strata lint --ruff     # Run only ruff
-strata lint --mypy     # Run only mypy
-```
-
 ### Run offline governance check (the CI gate)
 ```bash
 strata check \

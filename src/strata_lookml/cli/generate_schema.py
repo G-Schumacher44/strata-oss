@@ -170,7 +170,13 @@ def _diff(old: dict[str, list[str]], new: dict[str, list[str]]) -> dict[str, lis
 
 
 @click.command("generate-schema")
-@click.option("--repo", required=True, help="Path to LookML repo root")
+@click.option(
+    "--repo",
+    required=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Path to LookML repo root",
+)
 @click.option("--out", required=True, help="Output schema_facts.json path")
 @click.option(
     "--bq-project", default=None, help="GCP project for 2-part table names (dataset.table)"
