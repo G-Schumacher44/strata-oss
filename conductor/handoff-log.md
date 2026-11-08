@@ -6,7 +6,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 Commit: 17fa07b
   (Implementation commit; the PR squash-merges.)
-Post-merge: resolve the landed anchor with `gh pr view <PR> --json mergeCommit`.
+Post-merge: resolve the landed anchor with `gh pr view 64 --json mergeCommit`.
 Conductor Mode: patch — docs/help text only, no version bump.
 Context Budget: low
 Context Loaded: AGENTS.md, handoff-log latest block, cli/mcp.py, cli/generate_schema.py, cli/validate.py, mcp/tools.py, docs/security-hardening.md, docs/enterprise-deployment.md, workflows.
