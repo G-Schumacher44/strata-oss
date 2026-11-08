@@ -609,3 +609,52 @@ def test_check_bad_baseline_is_a_usage_error(tmp_path, content):
     assert (
         str(baseline) in result.stderr
     )  # our message names the file, not click's "no such option"
+
+
+def _write_baseline_to(path):
+    return run("check", "--repo", str(GCS), *GCS_FACTS, "--write-baseline", str(path))
+
+
+def test_write_baseline_refuses_a_lkml_target(tmp_path):
+    source = tmp_path / "orders.view.lkml"
+    source.write_text("view: orders {}\n", encoding="utf-8")
+
+    result = _write_baseline_to(source)
+
+    assert result.returncode == 2
+    assert source.read_text(encoding="utf-8") == "view: orders {}\n"
+
+
+def test_write_baseline_refuses_a_symlink_to_lkml(tmp_path):
+    source = tmp_path / "orders.view.lkml"
+    source.write_text("view: orders {}\n", encoding="utf-8")
+    link = tmp_path / "baseline.json"
+    link.symlink_to(source)
+
+    result = _write_baseline_to(link)
+
+    assert result.returncode == 2
+    assert link.is_symlink()
+    assert source.read_text(encoding="utf-8") == "view: orders {}\n"
+
+
+def test_write_baseline_overwrites_a_previous_baseline(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    _write_gcs_baseline(baseline)
+    document = json.loads(baseline.read_text(encoding="utf-8"))
+    document["findings"]["drift"].append("schema:gone:nowhere")
+    baseline.write_text(json.dumps(document), encoding="utf-8")
+
+    assert _write_baseline_to(baseline).returncode == 0
+    assert "schema:gone:nowhere" not in baseline.read_text(encoding="utf-8")
+    assert [p.name for p in tmp_path.iterdir()] == ["baseline.json"]
+
+
+def test_write_baseline_refuses_a_non_baseline_file(tmp_path):
+    other = tmp_path / "package.json"
+    other.write_text('{"name": "x"}', encoding="utf-8")
+
+    result = _write_baseline_to(other)
+
+    assert result.returncode == 2
+    assert other.read_text(encoding="utf-8") == '{"name": "x"}'

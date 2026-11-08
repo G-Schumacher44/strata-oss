@@ -28,3 +28,5 @@ Exact Next Steps: twin gate, operator merges. Merge `origin/main` when S3/S7/#68
 ### Gates
 
 pytest 285 passed (+8 in `tests/test_cli.py`), ruff check + format --check clean, mypy clean (CI invocation), `gen_reference.py --check` clean. Negative controls: the new tests run against a detached `origin/main` worktree fail 8 of 8 (the bad-baseline cases assert our message names the file, so click's "no such option" cannot satisfy them).
+
+Review round (Codex P1): `--write-baseline` could truncate a source file. `write_baseline` now resolves the destination and refuses (usage error, exit 2, before any write) a symlink final component, a `.lkml`/`.lookml` target, a directory, or an existing file that is not a prior Strata baseline; the write is temp-file-in-same-dir + `os.replace`. +4 tests (pytest 289); against the pre-fix code 3 of 4 fail (overwrite-a-previous-baseline is a guard that passes on both).

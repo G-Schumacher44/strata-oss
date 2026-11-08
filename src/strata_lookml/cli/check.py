@@ -129,7 +129,10 @@ def check(
     _repo = Path(repo).expanduser().resolve() if repo else Path.cwd()
     graph = build_graph(str(_repo), usage_fixture, schema_fixture)
     if write_baseline_path:
-        written = write_baseline(graph, Path(write_baseline_path))
+        try:
+            written = write_baseline(graph, Path(write_baseline_path))
+        except BaselineError as exc:
+            raise click.UsageError(str(exc)) from exc
         click.echo(f"Wrote {written} finding ids to {write_baseline_path}", err=True)
     result = evaluate_gate(graph, fail_on, baseline)
 

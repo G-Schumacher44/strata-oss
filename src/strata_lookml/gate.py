@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -87,10 +89,44 @@ def baseline_document(graph: IRGraph) -> dict[str, Any]:
     }
 
 
+LOOKML_SUFFIXES = {".lkml", ".lookml"}
+
+
+def _check_baseline_destination(path: Path) -> Path:
+    """The resolved destination, or `BaselineError` if writing there could clobber a non-baseline."""
+    if path.is_symlink():
+        raise BaselineError(f"refusing to write baseline through a symlink: {path}")
+    target = path.resolve()
+    if target.suffix.lower() in LOOKML_SUFFIXES:
+        raise BaselineError(f"refusing to overwrite a LookML file with a baseline: {path}")
+    if target.is_dir():
+        raise BaselineError(f"baseline destination is a directory: {path}")
+    if target.exists():
+        try:
+            load_baseline(target)
+        except BaselineError as exc:
+            raise BaselineError(
+                f"refusing to overwrite {path}: it is not a previous Strata baseline"
+            ) from exc
+    return target
+
+
 def write_baseline(graph: IRGraph, path: Path) -> int:
-    """Write the baseline file (indented, trailing newline: diff-friendly). Returns the id count."""
+    """Write the baseline file atomically (indented, trailing newline: diff-friendly).
+
+    Refuses (`BaselineError`, before any write) a symlink, a LookML-suffixed path, or an existing
+    file that is not a prior baseline. Returns the id count.
+    """
+    target = _check_baseline_destination(path)
     document = baseline_document(graph)
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".strata-baseline-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
+        os.replace(tmp, target)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     return sum(len(ids) for ids in document["findings"].values())
 
 
