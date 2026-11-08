@@ -38,26 +38,38 @@ def mcp_run() -> None:
 
 
 @mcp.command("validate")
-def mcp_validate() -> None:
-    """Check repo path, IR cache, bundled skills, and Looker token.
+@click.option("--json", "as_json", is_flag=True, help="Emit {ready, checks, counts} as JSON.")
+def mcp_validate(as_json: bool) -> None:
+    """Check the repo parses and the server has what it needs to start.
 
-    Run this after `strata bootstrap` to confirm everything is wired up
-    before opening your AI client. Exits 0 if ready, 1 on hard failures.
+    Builds the IR graph from your LookML, so "ready" means it parsed. Each check is
+    pass (✓), advisory (~, never changes the exit code) or fail (✗, exit 1). Run it
+    after `strata bootstrap`, before opening your AI client.
 
     \b
     $ STRATA_REPO_PATH=tests/lookml/enterprise_mono strata mcp validate
       repo:  tests/lookml/enterprise_mono  (from STRATA_REPO_PATH env)
-      ✓ repo path exists
-      ✓ IR cache found (age: 120s)
+      ✓ repo path: exists
+      ✓ LookML parse: 41 nodes (3 models, 9 views, 12 explores, 17 fields)
+      ~ IR cache: not built yet
+        The server builds it on start; `strata build` pre-warms it.
       ✓ skills: 15 found
       ✓ chart templates: 4 found
-      ~ BQ project: not set (gcloud default will be used)
-      ✗ Looker token missing — run `strata auth login`
+      ~ usage facts: STRATA_USAGE_FIXTURE not set
+        L1 tools will report usage_checked=false.
+      ~ Looker token: missing
+        Only needed for --looker-url; `strata auth login` creates it.
       MCP server is ready.
     """
-    ok = True
+    from strata_lookml.errors import StrataError
+    from strata_lookml.pipeline import build_graph
 
-    # Repo path — show where it resolved from so failures are self-diagnosing
+    checks: list[dict[str, str | None]] = []
+    counts: dict[str, int] = {}
+
+    def add(name: str, status: str, message: str, hint: str | None = None) -> None:
+        checks.append({"name": name, "status": status, "message": message, "hint": hint})
+
     repo = _repo_path()
     if os.environ.get("STRATA_REPO_PATH"):
         source = "STRATA_REPO_PATH env"
@@ -65,73 +77,157 @@ def mcp_validate() -> None:
         source = "~/.strata/config.json"
     else:
         source = "cwd default"
-    click.echo(f"  repo:       {repo}  (from {source})")
-    if not repo.exists():
-        click.secho("  ✗ repo path does not exist", fg="red")
+
+    graph = None
+    if not repo.is_dir():
         if source == "STRATA_REPO_PATH env":
             hint = "unset or fix STRATA_REPO_PATH (it overrides ~/.strata/config.json)"
         elif source == "~/.strata/config.json":
             hint = "fix repo_path in ~/.strata/config.json or run `strata bootstrap`"
         else:
             hint = "set STRATA_REPO_PATH, add repo_path to ~/.strata/config.json, or run `strata bootstrap`"
-        click.secho(f"    {hint}", fg="yellow")
-        ok = False
+        add("repo path", "fail", "repo path does not exist", hint)
     else:
-        click.secho("  ✓ repo path exists", fg="green")
+        add("repo path", "pass", "exists")
+        try:
+            graph = build_graph(repo)
+        except StrataError as exc:
+            add("LookML parse", "fail", exc.message, exc.hint)
+        except Exception as exc:  # parser/resolver crash on malformed LookML: report, don't trace
+            add("LookML parse", "fail", f"{type(exc).__name__}: {exc}")
+    if graph is not None:
+        for node in graph.nodes.values():
+            counts[node.kind] = counts.get(node.kind, 0) + 1
+        by_kind = ", ".join(f"{n} {k}s" for k, n in sorted(counts.items()))
+        counts = {"nodes": len(graph.nodes), "edges": len(graph.edges), **counts}
+        add("LookML parse", "pass", f"{len(graph.nodes)} nodes ({by_kind})")
 
-    # IR cache
+    # IR cache (the one resolver: honours --cache / STRATA_CACHE_PATH)
     from strata_lookml.ir.store import cache_age_seconds
 
     age = cache_age_seconds(load_cache_path(repo))
     if age is not None:
-        click.secho(f"  ✓ IR cache found (age: {int(age)}s)", fg="green")
+        add("IR cache", "pass", f"found (age: {int(age)}s)")
     else:
-        click.secho("  ✗ IR cache not found — run `strata build`", fg="yellow")
+        add(
+            "IR cache",
+            "warn",
+            "not built yet",
+            "The server builds it on start; `strata build` pre-warms it.",
+        )
 
-    # Skills
+    # Skills / chart templates (bundled)
     try:
         skills_dir = Path(__file__).resolve().parent.parent / "skills"
-        skill_count = len(list(skills_dir.rglob("SKILL.md")))
-        click.secho(f"  ✓ skills: {skill_count} found", fg="green")
+        add("skills", "pass", f"{len(list(skills_dir.rglob('SKILL.md')))} found")
     except OSError as e:
-        click.secho(f"  ✗ skills not found: {e}", fg="red")
-        ok = False
-
-    # Chart templates
+        add("skills", "fail", f"not found: {e}")
     try:
         charts_dir = Path(__file__).resolve().parent.parent / "viz" / "charts"
-        chart_count = len(list(charts_dir.glob("*.yml")))
-        click.secho(f"  ✓ chart templates: {chart_count} found", fg="green")
+        add("chart templates", "pass", f"{len(list(charts_dir.glob('*.yml')))} found")
     except OSError as e:
-        click.secho(f"  ✗ chart templates not found: {e}", fg="red")
-        ok = False
+        add("chart templates", "fail", f"not found: {e}")
+
+    # Fixtures: unset is advisory; configured-but-broken is a hard failure
+    from strata_lookml.l1.fixtures import load_usage_facts
+    from strata_lookml.l1.schema import load_schema_facts
+
+    fixtures_ok = True
+    for label, env_name, loader, flag in (
+        ("usage facts", "STRATA_USAGE_FIXTURE", load_usage_facts, "usage_checked"),
+        ("schema facts", "STRATA_SCHEMA_FIXTURE", load_schema_facts, "schema_checked"),
+    ):
+        configured = os.environ.get(env_name)
+        if not configured:
+            add(label, "warn", f"{env_name} not set", f"L1 tools will report {flag}=false.")
+            continue
+        fixture = Path(configured).expanduser()
+        if not fixture.is_file():
+            fixtures_ok = False
+            add(
+                label,
+                "fail",
+                f"{env_name} points at a missing file: {fixture}",
+                f"fix or unset {env_name}",
+            )
+            continue
+        try:
+            loader(fixture)
+        except StrataError as exc:
+            fixtures_ok = False
+            add(label, "fail", exc.message, exc.hint)
+        except Exception as exc:  # any parse/shape failure means the server would not load it
+            fixtures_ok = False
+            add(label, "fail", f"{fixture} is not valid {label}: {type(exc).__name__}: {exc}")
+        else:
+            add(label, "pass", str(fixture))
+
+    # The server's startup path: the configured fixtures enriching the graph. A fixture can
+    # load and still break enrichment, so exercise it rather than infer it from the loaders.
+    usage_env = os.environ.get("STRATA_USAGE_FIXTURE")
+    schema_env = os.environ.get("STRATA_SCHEMA_FIXTURE")
+    if graph is not None and fixtures_ok and (usage_env or schema_env):
+        try:
+            build_graph(
+                repo,
+                usage_env and Path(usage_env).expanduser(),
+                schema_env and Path(schema_env).expanduser(),
+            )
+        except StrataError as exc:
+            add("fixture enrichment", "fail", exc.message, exc.hint)
+        except Exception as exc:
+            add(
+                "fixture enrichment",
+                "fail",
+                f"fixture enrichment failed: {type(exc).__name__}: {exc}",
+            )
+        else:
+            add("fixture enrichment", "pass", "configured facts enrich the graph")
 
     # BQ project
     from strata_lookml.config import load_bq_project
 
     bq_project = load_bq_project()
     if bq_project:
-        click.secho(f"  ✓ BQ project: {bq_project}", fg="green")
+        add("BQ project", "pass", bq_project)
     else:
-        click.secho(
-            "  ~ BQ project: not set (gcloud default will be used; set bq_project in ~/.strata/config.json for 2-part table names)",
-            fg="yellow",
+        add(
+            "BQ project",
+            "warn",
+            "not set (gcloud default will be used)",
+            "set bq_project in ~/.strata/config.json for 2-part table names",
         )
 
     # Looker token
     from strata_lookml.l1.looker import DEFAULT_TOKEN_PATH
 
-    token_path = DEFAULT_TOKEN_PATH
-    if token_path.exists():
-        click.secho("  ✓ Looker token present", fg="green")
+    if DEFAULT_TOKEN_PATH.exists():
+        add("Looker token", "pass", "present")
     else:
-        click.secho("  ✗ Looker token missing — run `strata auth login`", fg="yellow")
+        add(
+            "Looker token",
+            "warn",
+            "missing",
+            "Only needed for --looker-url; `strata auth login` creates it.",
+        )
 
-    click.echo()
-    if ok:
-        click.secho("MCP server is ready.", fg="green", bold=True)
+    ready = not any(c["status"] == "fail" for c in checks)
+    if as_json:
+        click.echo(json.dumps({"ready": ready, "checks": checks, "counts": counts}, indent=2))
     else:
-        click.secho("Issues found — see above.", fg="red", bold=True)
+        click.echo(f"  repo:       {repo}  (from {source})")
+        glyph = {"pass": ("✓", "green"), "warn": ("~", "yellow"), "fail": ("✗", "red")}
+        for c in checks:
+            mark, color = glyph[str(c["status"])]
+            click.secho(f"  {mark} {c['name']}: {c['message']}", fg=color)
+            if c["hint"]:
+                click.secho(f"    {c['hint']}", fg="yellow")
+        click.echo()
+        if ready:
+            click.secho("MCP server is ready.", fg="green", bold=True)
+        else:
+            click.secho("Issues found — see above.", fg="red", bold=True)
+    if not ready:
         sys.exit(1)
 
 

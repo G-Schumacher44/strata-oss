@@ -265,7 +265,9 @@ Start the MCP server (used by .mcp.json / AI client configs).
 
 `strata mcp validate [OPTIONS]`
 
-Check repo path, IR cache, bundled skills, and Looker token.
+Check the repo parses and the server has what it needs to start.
+
+- `--json` — flag — Emit {ready, checks, counts} as JSON.
 
 ### `strata outputs`
 

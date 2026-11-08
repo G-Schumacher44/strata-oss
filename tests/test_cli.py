@@ -36,7 +36,7 @@ def run(*args, env_extra=None):
 def test_mcp_validate_passes_with_valid_repo(tmp_path):
     result = run("mcp", "validate", env_extra={"STRATA_REPO_PATH": str(FIXTURES)})
     assert result.returncode == 0, result.stderr
-    assert "repo path exists" in result.stdout
+    assert "repo path: exists" in result.stdout
     assert "skills:" in result.stdout
     assert "chart templates:" in result.stdout
 
@@ -239,7 +239,7 @@ def test_bootstrap_allows_saving_bad_path_when_confirmed():
 
 def test_mcp_validate_names_repo_source(tmp_path):
     result = run("mcp", "validate", env_extra={"STRATA_REPO_PATH": str(tmp_path)})
-    assert result.returncode == 0
+    assert result.returncode == 1  # an empty dir exists but has no .lkml files
     assert "from STRATA_REPO_PATH env" in result.stdout
 
 
