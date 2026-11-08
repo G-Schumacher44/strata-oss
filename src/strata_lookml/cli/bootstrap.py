@@ -27,7 +27,14 @@ from strata_lookml.cli.conductor import plan_conductor_init
 
 
 @click.command("bootstrap")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 @click.option("--no-git", is_flag=True, help="Skip .gitignore update")
 @click.option("--no-conductor", is_flag=True, help="Skip conductor/ setup")
 @click.option("--no-mcp", is_flag=True, help="Skip .mcp.json / .cursor/mcp.json")

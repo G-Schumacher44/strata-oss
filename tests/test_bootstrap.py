@@ -206,3 +206,11 @@ def test_mcp_config_client_resolves_relative_fixture_paths(repo, home, monkeypat
     assert env["STRATA_USAGE_FIXTURE"] == str(USAGE.resolve())
     assert invoke("--repo", str(repo), "--yes", "--usage-fixture", rel).exit_code == 0
     assert result.output == (repo / ".mcp.json").read_text()
+
+
+def test_repo_env_var_selects_the_bootstrap_target(repo, home, monkeypatch):
+    monkeypatch.setenv("STRATA_REPO_PATH", str(repo))
+    monkeypatch.chdir(home)
+    assert invoke("--yes").exit_code == 0
+    assert (repo / ".mcp.json").exists()
+    assert not (home / ".mcp.json").exists()

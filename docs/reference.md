@@ -50,7 +50,7 @@ Show redacted local token status.
 
 Drop full Strata governance into a repo and prep the environment.
 
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 - `--no-git` — flag — Skip .gitignore update
 - `--no-conductor` — flag — Skip conductor/ setup
 - `--no-mcp` — flag — Skip .mcp.json / .cursor/mcp.json
