@@ -80,3 +80,96 @@ def test_mcp_render_chart_column_mismatch_is_an_error_listing_columns():
     text = result.content[0].text
     assert "date, value" in text
     assert "month, region, revenue" in text
+
+
+def _render(spec: dict, tmp_path: Path, rows: list[dict] | None = None) -> Path:
+    from strata_lookml.viz.render import render_chart
+
+    return render_chart(spec, ROWS if rows is None else rows, tmp_path / "c.html")
+
+
+def _raises(spec: dict, tmp_path: Path, rows: list[dict] | None = None) -> str:
+    import pytest
+
+    from strata_lookml.errors import InvalidInput
+
+    with pytest.raises(InvalidInput) as err:
+        _render(spec, tmp_path, rows)
+    return str(err.value)
+
+
+def test_transform_output_is_a_known_column(tmp_path):
+    spec = {
+        "mark": "bar",
+        "transform": [{"calculate": "datum.revenue * 2", "as": "doubled"}],
+        "encoding": {"x": {"field": "month"}, "y": {"field": "doubled"}},
+    }
+    assert _render(spec, tmp_path).exists()
+
+
+def test_layer_local_transform_output_is_known(tmp_path):
+    spec = {
+        "layer": [
+            {
+                "mark": "bar",
+                "transform": [{"aggregate": [{"op": "sum", "field": "revenue", "as": "total"}]}],
+                "encoding": {"y": {"field": "total"}},
+            },
+            {"mark": "line", "encoding": {"y": {"field": "revenue"}}},
+        ]
+    }
+    assert _render(spec, tmp_path).exists()
+
+
+def test_layer_transform_does_not_leak_into_sibling_layer(tmp_path):
+    spec = {
+        "layer": [
+            {"mark": "bar", "transform": [{"calculate": "1", "as": "one"}]},
+            {"mark": "line", "encoding": {"y": {"field": "one"}}},
+        ]
+    }
+    assert "one" in _raises(spec, tmp_path)
+
+
+def test_fold_defaults_to_key_and_value(tmp_path):
+    spec = {
+        "mark": "bar",
+        "transform": [{"fold": ["revenue"]}],
+        "encoding": {"x": {"field": "key"}, "y": {"field": "value"}},
+    }
+    assert _render(spec, tmp_path).exists()
+
+
+def test_pivot_spec_is_not_rejected(tmp_path):
+    spec = {
+        "mark": "bar",
+        "transform": [{"pivot": "region", "value": "revenue"}],
+        "encoding": {"y": {"field": "east"}},
+    }
+    assert _render(spec, tmp_path).exists()
+
+
+def test_mismatch_with_unrelated_transform_still_fails(tmp_path):
+    spec = {
+        "mark": "bar",
+        "transform": [{"calculate": "1", "as": "one"}],
+        "encoding": {"y": {"field": "nope"}},
+    }
+    assert "nope" in _raises(spec, tmp_path)
+
+
+def test_field_access_paths(tmp_path):
+    from strata_lookml.viz.render import _first_path_component as first
+
+    assert first("a.b") == "a"
+    assert first("values[0]") == "values"
+    assert first('a["b.c"]') == "a"
+    assert first("orders\\.revenue") == "orders.revenue"
+    assert first('["a.b"]') == "a.b"
+
+    rows = [{"orders.revenue": 1, "values": [1], "nested": {"k": 1}}]
+    for field in ("orders\\.revenue", "values[0]", "nested.k", 'nested["k"]'):
+        assert _render({"mark": "bar", "encoding": {"y": {"field": field}}}, tmp_path, rows)
+    assert "orders.revenue" in _raises(
+        {"mark": "bar", "encoding": {"y": {"field": "orders.revenue"}}}, tmp_path, rows
+    )
