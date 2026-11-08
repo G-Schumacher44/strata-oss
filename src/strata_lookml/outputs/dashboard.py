@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from strata_lookml.ir.types import IRGraph
-from strata_lookml.l1.enrich import evidence_facts, view_consumer_map
+from strata_lookml.l1.enrich import analysis_coverage, evidence_facts, view_consumer_map
 
 # Evidence-id namespaces the embedded JS's evidenceSentence() dispatcher must handle —
 # one case per entry, or a named deliberate fallback. Mirrored by hand in the JS switch
@@ -116,6 +116,7 @@ def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
     migration = _embed_json(artifacts.get("migration_impact", []))
     graph_json = _embed_json(graph_data)
     l1_facts = _embed_json(_build_l1_facts(graph))
+    coverage = _embed_json(analysis_coverage(graph))
     data_block = (
         f"const CATALOG       = {catalog};\n"
         f"const DEAD_CODE     = {dead_code};\n"
@@ -126,6 +127,7 @@ def build_dashboard_html(artifacts: dict[str, Any], graph: IRGraph) -> str:
         f"const MIGRATION     = {migration};\n"
         f"const GRAPH_DATA    = {graph_json};\n"
         f"const L1_FACTS      = {l1_facts};\n"
+        f"const COVERAGE      = {coverage};\n"
     )
     scripts = "\n".join(
         [
@@ -545,6 +547,9 @@ tr:hover .copy-link-btn, li:hover .copy-link-btn, .copy-link-btn:focus-visible {
 /* Empty state */
 .empty { text-align: center; padding: var(--space-6) var(--space-4); color: var(--muted); font-size: 13px; }
 .empty .icon { font-size: 22px; margin-bottom: 6px; color: var(--green); }
+.empty.skipped { color: var(--text-2); border: 1px dashed var(--border); border-radius: 10px; }
+.kpi-card.skipped { --kpi-accent: var(--muted); }
+.kpi-card.skipped .value { font-size: var(--step-2); color: var(--muted); }
 
 /* Tooltip */
 .tooltip-def { border-bottom: 1px dashed var(--muted); cursor: help; }
@@ -1091,49 +1096,70 @@ window.addEventListener('load', openHashTarget);
 
 // ── Hero + KPI Row ───────────────────────────────────────────────────────────
 // The headline names the single most expensive problem; the cards follow in the same
-// order (attention first), and each one jumps to the section that explains it.
-(function() {
-  const s = USAGE_SUMMARY;
-  const deadItems = DEAD_CODE || [];
+// order (attention first), and each one jumps to the section that explains it. Every claim
+// is gated on COVERAGE: an empty finding list from a check that never ran (no usage or schema
+// facts loaded) is "not run", never "clean" and never 0.
+function notRunText(coverage) {
+  if (!coverage.usage && !coverage.schema) return 'Usage and schema facts not loaded — dead-code, PDT cost and schema drift checks did not run';
+  if (!coverage.usage) return 'Usage facts not loaded — dead-code and PDT cost checks did not run';
+  if (!coverage.schema) return 'Schema facts not loaded — the schema drift check did not run';
+  return '';
+}
+function heroCopy(coverage, s, deadItems, drift, ledger) {
   const dead = deadItems.length;
   const deadExplores = deadItems.filter(r => r.kind === 'explore').length;
   const deadViews = dead - deadExplores;
-  const active = (s.explore_count || 0) - deadExplores;
-  const drift = (SCHEMA_DRIFT || []).length;
-  const pdt_total = (PDT_LEDGER || []).reduce((a,r) => a + (r.estimated_cost_usd||0), 0);
-  const pdt_unused = (PDT_LEDGER || []).filter(r => r.status === 'unused' || r.status === 'zombie').reduce((a,r) => a + (r.estimated_cost_usd||0), 0);
+  const pdtUnused = ledger.filter(r => r.status === 'unused' || r.status === 'zombie').reduce((a, r) => a + (r.estimated_cost_usd || 0), 0);
   const windowLabel = s.period ? `${s.period.days}-day window` : 'unknown window';
-
-  const headline = document.getElementById('hero-headline');
-  const lede = document.getElementById('hero-lede');
-  if (pdt_unused > 0) {
-    headline.textContent = `${fmt_money(pdt_unused)} of PDT spend backs nothing anyone uses.`;
-  } else if (dead > 0) {
-    headline.textContent = `${plural(dead, 'dead artifact')} ready to retire.`;
-  } else if (drift > 0) {
-    headline.textContent = `${plural(drift, 'schema reference')} point at nothing.`;
-  } else {
-    headline.textContent = 'This repo is clean. Nothing needs attention.';
+  const notRun = notRunText(coverage);
+  let headline;
+  if (coverage.usage && pdtUnused > 0) headline = `${fmt_money(pdtUnused)} of PDT spend backs nothing anyone uses.`;
+  else if (coverage.usage && dead > 0) headline = `${plural(dead, 'dead artifact')} ready to retire.`;
+  else if (coverage.schema && drift > 0) headline = `${plural(drift, 'schema reference')} point at nothing.`;
+  else if (!notRun) headline = 'This repo is clean. Nothing needs attention.';
+  else headline = notRun + '.';
+  const parts = [];
+  if (coverage.usage && dead) parts.push(`${plural(deadExplores, 'dead explore')} and ${plural(deadViews, 'dead view')}`);
+  if (coverage.schema && drift) parts.push(plural(drift, 'broken schema reference'));
+  let lede = parts.length ? `Also: ${parts.join(', ')}.` : '';
+  if (coverage.usage) {
+    lede += ` Analysed across ${plural(s.explore_count || 0, 'explore')} and ${(s.total_queries || 0).toLocaleString('en-US')} queries in the ${windowLabel}.`;
   }
-  const findings = [];
-  if (dead) findings.push(`${plural(deadExplores, 'dead explore')} and ${plural(deadViews, 'dead view')}`);
-  if (drift) findings.push(`${plural(drift, 'broken schema reference')}`);
-  const scope = `${plural(s.explore_count || 0, 'explore')} and ${(s.total_queries || 0).toLocaleString('en-US')} queries`;
-  lede.textContent = findings.length
-    ? `Also: ${findings.join(', ')}. Analysed across ${scope} in the ${windowLabel}.`
-    : `Analysed across ${scope} in the ${windowLabel}.`;
-
+  // The not-run notice rides in the lede whenever it isn't already the headline.
+  if (notRun && headline !== notRun + '.') lede += ` ${notRun}.`;
+  if (!lede.trim()) lede = 'Pass --usage-fixture and --schema-fixture (or --looker-url) to run the usage and drift checks.';
+  return { headline: headline, lede: lede.trim() };
+}
+function kpiCards(coverage, s, deadItems, drift, ledger) {
+  const NOT_RUN = 'Not run';
+  const dead = deadItems.length;
+  const deadExplores = deadItems.filter(r => r.kind === 'explore').length;
+  const pdtTotal = ledger.reduce((a, r) => a + (r.estimated_cost_usd || 0), 0);
+  const pdtUnused = ledger.filter(r => r.status === 'unused' || r.status === 'zombie').reduce((a, r) => a + (r.estimated_cost_usd || 0), 0);
+  const windowLabel = s.period ? `${s.period.days}-day window` : 'unknown window';
+  const u = coverage.usage;
   const cards = [
-    { label: 'PDT spend nothing reads', value: fmt_money(pdt_unused), sub: pdt_unused > 0 ? `of ${fmt_money(pdt_total)} total, ${windowLabel}` : `all ${fmt_money(pdt_total)} is in use`, cls: pdt_unused > 0 ? 'caution' : 'ok', href: '#pdt-cost' },
-    { label: 'Dead explores and views', value: dead, sub: `${deadExplores} explores, ${deadViews} views`, cls: dead > 0 ? 'warn' : 'ok', href: '#dead-code' },
-    { label: 'Broken schema references', value: drift, sub: 'missing tables or columns', cls: drift > 0 ? 'warn' : 'ok', href: '#drift' },
-    { label: 'Active explores', value: active, sub: `of ${s.explore_count || 0} explores`, cls: 'info', href: '#graph' },
-    { label: 'Queries', value: (s.total_queries||0).toLocaleString('en-US'), sub: s.period ? `last ${s.period.days} days` : 'period unknown', cls: 'info', href: '' },
+    u ? { label: 'PDT spend nothing reads', value: fmt_money(pdtUnused), sub: pdtUnused > 0 ? `of ${fmt_money(pdtTotal)} total, ${windowLabel}` : `all ${fmt_money(pdtTotal)} is in use`, cls: pdtUnused > 0 ? 'caution' : 'ok', href: '#pdt-cost' }
+      : { label: 'PDT spend nothing reads', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '#pdt-cost' },
+    u ? { label: 'Dead explores and views', value: dead, sub: `${deadExplores} explores, ${dead - deadExplores} views`, cls: dead > 0 ? 'warn' : 'ok', href: '#dead-code' }
+      : { label: 'Dead explores and views', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '#dead-code' },
+    coverage.schema ? { label: 'Broken schema references', value: drift, sub: 'missing tables or columns', cls: drift > 0 ? 'warn' : 'ok', href: '#drift' }
+      : { label: 'Broken schema references', value: NOT_RUN, sub: 'no schema facts loaded', cls: 'skipped', href: '#drift' },
+    u ? { label: 'Active explores', value: (s.explore_count || 0) - deadExplores, sub: `of ${s.explore_count || 0} explores`, cls: 'info', href: '#graph' }
+      : { label: 'Active explores', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '#graph' },
+    u ? { label: 'Queries', value: (s.total_queries || 0).toLocaleString('en-US'), sub: s.period ? `last ${s.period.days} days` : 'period unknown', cls: 'info', href: '' }
+      : { label: 'Queries', value: NOT_RUN, sub: 'no usage facts loaded', cls: 'skipped', href: '' },
   ];
-  const rank = { warn: 0, caution: 0, info: 1, ok: 2 };
-  cards.sort((a, b) => rank[a.cls] - rank[b.cls]);
+  const rank = { warn: 0, caution: 0, info: 1, ok: 2, skipped: 3 };
+  return cards.sort((a, b) => rank[a.cls] - rank[b.cls]);
+}
+(function() {
+  const args = [COVERAGE, USAGE_SUMMARY || {}, DEAD_CODE || [], (SCHEMA_DRIFT || []).length, PDT_LEDGER || []];
+  const copy = heroCopy(...args);
+  document.getElementById('hero-headline').textContent = copy.headline;
+  document.getElementById('hero-lede').textContent = copy.lede;
   const row = document.getElementById('kpi-row');
-  cards.forEach(c => {
+  kpiCards(...args).forEach(c => {
     const card = el(c.href ? 'a' : 'div', 'kpi-card ' + (c.cls||''));
     if (c.href) card.setAttribute('href', c.href);
     card.innerHTML = `<div class="label">${escapeHtml(c.label)}</div><div class="value">${escapeHtml(c.value)}</div><div class="sub">${escapeHtml(c.sub)}</div>`;
@@ -1147,6 +1173,7 @@ window.addEventListener('load', openHashTarget);
   const count = document.getElementById('dead-count');
   const items = DEAD_CODE || [];
   count.textContent = items.length + ' item' + (items.length !== 1 ? 's' : '');
+  if (!COVERAGE.usage) { body.innerHTML = '<div class="empty skipped">Dead-code check not run: no usage facts loaded.</div>'; count.textContent = 'not run'; return; }
   if (!items.length) { body.innerHTML = '<div class="empty"><div class="icon">✓</div>No dead code detected</div>'; return; }
   const tbl = el('table');
   tbl.innerHTML = '<thead><tr><th>Kind</th><th>Name</th><th>Source file</th><th>Why it is dead</th><th data-sort="none">Evidence</th></tr></thead>';
@@ -1174,6 +1201,7 @@ window.addEventListener('load', openHashTarget);
   const body = document.getElementById('pdt-body');
   // Most expensive first: the chart and the table read top-down in the same order.
   const pdts = [...(PDT_LEDGER || [])].sort((a, b) => (b.estimated_cost_usd||0) - (a.estimated_cost_usd||0));
+  if (!COVERAGE.usage) { body.innerHTML = '<div class="empty skipped">PDT cost check not run: no usage facts loaded.</div>'; return; }
   if (!pdts.length) { body.innerHTML = '<div class="empty"><div class="icon">✓</div>No PDTs detected</div>'; return; }
 
   const wrap = el('div', 'pdt-layout');
@@ -1255,6 +1283,7 @@ window.addEventListener('load', openHashTarget);
   const count = document.getElementById('roadmap-count');
   const items = [...(ROADMAP||[])].sort((a,b) => (b.estimated_cost_usd||0) - (a.estimated_cost_usd||0));
   count.textContent = items.length + ' action' + (items.length !== 1 ? 's' : '');
+  if (!items.length && !(COVERAGE.usage && COVERAGE.schema)) { body.innerHTML = '<div class="empty skipped">No cleanup actions from the checks that ran. Load usage and schema facts to run the rest.</div>'; return; }
   if (!items.length) { body.innerHTML = '<div class="empty"><div class="icon">✓</div>Nothing to clean up</div>'; return; }
 
   const actionStyle = {
@@ -1278,7 +1307,7 @@ window.addEventListener('load', openHashTarget);
     const li = el('li', 'roadmap-item');
     li.id = roadmapId;
     li.innerHTML = `
-      <div class="roadmap-num">${i+1}</div>
+      <div class="roadmap-num">${Number(i + 1)}</div>
       <div class="roadmap-body">
         <span class="badge ${escapeHtml(cls)}">${escapeHtml(label)}</span>
         &nbsp;<span class="roadmap-target">${primaryChipHtml(primaryId, r.target, roadmapId)}</span>
@@ -1299,6 +1328,11 @@ window.addEventListener('load', openHashTarget);
   const items = SCHEMA_DRIFT || [];
   if (!items.length) {
     count.textContent = '0 issues';
+    if (!COVERAGE.schema) {
+      count.textContent = 'not run';
+      body.innerHTML = '<div class="empty skipped">Schema drift check not run: no schema facts loaded.</div>';
+      return;
+    }
     body.innerHTML = '<div class="empty"><div class="icon">✓</div>No schema drift detected</div>';
     return;
   }

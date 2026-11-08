@@ -28,6 +28,8 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - Dashboard layout: section nav, a headline naming the costliest finding, KPI cards ordered by
   severity, sortable tables with sticky headers, one status-color palette shared by nodes, legend
   and chart, and a layout that works down to 390px wide.
+- When usage or schema facts were not loaded, the dashboard headline, KPI cards and section empty
+  states now say which checks did not run, instead of reporting a clean repo or a 0.
 - `strata dashboard` serves `dashboard.html` at `/` instead of a directory listing. Artifact JSON
   stays at its own paths, and the `Host` check still applies.
 

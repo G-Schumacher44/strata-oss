@@ -1613,3 +1613,88 @@ def test_attention_flag_marks_exactly_the_problem_nodes():
         "pdt:pdt_regional_kpi",
     ):
         assert by_id[clean]["attention"] is False, clean
+
+
+def test_analysis_coverage_reads_each_enrichment_marker():
+    """`analysis_coverage` is the single answer to "did this check run?". It must follow
+    which enrichment actually ran, not whether finding lists happen to be empty."""
+    from strata_lookml.l1.enrich import analysis_coverage
+
+    gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
+    usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
+    schema = ROOT / "tests" / "fixtures" / "gcs_schema_facts.json"
+    assert analysis_coverage(build_graph(gcs)) == {"usage": False, "schema": False}
+    assert analysis_coverage(build_graph(gcs, usage)) == {"usage": True, "schema": False}
+    assert analysis_coverage(build_graph(gcs, None, schema)) == {"usage": False, "schema": True}
+    assert analysis_coverage(build_graph(gcs, usage, schema)) == {"usage": True, "schema": True}
+
+
+def _js_function(html: str, name: str) -> str:
+    """Source of top-level `function name(...) {...}` from the generated page, by brace
+    matching (the bodies hold only balanced braces: blocks, objects, `${}` placeholders)."""
+    start = html.index(f"function {name}(")
+    depth, i = 0, html.index("{", start)
+    while True:
+        ch = html[i]
+        depth += ch == "{"
+        depth -= ch == "}"
+        i += 1
+        if depth == 0:
+            return html[start:i]
+
+
+def _run_hero(html: str, coverage, summary, dead, drift_count, ledger) -> dict:
+    import shutil
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not on PATH — the headline logic is JavaScript and needs node to run")
+    names = ("fmt_money", "plural", "notRunText", "heroCopy", "kpiCards")
+    args = json.dumps([coverage, summary, dead, drift_count, ledger])
+    script = "\n".join(_js_function(html, n) for n in names) + (
+        f"\nconst A = {args};\n"
+        "console.log(JSON.stringify({hero: heroCopy(...A), cards: kpiCards(...A)}));\n"
+    )
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def test_headline_never_claims_clean_when_checks_did_not_run():
+    """Codex PR #65: with no usage/schema facts the finding lists default to [], and the page
+    announced "This repo is clean." The headline and KPIs must say the checks did not run,
+    with no clean claim and no 0, unless the check actually ran."""
+    gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
+    usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
+    clean = "This repo is clean. Nothing needs attention."
+
+    def hero_for(graph):
+        from strata_lookml.l1.enrich import analysis_coverage
+
+        artifacts = build_artifacts(graph)
+        html = build_dashboard_html(artifacts, graph)
+        return _run_hero(
+            html,
+            analysis_coverage(graph),
+            artifacts["usage_summary"],
+            artifacts["dead_code_register"],
+            len(artifacts["schema_drift"]),
+            artifacts["pdt_ledger"],
+        ), html
+
+    # No facts at all: not-run headline, every KPI reads "Not run", never 0.
+    bare, html = hero_for(build_graph(gcs))
+    assert bare["hero"]["headline"] != clean
+    assert "did not run" in bare["hero"]["headline"]
+    assert {c["value"] for c in bare["cards"]} == {"Not run"}
+
+    # Usage only: findings lead, and the skipped drift check is named, not zeroed.
+    partial, _ = hero_for(build_graph(gcs, usage))
+    assert partial["hero"]["headline"] != clean
+    assert "Schema facts not loaded" in partial["hero"]["lede"]
+    drift_card = next(c for c in partial["cards"] if c["href"] == "#drift")
+    assert drift_card["value"] == "Not run"
+
+    # Both checks ran and found nothing: the clean headline is allowed.
+    ran = _run_hero(html, {"usage": True, "schema": True}, {"explore_count": 3}, [], 0, [])
+    assert ran["hero"]["headline"] == clean
+    assert "Not run" not in {c["value"] for c in ran["cards"]}
