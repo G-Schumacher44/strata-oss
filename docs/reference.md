@@ -223,7 +223,7 @@ Build all artifacts and open an interactive observability dashboard.
 - `--looker-url TEXT` — Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)
 - `--days INTEGER` — default `30` — Looker usage window in days
 - `--out TEXT` — Output directory (default: output/<repo-name>)
-- `--port INTEGER` — default `8765` — Local server port
+- `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
 - `--no-browser` — flag — Skip opening the browser
 
 ### `strata generate-schema`

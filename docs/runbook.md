@@ -62,7 +62,7 @@ strata dashboard \
   --schema-fixture /path/to/schema_facts.json
 ```
 
-Opens `http://127.0.0.1:8765`. Self-contained HTML — also works by opening
+Opens `http://127.0.0.1:8765` (if that port is busy and `--port` was not passed, it uses the next free port up to 8785 and prints the URL; an explicit busy `--port` fails). Self-contained HTML — also works by opening
 `output/<repo-name>/dashboard.html` directly. Four panels: Overview, Dead Code
 Register, PDT Ledger, Schema Drift.
 
