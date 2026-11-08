@@ -6,6 +6,7 @@ import os
 import shutil
 import sqlite3
 import stat
+import time
 from pathlib import Path
 
 import pytest
@@ -186,3 +187,57 @@ def test_server_rebuilds_a_damaged_cache_instead_of_failing(env, monkeypatch, da
     monkeypatch.setenv("STRATA_REPO_PATH", str(repo))
     assert load_configured_graph().node_counts()["view"] > 0
     assert cache_age_seconds(cache) is not None  # rebuilt in place
+
+
+def test_cache_swap_failure_keeps_old_cache_and_still_serves_the_new_graph(env, monkeypatch):
+    # Windows refuses to replace a file another process has open (PermissionError). The cache
+    # is an optimisation: the swap failing must not fail the server start.
+    from strata_lookml.ir import store
+    from strata_lookml.mcp.server import load_configured_graph
+
+    _, repo = env
+    _strata("build", "--repo", str(repo))
+    cache = default_cache_path(repo)
+    old_views = store.load_ir(cache).node_counts()["view"]
+    view_file = next(repo.glob("*.view.lkml"))
+    with view_file.open("a", encoding="utf-8") as handle:
+        handle.write("\nview: s7_swap {\n  dimension: id {\n    sql: 1 ;;\n  }\n}\n")
+
+    def sharing_violation(src, dst):
+        raise PermissionError(32, "The process cannot access the file", str(dst))
+
+    real_replace = os.replace
+    monkeypatch.setattr(os, "replace", sharing_violation)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    monkeypatch.setenv("STRATA_REPO_PATH", str(repo))
+    with pytest.warns(RuntimeWarning, match="IR cache not updated"):
+        graph = load_configured_graph()
+    monkeypatch.setattr(os, "replace", real_replace)
+    assert graph.node_counts()["view"] == old_views + 1
+    assert store.load_ir(cache).node_counts()["view"] == old_views  # old cache intact
+    assert sorted(p.name for p in cache.parent.iterdir()) == [cache.name]  # temp removed
+
+
+def test_load_ir_closes_its_connection(env, monkeypatch):
+    # sqlite3's context manager ends the transaction but not the connection; an open reader
+    # handle blocks the next cache replace on Windows.
+    from strata_lookml.ir.store import load_ir
+
+    _, repo = env
+    _strata("build", "--repo", str(repo))
+    opened = []
+
+    class Tracking(sqlite3.Connection):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            opened.append(self)
+
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(
+        sqlite3, "connect", lambda *a, **k: real_connect(*a, **{**k, "factory": Tracking})
+    )
+    load_ir(default_cache_path(repo))
+    assert opened
+    for conn in opened:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            conn.execute("SELECT 1")

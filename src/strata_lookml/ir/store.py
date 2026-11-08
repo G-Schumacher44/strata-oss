@@ -12,6 +12,9 @@ import json
 import os
 import secrets
 import sqlite3
+import time
+import warnings
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -28,6 +31,9 @@ CREATE TABLE ir_cache (
     payload TEXT NOT NULL
 )
 """
+
+_REPLACE_ATTEMPTS = 3
+_REPLACE_BACKOFF_SECONDS = 0.05
 
 
 def describe_inputs(
@@ -90,7 +96,9 @@ def save_ir(graph: IRGraph, cache_path: str | Path, inputs: dict[str, Any] | Non
 
     The new cache is written to a temp file beside the target and `os.replace`d over it, so a
     concurrent reader sees the previous complete cache or the new one, never a half-written
-    state, and an interrupted write leaves the old cache untouched. Whatever was at the path
+    state, and an interrupted write leaves the old cache untouched. If the swap keeps failing
+    (Windows, a reader holding the file open) the temp file is dropped, the old cache kept,
+    and a RuntimeWarning emitted; the build itself never fails on it. Whatever was at the path
     before (an older schema, a corrupt file) is replaced, not migrated (the cache is
     disposable). A missing directory is created 0700; Strata's own ~/.strata/cache is
     tightened to 0700.
@@ -115,15 +123,42 @@ def save_ir(graph: IRGraph, cache_path: str | Path, inputs: dict[str, Any] | Non
                 )
         finally:
             conn.close()
-        os.replace(tmp, path)
+        replaced = _replace_with_retry(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+    if not replaced:
+        tmp.unlink(missing_ok=True)
+        warnings.warn(
+            f"IR cache not updated: could not replace {path} (another process may have it "
+            "open); the previous cache is kept and the next start rebuilds if it is stale",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+
+def _replace_with_retry(tmp: Path, path: Path) -> bool:
+    """os.replace, retried briefly; False if it never succeeds.
+
+    On Windows a file another process has open cannot be replaced (a sharing violation,
+    PermissionError) until that reader closes it. The cache is an optimisation, so a swap
+    that keeps failing is reported to the caller instead of failing the build.
+    """
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(tmp, path)
+            return True
+        except OSError:
+            if attempt + 1 < _REPLACE_ATTEMPTS:
+                time.sleep(_REPLACE_BACKOFF_SECONDS * (attempt + 1))
+    return False
 
 
 def load_ir(cache_path: str | Path) -> IRGraph:
     path = Path(cache_path)
-    with _connect_existing(path) as conn:
+    # closing(): sqlite3's own context manager ends the transaction but leaves the connection
+    # open, and an open handle blocks the next save_ir's replace on Windows.
+    with closing(_connect_existing(path)) as conn:
         row = conn.execute("SELECT payload FROM ir_cache WHERE id = 1").fetchone()
     if row is None:
         raise FileNotFoundError(f"IR cache has no payload: {path}")
