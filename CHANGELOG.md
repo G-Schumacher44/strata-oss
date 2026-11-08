@@ -6,6 +6,12 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `strata validate`: the "Active slice file" check takes the first path token of the `Active slice:`
+  line in `conductor/index.md`, so an annotated line (`path.md (review — PR open; ...)`) no longer
+  fails as a missing file (#47).
+
 ## [0.1.9] - 2026-11-03
 
 ### Security

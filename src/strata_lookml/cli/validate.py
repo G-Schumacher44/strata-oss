@@ -175,7 +175,12 @@ def validate(project_root: str | None, check_replay: bool, replay: str | None) -
         if not index.exists():
             return None
         m = re.search(r"Active slice:\s*(.+)", index.read_text(), re.IGNORECASE)
-        return m.group(1).strip() if m else None
+        if not m:
+            return None
+        # index.md may annotate the path ("path.md (review — PR open; ...)"): take the first
+        # whitespace-delimited token, tolerating markdown backticks around it.
+        value = m.group(1).strip()
+        return value.split()[0].strip("`") if value else None
 
     def parse_acceptance_criteria(content):
         m = re.search(r"##\s+Acceptance Criteria(.*?)(?=\n##|\Z)", content, re.DOTALL)
