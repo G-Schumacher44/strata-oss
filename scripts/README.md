@@ -7,6 +7,7 @@ Not part of the installable package — all user-facing functionality lives in `
 
 | Script | Used by | What it does |
 |---|---|---|
+| `gen_reference.py` | `tests/test_docs_consistency.py` | Writes `docs/reference.md` (full CLI tree + MCP tool list + counts) from introspection; `--check` exits 1 if the committed file is stale. Rerun after changing any help string or tool docstring. |
 | `pr_comment.py` | `.github/workflows/strata-pr.yml` | **StrataBot backend.** Detects changed `.lkml` files in a PR, runs `strata_validation_scope`, posts a formatted markdown impact comment via `gh`. |
 | `notify.py` | CI / manual | Builds Slack and Jira notification payloads from `strata outputs` artifacts. Pass `--dry-run` to print without sending. |
 | `generate_schema_facts.py` | Manual | Queries BigQuery `INFORMATION_SCHEMA.COLUMNS` for tables referenced in a LookML repo and writes `schema_facts.json`. Predecessor to `strata generate-schema` CLI. |

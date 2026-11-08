@@ -6,29 +6,7 @@ Install with `pip install strata-lookml` (or run any command as `uvx --from stra
 
 ## Command Summary
 
-| Command | What it does |
-|---|---|
-| `strata bootstrap` | Scaffold Strata governance into a repo — creates conductor/, .mcp.json, config |
-| `strata build` | Parse LookML and write the IR cache (strata_ir.db) |
-| `strata check` | Run offline governance gates — dead code, drift, PDT ledger, verdict validation |
-| `strata lint` | Run ruff and mypy checks on src/ and tests/ |
-| `strata clean` | Remove output/, strata_ir.db, \_\_pycache\_\_ |
-| `strata outputs` | Build IR and write 8 JSON artifacts to an output directory |
-| `strata dashboard` | Build artifacts and serve the local HTML observability dashboard |
-| `strata validate` | Validate Conductor spine — handoff format, active slice, commit hash, replay facts |
-| `strata mcp run` | Start the MCP server (normally launched by your AI client via .mcp.json) |
-| `strata mcp validate` | Check repo path, IR cache, skills, and Looker token before opening your AI client |
-| `strata mcp config` | Show resolved paths and env vars the MCP server will use |
-| `strata auth login` | Start Looker OAuth flow and save token to ~/.strata/tokens.json |
-| `strata auth status` | Show current token status and expiry |
-| `strata chart` | Render a Vega-Lite chart (bar/line/scatter/heatmap) to self-contained HTML |
-| `strata query` | Inspect the IR from the terminal — same tools the MCP server exposes to AI clients |
-| `strata query find-field <q>` | Search all fields by name, SQL, label, description, or tag |
-| `strata query view-sources` | List every view with its backing BQ table and field count |
-| `strata query navigate <anchor>` | Classify any anchor and produce a navigator brief (view/field/BQ table/explore) |
-| `strata skill [name]` | List bundled skills, or print one skill's full procedure (CLI twin of the MCP skill tools) |
-| `strata conductor` | Slice-based workflow management for agent sessions |
-| `strata generate-schema` | Pull schema facts from BigQuery INFORMATION_SCHEMA (requires the `bq` CLI, signed in with `gcloud auth login`) |
+The complete command and option list is generated from the CLI itself: see [reference.md](reference.md#cli).
 
 ---
 
