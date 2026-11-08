@@ -170,70 +170,27 @@ def _first_path_component(field: str) -> str:
     return "".join(out)
 
 
-def _as_names(value: Any) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        return [v for v in value if isinstance(v, str)]
-    return []
+def _unknown_fields(node: dict[str, Any], columns: set[str], skip: bool) -> list[str]:
+    """Encoding fields of `node` (and its layers) that are not columns of the data.
 
-
-# Output columns a transform adds when it has no `as` (Vega-Lite defaults).
-_DEFAULT_OUTPUTS = {
-    "fold": ["key", "value"],
-    "density": ["value", "density"],
-    "quantile": ["prob", "value"],
-}
-
-
-def _transform_outputs(transforms: Any) -> tuple[set[str], bool]:
-    """Columns the transforms add, and whether any add columns that cannot be known statically."""
-    known: set[str] = set()
-    opaque = False
-    for t in transforms if isinstance(transforms, list) else []:
-        if not isinstance(t, dict):
-            continue
-        if "pivot" in t:  # output columns are the data's pivot values: unknowable here
-            opaque = True
-        known.update(_as_names(t.get("as")))
-        for key in ("aggregate", "joinaggregate", "window"):
-            for op in t.get(key) or []:
-                if isinstance(op, dict):
-                    known.update(_as_names(op.get("as")))
-        for kind, defaults in _DEFAULT_OUTPUTS.items():
-            if kind in t and "as" not in t:
-                known.update(defaults)
-        for kind in ("regression", "loess"):
-            if kind in t and "as" not in t:
-                known.update(_as_names([t.get("on"), t.get(kind)]))
-        if "flatten" in t and "as" not in t:
-            known.update(_as_names(t["flatten"]))
-        lookup_from = t.get("from")
-        if "lookup" in t and isinstance(lookup_from, dict):
-            known.update(_as_names(lookup_from.get("fields")))
-    return known, opaque
-
-
-def _unknown_fields(
-    node: dict[str, Any], columns: set[str], known: set[str], opaque: bool
-) -> list[str]:
-    """Encoding fields of `node` (and its layers) that are neither data columns nor transform
-    outputs. A node under an opaque transform (e.g. `pivot`) is not checked.
+    The rule is to validate only what is certain: transform-free specs over inspectable data.
+    A (sub)spec with any `transform` is skipped (Vega-Lite decides what its outputs are), as is
+    a channel that counts rows (`aggregate: count`, or field `*`).
     """
-    added, node_opaque = _transform_outputs(node.get("transform"))
-    known = known | added
-    opaque = opaque or node_opaque
+    skip = skip or bool(node.get("transform"))
     missing: list[str] = []
     encoding = node.get("encoding")
-    if not opaque and isinstance(encoding, dict):
+    if not skip and isinstance(encoding, dict):
         for enc in encoding.values():
             # A channel is one definition or a list of them (e.g. `tooltip`).
             for item in enc if isinstance(enc, list) else [enc]:
-                field = item.get("field") if isinstance(item, dict) else None
+                if not isinstance(item, dict) or item.get("aggregate") == "count":
+                    continue
+                field = item.get("field")
                 if (
                     isinstance(field, str)
-                    and field
-                    and _first_path_component(field) not in columns | known
+                    and field not in ("", "*")
+                    and _first_path_component(field) not in columns
                 ):
                     missing.append(field)
     layers = node.get("layer")
@@ -242,7 +199,7 @@ def _unknown_fields(
             continue
         layer_columns = _layer_columns(layer, columns)
         if layer_columns is not None:  # None: data we cannot inspect, so do not check the layer
-            missing += _unknown_fields(layer, layer_columns, known, opaque)
+            missing += _unknown_fields(layer, layer_columns, skip)
     return missing
 
 
@@ -268,7 +225,7 @@ def _check_encoding_columns(spec: dict[str, Any], rows: list[dict]) -> None:
     available = sorted({key for row in rows if isinstance(row, dict) for key in row})
     if not available:
         return
-    missing = list(dict.fromkeys(_unknown_fields(spec, set(available), set(), False)))
+    missing = list(dict.fromkeys(_unknown_fields(spec, set(available), False)))
     if missing:
         raise InvalidInput(
             f"chart encoding uses columns not in the data: {', '.join(missing)}. "

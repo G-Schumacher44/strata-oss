@@ -14,11 +14,11 @@ Exact Next Steps: twin gate on the PR, operator merges. Other wave-B lanes (S2, 
 
 ### What changed
 
-- `viz/render.py`: `_check_encoding_columns` runs in `render_chart` (the one seam for `strata chart`, `strata-chart`, MCP `strata_render_chart` and `query navigate --chart`) after empty template channels are stripped. Every `encoding.*.field` (top level and `layer` entries) must be a key in the union of row keys, else `InvalidInput` naming the missing and the available columns. A dotted field checks its first segment. No rows means nothing to compare, so it passes.
+- `viz/render.py`: `_check_encoding_columns` runs in `render_chart` (the one seam for `strata chart`, `strata-chart`, MCP `strata_render_chart` and `query navigate --chart`) after empty template channels are stripped. Every `encoding.*.field` must be a key in the union of row keys, else `InvalidInput` naming the missing and the available columns. Conservative by rule: a (sub)spec with any `transform` is skipped, `aggregate: count` / field `*` channels are skipped, a layer with its own inline data is checked against those rows (other data sources are skipped), array channels (tooltip) are walked, and Vega field paths (`a.b`, `a[0]`, `a\.b`) are parsed to their first component. No rows means nothing to compare, so it passes.
 - `cli/chart.py`: the four template commands are registered once by `_template_command`; each gains `--x/--y/--color`, which set the channel's field (adding the channel if the template lacks it). Help text lists the required columns and optional channels, read from the template YAML at import.
 - README Charts section, CHANGELOG, regenerated `docs/reference.md`.
 
 ### Gates
 
-pytest 277 passed (18 in `tests/test_chart_columns.py`), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: with the check replaced by `pass`, the CLI mismatch test and the MCP isError test fail; the override and help tests fail on main because the options do not exist.
+pytest 274 passed (15 in `tests/test_chart_columns.py`), ruff check and format --check clean, mypy `src/strata_lookml` clean. Negative control: with the check replaced by `pass`, the CLI mismatch test and the MCP isError test fail; the override and help tests fail on main because the options do not exist.
 

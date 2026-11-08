@@ -98,66 +98,6 @@ def _raises(spec: dict, tmp_path: Path, rows: list[dict] | None = None) -> str:
     return str(err.value)
 
 
-def test_transform_output_is_a_known_column(tmp_path):
-    spec = {
-        "mark": "bar",
-        "transform": [{"calculate": "datum.revenue * 2", "as": "doubled"}],
-        "encoding": {"x": {"field": "month"}, "y": {"field": "doubled"}},
-    }
-    assert _render(spec, tmp_path).exists()
-
-
-def test_layer_local_transform_output_is_known(tmp_path):
-    spec = {
-        "layer": [
-            {
-                "mark": "bar",
-                "transform": [{"aggregate": [{"op": "sum", "field": "revenue", "as": "total"}]}],
-                "encoding": {"y": {"field": "total"}},
-            },
-            {"mark": "line", "encoding": {"y": {"field": "revenue"}}},
-        ]
-    }
-    assert _render(spec, tmp_path).exists()
-
-
-def test_layer_transform_does_not_leak_into_sibling_layer(tmp_path):
-    spec = {
-        "layer": [
-            {"mark": "bar", "transform": [{"calculate": "1", "as": "one"}]},
-            {"mark": "line", "encoding": {"y": {"field": "one"}}},
-        ]
-    }
-    assert "one" in _raises(spec, tmp_path)
-
-
-def test_fold_defaults_to_key_and_value(tmp_path):
-    spec = {
-        "mark": "bar",
-        "transform": [{"fold": ["revenue"]}],
-        "encoding": {"x": {"field": "key"}, "y": {"field": "value"}},
-    }
-    assert _render(spec, tmp_path).exists()
-
-
-def test_pivot_spec_is_not_rejected(tmp_path):
-    spec = {
-        "mark": "bar",
-        "transform": [{"pivot": "region", "value": "revenue"}],
-        "encoding": {"y": {"field": "east"}},
-    }
-    assert _render(spec, tmp_path).exists()
-
-
-def test_mismatch_with_unrelated_transform_still_fails(tmp_path):
-    spec = {
-        "mark": "bar",
-        "transform": [{"calculate": "1", "as": "one"}],
-        "encoding": {"y": {"field": "nope"}},
-    }
-    assert "nope" in _raises(spec, tmp_path)
-
-
 def test_field_access_paths(tmp_path):
     from strata_lookml.viz.render import _first_path_component as first
 
@@ -237,3 +177,45 @@ def test_malformed_template_does_not_break_startup(tmp_path):
     (charts / "bar.yml").write_text("mark: [unclosed\n  : :\n", encoding="utf-8")
     assert _cli_charts(charts, "--help").returncode == 0
     assert _cli_charts(charts, "chart", "bar", "--help").returncode == 0
+
+
+def test_transform_specs_are_not_validated(tmp_path):
+    # Vega-Lite decides a transform's outputs (here bin's implicit `_end`), so we do not guess.
+    spec = {
+        "mark": "bar",
+        "transform": [{"bin": True, "field": "revenue", "as": "rev"}],
+        "encoding": {"x": {"field": "rev"}, "x2": {"field": "rev_end"}},
+    }
+    assert _render(spec, tmp_path).exists()
+    layered = {
+        "layer": [
+            {
+                "mark": "bar",
+                "transform": [{"calculate": "1", "as": "one"}],
+                "encoding": {"y": {"field": "one"}},
+            }
+        ]
+    }
+    assert _render(layered, tmp_path).exists()
+
+
+def test_layer_without_transform_still_fails_beside_a_transform_layer(tmp_path):
+    spec = {
+        "layer": [
+            {"mark": "bar", "transform": [{"calculate": "1", "as": "one"}]},
+            {"mark": "line", "encoding": {"y": {"field": "nope"}}},
+        ]
+    }
+    assert "nope" in _raises(spec, tmp_path)
+
+
+def test_count_channel_is_not_validated(tmp_path):
+    spec = {
+        "mark": "bar",
+        "encoding": {
+            "x": {"field": "month"},
+            "y": {"aggregate": "count", "field": "anything"},
+            "color": {"field": "*"},
+        },
+    }
+    assert _render(spec, tmp_path).exists()
