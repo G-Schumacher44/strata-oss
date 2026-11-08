@@ -100,10 +100,18 @@ install in Claude Desktop is attached to each [GitHub Release](https://github.co
 # Install the CLI + MCP server (or prefix each command with `uvx --from strata-lookml`)
 pipx install strata-lookml
 
-# Bootstrap your repo — creates conductor/, .mcp.json, and config
-strata bootstrap --repo /path/to/your/lookml
+# Bootstrap your repo — creates conductor/, .mcp.json, and config.
+# --yes runs without prompts (scripts, agents, CI); --dry-run prints the plan first.
+# Writes are all-or-nothing: a failure leaves the repo as it was.
+strata bootstrap --repo /path/to/your/lookml --yes \
+  --bq-project my-project --usage-fixture usage_facts.json --schema-fixture schema_facts.json
 
+# Cloned this repo to try the bundled playgrounds? Fetch their submodules first:
+git submodule update --init --recursive
 ```
+
+Without `--yes`, bootstrap prompts and needs a terminal (otherwise it exits 2 before writing
+anything). `strata mcp config --client claude` prints the same `.mcp.json` bootstrap writes.
 
 Wire your AI client (Claude Code, Cursor, Gemini). `.mcp.json` is written by bootstrap, or add it manually:
 

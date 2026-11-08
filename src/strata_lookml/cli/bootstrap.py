@@ -1,76 +1,142 @@
-"""strata bootstrap — drop full governance into any repo."""
+"""strata bootstrap — drop full governance into any repo.
+
+Plan first, ask second, write last: every input (flags or prompts) is gathered before the
+first byte is written, and the writes are applied all-or-nothing (see `bootstrap.plan`).
+"""
 
 from __future__ import annotations
 
 import contextlib
 import json
+import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
+from strata_lookml.bootstrap.plan import (
+    FileOp,
+    apply_plan,
+    plan_template_write,
+    render_mcp_client_config,
+    render_template,
+    report_ops,
+    resolve_fixture,
+)
+from strata_lookml.cli.conductor import plan_conductor_init
+
 
 @click.command("bootstrap")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 @click.option("--no-git", is_flag=True, help="Skip .gitignore update")
 @click.option("--no-conductor", is_flag=True, help="Skip conductor/ setup")
 @click.option("--no-mcp", is_flag=True, help="Skip .mcp.json / .cursor/mcp.json")
 @click.option("--force", is_flag=True, help="Overwrite existing files")
+@click.option(
+    "--yes", "-y", is_flag=True, help="Non-interactive: take flags and defaults, no prompts"
+)
+@click.option("--bq-project", default=None, help="BigQuery project for ~/.strata/config.json")
+@click.option(
+    "--cost-threshold-gb",
+    type=float,
+    default=None,
+    help="BQ dry-run cost hard stop in GB for ~/.strata/config.json",
+)
+@click.option(
+    "--set-default-repo/--no-set-default-repo",
+    default=None,
+    help="Write this repo as repo_path in ~/.strata/config.json "
+    "(default with --yes: only if no config exists yet)",
+)
+@click.option(
+    "--usage-fixture",
+    type=click.Path(path_type=Path),
+    default=None,
+    envvar="STRATA_USAGE_FIXTURE",
+    show_envvar=True,
+    help="usage_facts.json to wire into .mcp.json as STRATA_USAGE_FIXTURE",
+)
+@click.option(
+    "--schema-fixture",
+    type=click.Path(path_type=Path),
+    default=None,
+    envvar="STRATA_SCHEMA_FIXTURE",
+    show_envvar=True,
+    help="schema_facts.json to wire into .mcp.json as STRATA_SCHEMA_FIXTURE",
+)
+@click.option("--dry-run", is_flag=True, help="Print the plan, write nothing (implies no prompts)")
 def bootstrap(
     repo: str,
     no_git: bool,
     no_conductor: bool,
     no_mcp: bool,
     force: bool,
+    yes: bool,
+    bq_project: str | None,
+    cost_threshold_gb: float | None,
+    set_default_repo: bool | None,
+    usage_fixture: Path | None,
+    schema_fixture: Path | None,
+    dry_run: bool,
 ) -> None:
-    """Drop full Strata governance into a repo and prep the environment."""
+    """Drop full Strata governance into a repo and prep the environment.
+
+    Prompts on a terminal; pass --yes (with flags for the values) to run
+    unattended, or --dry-run to see the plan first. Writes are all-or-nothing.
+
+    \b
+    $ strata bootstrap --repo . --yes --bq-project my-proj --usage-fixture usage_facts.json
+    """
     target = Path(repo).expanduser().resolve()
     if not target.exists():
         raise click.ClickException(f"Repo path does not exist: {target}")
 
-    tpl_root = Path(__file__).resolve().parent.parent / "bootstrap" / "templates"
-    project = target.name
+    interactive = not (yes or dry_run)
+    if interactive and not sys.stdin.isatty():
+        raise click.UsageError(
+            "bootstrap needs a terminal to prompt on; pass --yes to run non-interactively "
+            "(optionally with --bq-project, --cost-threshold-gb, --set-default-repo). "
+            "Nothing was written."
+        )
+    for flag, fixture in (("--usage-fixture", usage_fixture), ("--schema-fixture", schema_fixture)):
+        if fixture is not None and not fixture.expanduser().is_file():
+            raise click.UsageError(f"{flag}: not a file: {fixture}")
+    usage = resolve_fixture(usage_fixture)
+    schema = resolve_fixture(schema_fixture)
+
+    # Gather every input before anything is written.
+    config_path = Path.home() / ".strata" / "config.json"
+    new_config = _gather_config(
+        config_path, target, interactive, bq_project, cost_threshold_gb, set_default_repo
+    )
+
+    ops = plan_bootstrap(target, no_git, no_conductor, no_mcp, force, usage, schema)
+    if new_config is not None:
+        ops.append(
+            FileOp(
+                "write",
+                config_path,
+                json.dumps(new_config, indent=2),
+                label=f"wrote: {config_path}",
+            )
+        )
 
     click.secho(f"Bootstrapping Strata governance into: {target}", bold=True)
     click.echo("")
-
-    # --- .gitignore ---
-    if not no_git:
-        _append_gitignore(target, tpl_root)
-
-    # --- AGENTS.md ---
-    _write_file(
-        target / "AGENTS.md",
-        tpl_root / "AGENTS.md",
-        subs={"{{PROJECT_NAME}}": project},
-        force=force,
-    )
-
-    # --- CLAUDE.md ---
-    _write_file(
-        target / "CLAUDE.md",
-        tpl_root / "CLAUDE.md",
-        subs={"{{PROJECT_NAME}}": project},
-        force=force,
-    )
-
-    # --- conductor/ ---
-    if not no_conductor:
-        from click.testing import CliRunner
-
-        from strata_lookml.cli.conductor import conductor_init
-
-        runner = CliRunner()
-        result = runner.invoke(
-            conductor_init, ["--repo", str(target)] + (["--force"] if force else [])
-        )
-        click.echo(result.output.rstrip())
-
-    # --- .mcp.json ---
-    if not no_mcp:
-        _write_mcp_configs(target, tpl_root, project, force)
-
-    # --- ~/.strata/config.json ---
-    _prompt_strata_config(target)
+    if dry_run:
+        report_ops(ops, dry_run=True)
+        click.echo("")
+        click.echo("Dry run: nothing written.")
+        return
+    apply_plan(ops)
+    report_ops(ops)
 
     click.echo("")
     click.secho("Bootstrap complete.", fg="green")
@@ -78,97 +144,121 @@ def bootstrap(
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Planning
 # ---------------------------------------------------------------------------
 
 
-def _append_gitignore(target: Path, tpl_root: Path) -> None:
+def plan_bootstrap(
+    target: Path,
+    no_git: bool,
+    no_conductor: bool,
+    no_mcp: bool,
+    force: bool,
+    usage: Path | None = None,
+    schema: Path | None = None,
+) -> list[FileOp]:
+    subs = {"{{PROJECT_NAME}}": target.name}
+    ops: list[FileOp] = []
+    if not no_git:
+        ops.append(_plan_gitignore(target))
+    ops.append(plan_template_write(target / "AGENTS.md", "AGENTS.md", subs, force, "AGENTS.md"))
+    ops.append(plan_template_write(target / "CLAUDE.md", "CLAUDE.md", subs, force, "CLAUDE.md"))
+    if not no_conductor:
+        ops.extend(plan_conductor_init(target, force))
+    if not no_mcp:
+        for rel, client in ((".mcp.json", "claude"), (".cursor/mcp.json", "cursor")):
+            dest = target / rel
+            if dest.exists() and not force:
+                ops.append(FileOp("skip", dest, label=f"skip (exists): {rel}  (use --force)"))
+            else:
+                content = render_mcp_client_config(target, usage, schema, client)
+                ops.append(FileOp("write", dest, content, label=f"wrote: {rel}"))
+    return ops
+
+
+def _plan_gitignore(target: Path) -> FileOp:
     gitignore = target / ".gitignore"
-    new_block = (tpl_root / "gitignore.append").read_text(encoding="utf-8")
-
-    if gitignore.exists():
-        existing = gitignore.read_text(encoding="utf-8")
-        if "# Strata" in existing:
-            click.echo("  skip (already present): .gitignore Strata block")
-            return
-        gitignore.write_text(existing.rstrip() + "\n\n" + new_block, encoding="utf-8")
-        click.secho("  appended: .gitignore", fg="green")
-    else:
-        gitignore.write_text(new_block, encoding="utf-8")
-        click.secho("  wrote: .gitignore", fg="green")
+    block = render_template("gitignore.append")
+    if not gitignore.exists():
+        return FileOp("write", gitignore, block, label="wrote: .gitignore")
+    existing = gitignore.read_text(encoding="utf-8")
+    if "# Strata" in existing:
+        return FileOp("skip", gitignore, label="skip (already present): .gitignore Strata block")
+    return FileOp(
+        "write", gitignore, existing.rstrip() + "\n\n" + block, label="appended: .gitignore"
+    )
 
 
-def _write_file(
-    dest: Path,
-    src: Path,
-    subs: dict[str, str] | None = None,
-    force: bool = False,
-) -> None:
-    if dest.exists() and not force:
-        click.echo(f"  skip (exists): {dest.name}  (use --force to overwrite)")
-        return
-    content = src.read_text(encoding="utf-8")
-    if subs:
-        for k, v in subs.items():
-            content = content.replace(k, v)
-    dest.write_text(content, encoding="utf-8")
-    click.secho(f"  wrote: {dest.name}", fg="green")
+# ---------------------------------------------------------------------------
+# Config inputs
+# ---------------------------------------------------------------------------
 
 
-def _write_mcp_configs(target: Path, tpl_root: Path, project: str, force: bool) -> None:
-    import sys
-
-    strata_mcp_cmd = str(Path(sys.executable).parent / "strata-mcp")
-    subs = {
-        "{{PROJECT_NAME}}": project,
-        "{{REPO_PATH}}": str(target),
-        "{{STRATA_MCP_CMD}}": strata_mcp_cmd,
-    }
-
-    mcp_json = target / ".mcp.json"
-    _write_file(mcp_json, tpl_root / "mcp.json", subs, force)
-
-    cursor_dir = target / ".cursor"
-    cursor_dir.mkdir(exist_ok=True)
-    _write_file(cursor_dir / "mcp.json", tpl_root / "cursor_mcp.json", subs, force)
-
-
-def _prompt_strata_config(target: Path) -> None:
-    config_path = Path.home() / ".strata" / "config.json"
-
-    existing: dict = {}
-    if config_path.exists():
+def _gather_config(
+    config_path: Path,
+    target: Path,
+    interactive: bool,
+    bq_project: str | None,
+    cost_threshold_gb: float | None,
+    set_default_repo: bool | None,
+) -> dict[str, Any] | None:
+    """Resolve the new ~/.strata/config.json contents, or None when it should stay as is."""
+    existing: dict[str, Any] = {}
+    have_file = config_path.exists()
+    if have_file:
         with contextlib.suppress(json.JSONDecodeError, OSError):
-            existing = json.loads(config_path.read_text(encoding="utf-8"))
-        click.echo("\n  ~/.strata/config.json already exists:")
-        click.echo(f"    repo_path:        {existing.get('repo_path', '(not set)')}")
-        click.echo(f"    bq_project:       {existing.get('bq_project', '(not set)')}")
-        click.echo(f"    cost_threshold_gb:{existing.get('cost_threshold_gb', '(default: 100)')}")
-        if not click.confirm("  Update it?", default=False):
-            click.echo("  Kept existing config.")
-            return
+            loaded = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
 
-    click.echo("")
-    repo_path = _prompt_repo_path(existing.get("repo_path") or str(target), str(target))
-    bq_project = click.prompt(
-        "  BigQuery project (for 2-part table names; leave blank to use gcloud default)",
-        default=existing.get("bq_project", ""),
-        show_default=False,
-    )
-    cost_threshold = click.prompt(
-        "  BQ query cost threshold GB (dry-run hard stop)",
-        default=existing.get("cost_threshold_gb", 100),
-        show_default=True,
-    )
+    cfg = dict(existing)
+    if interactive:
+        if have_file:
+            click.echo("\n  ~/.strata/config.json already exists:")
+            click.echo(f"    repo_path:        {existing.get('repo_path', '(not set)')}")
+            click.echo(f"    bq_project:       {existing.get('bq_project', '(not set)')}")
+            click.echo(
+                f"    cost_threshold_gb:{existing.get('cost_threshold_gb', '(default: 100)')}"
+            )
+            if not click.confirm("  Update it?", default=False):
+                click.echo("  Kept existing config.")
+                return None
+        click.echo("")
+        if set_default_repo is None:
+            cfg["repo_path"] = _prompt_repo_path(
+                existing.get("repo_path") or str(target), str(target)
+            )
+        elif set_default_repo:
+            cfg["repo_path"] = str(target)
+        if bq_project is None:
+            bq_project = click.prompt(
+                "  BigQuery project (for 2-part table names; leave blank to use gcloud default)",
+                default=existing.get("bq_project", ""),
+                show_default=False,
+            )
+        if cost_threshold_gb is None:
+            cost_threshold_gb = float(
+                click.prompt(
+                    "  BQ query cost threshold GB (dry-run hard stop)",
+                    default=existing.get("cost_threshold_gb", 100),
+                    show_default=True,
+                )
+            )
+    else:
+        if set_default_repo is None:
+            set_default_repo = not have_file
+        if set_default_repo:
+            cfg["repo_path"] = str(target)
+        if not have_file and cost_threshold_gb is None:
+            cost_threshold_gb = 100.0
 
-    cfg: dict = {"repo_path": repo_path}
     if bq_project:
         cfg["bq_project"] = bq_project
-    cfg["cost_threshold_gb"] = float(cost_threshold)
-
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-    click.secho(f"  wrote: {config_path}", fg="green")
+    if cost_threshold_gb is not None:
+        cfg["cost_threshold_gb"] = float(cost_threshold_gb)
+    if cfg == existing and have_file:
+        return None
+    return cfg or None
 
 
 def _prompt_repo_path(default_repo: str, target: str) -> str:

@@ -50,11 +50,18 @@ Show redacted local token status.
 
 Drop full Strata governance into a repo and prep the environment.
 
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 - `--no-git` — flag — Skip .gitignore update
 - `--no-conductor` — flag — Skip conductor/ setup
 - `--no-mcp` — flag — Skip .mcp.json / .cursor/mcp.json
 - `--force` — flag — Overwrite existing files
+- `--yes / -y` — flag — Non-interactive: take flags and defaults, no prompts
+- `--bq-project TEXT` — BigQuery project for ~/.strata/config.json
+- `--cost-threshold-gb FLOAT` — BQ dry-run cost hard stop in GB for ~/.strata/config.json
+- `--set-default-repo / --no-set-default-repo` — flag — Write this repo as repo_path in ~/.strata/config.json (default with --yes: only if no config exists yet)
+- `--usage-fixture PATH` — env `STRATA_USAGE_FIXTURE` — usage_facts.json to wire into .mcp.json as STRATA_USAGE_FIXTURE
+- `--schema-fixture PATH` — env `STRATA_SCHEMA_FIXTURE` — schema_facts.json to wire into .mcp.json as STRATA_SCHEMA_FIXTURE
+- `--dry-run` — flag — Print the plan, write nothing (implies no prompts)
 
 ### `strata build`
 
@@ -168,7 +175,7 @@ Slice-based workflow system for governing AI agent sessions.
 
 Set up the conductor/ directory with modes, templates, and handoff log.
 
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 - `--force` — flag — Overwrite existing conductor/ files
 
 ### `strata conductor new-slice`
@@ -178,7 +185,7 @@ Set up the conductor/ directory with modes, templates, and handoff log.
 Create the next numbered slice file from the slice template.
 
 - `TITLE` — argument — required
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 - `--mode [patch|slice|full|audit]` — default `slice` — patch=one-file fix, slice=planned feature, full=cross-layer change, audit=review only
 - `--budget [low|medium|high]` — default `medium` — Expected context spend for this slice
 
@@ -188,7 +195,7 @@ Create the next numbered slice file from the slice template.
 
 Show the active slice, execution mode, and next steps from handoff-log.
 
-- `--repo TEXT` — default `.` — Target repo path
+- `--repo TEXT` — env `STRATA_REPO_PATH` — default `.` — Target repo path
 
 ### `strata dashboard`
 
@@ -239,6 +246,11 @@ Local MCP server for AI clients (Claude, Cursor, Gemini).
 `strata mcp config [OPTIONS]`
 
 Show resolved paths and env vars the MCP server will use.
+
+- `--client [claude|cursor]` — Print the MCP client config (.mcp.json / .cursor/mcp.json) instead of resolved paths
+- `--repo TEXT` — env `STRATA_REPO_PATH` — With --client: LookML repo path (default: resolved)
+- `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — With --client: usage_facts.json
+- `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — With --client: schema_facts.json
 
 ### `strata mcp run`
 

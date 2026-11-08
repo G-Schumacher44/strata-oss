@@ -137,7 +137,37 @@ def mcp_validate() -> None:
 
 
 @mcp.command("config")
-def mcp_config() -> None:
+@click.option(
+    "--client",
+    type=click.Choice(["claude", "cursor"]),
+    default=None,
+    help="Print the MCP client config (.mcp.json / .cursor/mcp.json) instead of resolved paths",
+)
+@click.option(
+    "--repo",
+    "repo_arg",
+    default=None,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="With --client: LookML repo path (default: resolved)",
+)
+@click.option(
+    "--usage-fixture",
+    default=None,
+    envvar="STRATA_USAGE_FIXTURE",
+    show_envvar=True,
+    help="With --client: usage_facts.json",
+)
+@click.option(
+    "--schema-fixture",
+    default=None,
+    envvar="STRATA_SCHEMA_FIXTURE",
+    show_envvar=True,
+    help="With --client: schema_facts.json",
+)
+def mcp_config(
+    client: str | None, repo_arg: str | None, usage_fixture: str | None, schema_fixture: str | None
+) -> None:
     """Show resolved paths and env vars the MCP server will use.
 
     Outputs JSON — useful for debugging path resolution or confirming which
@@ -152,8 +182,28 @@ def mcp_config() -> None:
       "bq_project": "(not set — gcloud default used)",
       "cost_threshold_gb": 100.0
     }
+
+    With --client, prints the exact file `strata bootstrap` writes, so you can
+    wire an AI client without running bootstrap:
+
+    \b
+    $ strata mcp config --client claude > .mcp.json
     """
     from strata_lookml.config import load_bq_project, load_cost_threshold_gb
+
+    if client:
+        from strata_lookml.bootstrap.plan import render_mcp_client_config, resolve_fixture
+
+        click.echo(
+            render_mcp_client_config(
+                Path(repo_arg).expanduser().resolve() if repo_arg else _repo_path(),
+                resolve_fixture(usage_fixture),
+                resolve_fixture(schema_fixture),
+                client,
+            ),
+            nl=False,
+        )
+        return
 
     repo = _repo_path()
     config = {

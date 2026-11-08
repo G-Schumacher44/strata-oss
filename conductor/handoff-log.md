@@ -2,31 +2,33 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/s4-check-gate (`strata check` is a real CI gate, spec S4)
+## Date: 2026-11-08 — feat/s6-bootstrap (non-interactive, atomic bootstrap, spec S6)
 
-Commit: d86b7ac
+Commit: 226be98
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — spec S4 (D1 minus baseline; finding B1) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
+Conductor Mode: feature — spec S6 (D6; findings B2, U10) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
 Context Budget: medium
-Context Loaded: AGENTS.md, handoff-log, the spec (§1, B1, D1, S4), cli/check.py, cli/_contract.py, errors.py, pipeline.py, l1/enrich.py, l1/schema.py, l1/types.py, ir/resolver.py, synthesis/verdicts.py, strata-ci.yml, strata-weekly.yml, README CI sections, docs check examples.
-Exact Next Steps: twin gate on the PR, operator merges. Then S5 (`check --baseline` / `--write-baseline`): filter `gate.evaluate_gate`'s `failures` by `id` — every finding already carries a stable id (`dead:…`, `pdt:<view>`, `schema:…`, `resolution:<kind>:<type>:<subject>`, explore node id for verdict violations).
+Context Loaded: AGENTS.md, handoff-log, the spec (§1, B2/U10, D6, S6), cli/{bootstrap,conductor,mcp,_contract}.py, errors.py, config.py, bootstrap templates, tests/test_cli.py.
+Exact Next Steps: twin gate, operator merges. After S2 (U10 partial: MCP side of fixture env) and S4 land, merge `origin/main`, hand-resolve handoff/CHANGELOG, re-run `python scripts/gen_reference.py`. S7 (after S2+S6) and S9 build on `--yes` and `render_mcp_client_config`.
 
 ### What changed
 
-- `strata_lookml/gate.py` (new API module): `evaluate_gate(graph, fail_on) -> {passed, failures, counts}` is the one gate decision; `cli/check.py` (argument parsing + output only, per `cli/AGENTS.md`) and `tests/test_scenarios.py` both call it. Codex P1 round 1 moved it out of the CLI layer. Integrity (resolution errors, verdict-evidence violations) always fails; missing repo / no `.lkml` already raise `StrataError` in `pipeline._repo_graph` (S1) and reach exit 1 through `StrataGroup`, with the `{error, code, hint}` envelope on stdout under `--json` (`JsonCommand`), so there is no second exit path. `--fail-on` (default `none`) adds `dead-code`, `unused-pdt`, `zombie-pdt`, `drift`, or `all`. Unknown category → `BadParameter` (exit 2); a category without its fixture → `UsageError` (exit 2), since it would otherwise pass by construction. `counts` has every category, `null` when its fixture was not loaded; failures sorted, JSON `sort_keys`.
-- `tests/test_scenarios.py`: the old in-command assertions, parametrized over fixtures / gcs_analytics / thelook / enterprise_mono, each with the categories it must produce.
-- CI: `strata-ci.yml` check steps renamed "(integrity gate)"; pytest now carries the scenarios. `strata-weekly.yml`: dropped the `gate: true` special case, `strata check` runs on every playground, plus `pytest tests/test_scenarios.py -k <name>`; checkout now uses `submodules: recursive`.
-- Docs: README CI Gate + demo output + CI pipeline section, cli-guide, runbook, testing, CONTRIBUTING, the `strata_workflow` skill; `docs/reference.md` regenerated.
+- New `bootstrap/plan.py`: `FileOp` (write/mkdir/skip), `apply_plan` (temp file + `os.replace` per file; on any failure removes files and dirs created this run and restores overwritten bytes, then raises `StrataError`), `render_mcp_client_config(repo, usage, schema, client)` (the one renderer), `report_ops`.
+- `cli/conductor.py`: `plan_conductor_init(target, force)` plain function; `conductor init` plans then applies. `cli/bootstrap.py` no longer uses CliRunner: gather inputs (`_gather_config`) → `plan_bootstrap` → apply. No tty and no `--yes` → `UsageError` (exit 2) before any write; `--dry-run` implies no prompts and prints the plan.
+- Flags: `--yes/-y --bq-project --cost-threshold-gb --set-default-repo/--no-set-default-repo --usage-fixture --schema-fixture --dry-run`. Fixture paths must be existing files (exit 2). Fixture env goes into `.mcp.json` and `.cursor/mcp.json` (U10).
+- `strata mcp config --client claude|cursor [--repo --usage-fixture --schema-fixture]` prints the bootstrap file byte-for-byte. The `mcp.json`/`cursor_mcp.json` templates are deleted (rendered in code).
+- README Quick Start (`--yes`, submodule init for playgrounds), CHANGELOG, regenerated `docs/reference.md`.
 
-### Found on the way
+### Deviations from the spec
 
-- The weekly workflow checked out without submodules, so gcs_analytics and thelook were empty dirs there. That is the likely cause of the old comment's "sparse playgrounds don't reliably produce every signal" / "Py3.11 L1 emptiness bug"; locally on 3.14 both produce all their signals. Since S1 an empty dir fails with `no .lkml files`, so the weekly gcs/thelook jobs would have failed at `strata outputs` anyway. Fixed here with `submodules: recursive`; not verified on a 3.11 runner (the PR's CI runs 3.11 with submodules).
-
-### Deviation from the spec
-
-- None in behaviour. `--fail-on X` without X's fixture is a usage error; the spec does not say, and a silent pass was the alternative.
+- Rollback also restores files overwritten (`--force`, `.gitignore` append, existing config), not only files created; "created files removed" alone would leave a half-applied `--force` run.
+- `--dry-run` skips prompts (it would be useless on a script otherwise). With `--yes`, existing config keeps its `repo_path` unless `--set-default-repo` is passed; flags still update bq_project/threshold, other keys are preserved (the old prompt path rewrote the file from scratch).
 
 ### Gates
 
-pytest 241 passed (231 before; +6 in `tests/test_cli.py`, +4 in `tests/test_scenarios.py`), ruff check + format --check clean, mypy clean, `gen_reference.py --check` clean, dashboard JS check pass, the three CI `strata check` steps pass, `strata validate` 10 passed / 1 warning (handoff hash not reachable before this commit). Against the origin/main check.py all 6 CLI tests fail. Mutations, each failing its own test: resolution-error loop removed, fixture requirement removed, `fail_on` ignored (drift ids + JSON), default `all` (thelook default), lkml check removed in pipeline (empty dir), drift findings dropped (all 4 scenarios).
+pytest 239 passed (+8 in `tests/test_bootstrap.py`), ruff check + format --check clean, mypy clean (CI invocation). Negative controls: old `cli/bootstrap.py` against the new tests fails 7 of 8 (the conductor regression test is a guard that passes on both); disabling the rollback unlink fails both atomicity tests.
+
+Review round (Codex): rollback now finishes even if a restore fails (successful replacements tracked separately, each undo step independent, one StrataError summarising failures); fixture options declare `envvar` + `show_envvar` on bootstrap and `mcp config --client` (also `--repo` there); `resolve_fixture` is the one path normaliser for both commands. Fix commit: d5bf6c2.
+Round 3: rollback also runs on KeyboardInterrupt/BaseException (re-raised as is) and covers an in-flight replace that landed; writes go through symlinks to the resolved target (link untouched, rollback restores target bytes); `--repo` declares `STRATA_REPO_PATH` on `mcp config`, `conductor init/new-slice/status`. Not changed (outside this PR's files): `strata clean --repo`, `generate-schema --repo` still lack the envvar.
+Round 4: rollback is one rule — snapshot each resolved destination (bytes + mode, or absent) before its first write, first snapshot wins, restore anything that differs through the same atomic writer (mode kept). Replaces the created/overwritten/in-flight bookkeeping.
