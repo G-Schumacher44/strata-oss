@@ -236,6 +236,16 @@ def _explores_using_view(graph: IRGraph, view: str) -> list[str]:
     return view_consumer_map(graph).get(view, [])
 
 
+def analysis_coverage(graph: IRGraph) -> dict[str, bool]:
+    """Which L1 checks actually ran on this graph, read from the marker each enrichment step
+    writes: enrich_graph() writes `dead_code` (the usage checks: dead code + PDT ledger), and
+    enrich_schema_drift() writes `schema_drift` (its own run-once guard keys on that field).
+    An empty finding list means "checked, nothing found" only when its check ran; without
+    this, a consumer reads a skipped check's default [] as a clean result."""
+    l1 = graph.metadata.get("l1", {})
+    return {"usage": "dead_code" in l1, "schema": "schema_drift" in l1}
+
+
 def evidence_facts(graph: IRGraph) -> dict[str, dict]:
     """Aggregated facts the dashboard's evidence-sentence panel displays: content-reference
     counts per explore (content_references is a flat list — counting per explore is a real

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from strata_lookml.ir.types import IRGraph
+from strata_lookml.l1.enrich import analysis_coverage
 from strata_lookml.validation import validation_scope
 
 
@@ -74,12 +75,25 @@ def strata_usage_summary(graph: IRGraph) -> dict[str, Any]:
     l1 = graph.metadata.get("l1", {})
     usage = l1.get("explore_usage", {})
     total_queries = sum(item.get("query_count", 0) for item in usage.values())
+    dead_code = l1.get("dead_code", [])
+    # Active/dead counts share ONE population: every resolved explore in the IR, which is what
+    # _dead_code() checks. `explore_count` (usage rows only) misses unqueried explores, so
+    # subtracting dead explores from it undercounts and can go negative.
+    ir_explore_count = sum(1 for node in graph.nodes.values() if node.kind == "explore")
+    dead_explore_count = sum(1 for item in dead_code if item.get("kind") == "explore")
+    usage_checked = analysis_coverage(graph)["usage"]
     return {
         "has_l1": bool(l1),
         "period": l1.get("period"),
+        # Explores with a usage row (kept for compatibility); not the resolved-explore total.
         "explore_count": len(usage),
+        "ir_explore_count": ir_explore_count,
+        "dead_explore_count": dead_explore_count,
+        "dead_view_count": sum(1 for item in dead_code if item.get("kind") == "view"),
+        # None when the usage checks did not run: no dead-code verdict exists to subtract.
+        "active_explore_count": (ir_explore_count - dead_explore_count) if usage_checked else None,
         "total_queries": total_queries,
-        "dead_code_count": len(l1.get("dead_code", [])),
+        "dead_code_count": len(dead_code),
         "pdt_count": len(l1.get("pdt_ledger", [])),
         "unused_pdt_count": sum(
             1 for item in l1.get("pdt_ledger", []) if item.get("status") == "unused"

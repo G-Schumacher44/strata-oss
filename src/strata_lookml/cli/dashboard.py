@@ -38,6 +38,11 @@ def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:
             if (self.headers.get("Host") or "").strip().lower() not in permitted:
                 self.send_error(403, "Forbidden")
                 return None
+            # `/` opens the dashboard rather than a raw directory listing; every artifact
+            # stays reachable at its own path, and the Host check above still runs first.
+            path, sep, query = self.path.partition("?")
+            if path == "/" and (Path(self.directory) / "dashboard.html").is_file():
+                self.path = "/dashboard.html" + sep + query
             return super().send_head()
 
     return QuietHandler

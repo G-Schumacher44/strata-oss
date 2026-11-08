@@ -41,7 +41,7 @@ strata_query_field(view, field)      → sql, type, tags, source_file, resolutio
 strata_list_orphans(kind="all")      → [{id, kind, name, source_file, reason}]
 strata_explore_deps(explore, model)  → {base_view, joins, resolution_chain, field_count}
 strata_ir_status()                   → {repo_path, built_at, node_counts, edge_count, cache_path}
-strata_usage_summary()               → {has_l1, explore_count, total_queries, dead_code_count, ...}
+strata_usage_summary()               → {has_l1, explore_count (explores with usage rows), ir_explore_count, dead_explore_count, dead_view_count, active_explore_count (null if usage not checked), total_queries, dead_code_count, ...}
 strata_dead_code_register()          → [{id, kind, name, source_file, evidence_ids, ...}]
 strata_pdt_costs()                   → [{view, build_count, estimated_cost_usd, status, ...}]
 strata_schema_drift()                → [{view, field, drift_type, ...}]

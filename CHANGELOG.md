@@ -17,6 +17,29 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` for the bound port, closing a
   DNS-rebinding path to the artifact JSON.
 
+### Changed
+
+- `strata dashboard`: the dependency graph is laid out left to right in layers (explores, views,
+  PDTs and tables) with column headers. Labels show the short object name, hide when zoomed too far
+  out to read, and always show for the hovered or selected node's neighbors. Node kinds have their
+  own shapes, problem nodes get a halo, and the graph adds search, per-kind toggles, a "Needs
+  attention" filter, zoom-to-selection and clickable upstream and downstream lists. A plain mouse
+  wheel scrolls the page; pinch or Cmd/Ctrl+wheel zooms.
+- Dashboard layout: section nav, a headline naming the costliest finding, KPI cards ordered by
+  severity, sortable tables with sticky headers, one status-color palette shared by nodes, legend
+  and chart, and a layout that works down to 390px wide.
+- When usage or schema facts were not loaded, the dashboard headline, KPI cards and section empty
+  states now say which checks did not run, instead of reporting a clean repo or a 0.
+- `strata_usage_summary` (MCP) and the `usage_summary` artifact add `ir_explore_count` (every
+  resolved explore), `dead_explore_count`, `dead_view_count` and `active_explore_count`
+  (`null` when the usage checks did not run). `explore_count` is unchanged and counts explores
+  with a usage row. The dashboard's active-explores KPI now uses `active_explore_count`; it
+  previously subtracted dead explores from the usage-row count and could go negative.
+- Dashboard graph: changing the search or the "Needs attention" filter clears a pinned
+  selection, so the filter's results are what the graph highlights.
+- `strata dashboard` serves `dashboard.html` at `/` instead of a directory listing. Artifact JSON
+  stays at its own paths, and the `Host` check still applies.
+
 ### Fixed
 
 - `strata_list_orphans` / `strata query orphans` no longer accept `kind=explore|field`, which always
