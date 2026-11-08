@@ -19,6 +19,11 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- `gate.finding_records(graph)`: every opt-in finding as one record with its subject node, source
+  file and line, evidence ids, a short display label and (PDTs) cost. `strata check` output and the
+  baseline file are unchanged: both are projections of it. PDT nodes now carry their view's
+  `source_line`.
+
 - `strata chart bar|line|scatter|heatmap` take `--x`, `--y` and `--color` to map the template's
   channels onto your own columns, and each subcommand's help lists the template's required
   columns, read from its YAML.
