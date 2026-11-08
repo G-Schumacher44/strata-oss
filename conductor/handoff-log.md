@@ -2,25 +2,22 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/dashboard-polish (dashboard redesign: graph legibility + polish)
+## Date: 2026-11-08 — feat/s0-generated-reference (generated CLI/MCP reference + drift check, spec slice S0)
 
-Commit: 630bbee
-  (Implementation commit; the PR squash-merges. After the merge, resolve the landed anchor with `gh pr view <n> --json mergeCommit`.)
-Conductor Mode: feature — dashboard presentation only; no artifact/schema change.
-Context Budget: medium
-Context Loaded: AGENTS.md, outputs/AGENTS.md, conductor/dashboard-north-star.md, handoff-log, dashboard.py, cli/dashboard.py, escaping guardrail + dashboard tests.
-Exact Next Steps: operator approved the preview ("way better"); PR open on the twin gate, operator merges. Follow-ups are listed in the PR body (light theme, graph below the findings, phone card tables, whether the attention filter counts PDTs without build data).
+Commit: ac022ce
+  (Implementation commit; the PR squash-merges.)
+Post-merge: resolve the landed anchor with `gh pr view <PR> --json mergeCommit`.
+Conductor Mode: patch — docs/tests/scripts only; no runtime behaviour change.
+Context Budget: low
+Context Loaded: ux-agentic-cli-docs-spec-2026-11-08 (§1, D1/N4/N5, D14, S0), tests/test_docs_consistency.py, mcp/server.py, cli/main.py.
+Exact Next Steps: operator reviews/merges; then S1 (spec) — D10 hides `lint`, which the generator and the N5 hidden-command filter already handle (rerun `python scripts/gen_reference.py` in that PR).
 
 ### What changed
 
-- Dependency graph: left-to-right layers (explores, views, PDTs/tables) with layer headers; short labels that fade below readable zoom and always show for the hovered/selected neighborhood; per-kind shapes (explore circle, view pill, PDT diamond, table barrel) and a halo on problem nodes; unconnected nodes laid out in their own row; canvas sized to the tallest layer; hover tooltip with the full name; search (name/model), per-kind toggles, a "Needs attention" filter, zoom-to-selection and reset; clickable upstream/downstream lists and a start-here list of problem nodes in the detail panel. Plain wheel scrolls the page; pinch or Cmd/Ctrl-wheel zooms (touch keeps native pinch).
-- Single source for status colors: `NODE_PALETTE`/`EDGE_PALETTE` in dashboard.py are stamped onto nodes and emitted as `--n-*`/`--e-*` CSS tokens the legend, badges and PDT chart read. Tests now assert against the palette keys plus a distinctness check.
-- New `attention` node flag (Python-side) drives the filter and start-here list. Note: in both fixtures every zombie/unused node is already `orphan`, so the status clause of the flag is belt-and-braces and not independently exercised by fixture data.
-- Page polish: sticky section nav, data-driven headline naming the costliest problem, KPI cards ordered by severity and linking to their sections, sentence-case labels, sortable tables with sticky headers inside scroll containers, PDT ledger sorted by cost with palette-coloured chart, responsive to 390px (iframe-verified; headless Chrome cannot size a window below ~500px).
-- Codex P2 on #65: without usage/schema facts the page claimed "This repo is clean." `l1.enrich.analysis_coverage(graph)` (one source, keyed on each enrichment step's own marker: `dead_code` / `schema_drift`) is embedded as `COVERAGE`; the headline, KPIs and empty states read it and say "not run" instead of clean/0. Headline/KPI wording lives in pure JS functions (`heroCopy`, `kpiCards`) that the test runs in node against real artifacts.
-- Codex round 3 on #65: (a) spec B3/D13 folded in: `strata_usage_summary` serializes one explore population (`ir_explore_count`, `dead_explore_count`, `dead_view_count`, `active_explore_count` = ir − dead, `None` when usage unchecked); the KPI shows it instead of JS subtraction from usage rows (which went negative for unqueried explores). (b) a search/attention change clears a pinned selection; graph highlight state now lives in top-level `newGraphState`/`setGraphFilter`/`graphFilteredSet`/`applyGraphState`, tested in node against the vendored headless Cytoscape.
-- `strata dashboard` serves dashboard.html at `/` (Host check still runs first; artifacts stay at their paths).
+- `scripts/gen_reference.py [--check]` writes `docs/reference.md` from the real click root group (every non-hidden command/subcommand: usage, options with envvars/defaults, first docstring paragraph) and the server's real `list_tools()` on an empty graph (name, title, description, parameters, annotations), plus derived counts. Deterministic: sorted, no timestamps, home dir rendered as `~`.
+- `tests/test_docs_consistency.py`: `test_reference_is_current` (committed == generated), `test_readme_counts_match_introspection` (every `N tools` / `N analysis tools` / `N read-only` phrase), and the README CLI-table test now ignores hidden commands (N5). pytest already covers the check, so no separate CI step.
+- `docs/cli-guide.md` summary table and the `mcp/AGENTS.md` signature list replaced with links to the reference (N4 drift removed).
 
 ### Gates
 
-ruff check + format --check clean, mypy clean, pytest 217 passed (209 before; +2 root-route host tests, +2 palette/attention tests, +2 coverage/not-run tests, +2 explore-population/pinned-filter tests), dashboard JS `node --check` pass. Negative controls: population test fails with the old JS subtraction, with a usage-row population, and pre-fix; pinned-filter test fails without the pin clear and pre-fix; not-run test fails with the clean-headline gate removed, with KPI coverage forced on, and against the pre-fix dashboard; root-route test fails with the rewrite removed; legend-token test fails with a hand-copied hex; attention test fails with the flag removed.
+ruff check + format --check clean, mypy clean, pytest 219 passed. Negative control: editing the `auth logout` help string without regenerating fails `test_reference_is_current` and `gen_reference.py --check` (exit 1); regenerating passes; mutation reverted.
