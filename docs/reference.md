@@ -140,11 +140,13 @@ Correlation between two measures.
 
 `strata check [OPTIONS]`
 
-Run offline LookML governance gates (dead code, drift, PDT costs, validation).
+Gate a LookML repo in CI: exit 0 pass, 1 gate failed, 2 usage error.
 
 - `--repo TEXT` — env `STRATA_REPO_PATH` — Path to LookML repo (defaults to cwd)
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON — explore query counts and PDT build costs.
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON — warehouse column inventory for drift detection.
+- `--fail-on CATEGORIES` — default `none` — Comma-separated finding categories that also fail the gate: dead-code, unused-pdt, zombie-pdt, drift; or all / none. dead-code and the PDT categories need --usage-fixture; drift needs --schema-fixture.
+- `--json` — flag — Print {passed, failures, counts} as JSON
 
 ### `strata clean`
 

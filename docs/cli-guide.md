@@ -28,13 +28,25 @@ strata lint --ruff     # Run only ruff
 strata lint --mypy     # Run only mypy
 ```
 
-### Run offline governance check
+### Run offline governance check (the CI gate)
 ```bash
 strata check \
   --repo /path/to/your/lookml \
   --usage-fixture /path/to/usage_facts.json \
   --schema-fixture /path/to/schema_facts.json
 ```
+
+Fails (exit 1) on integrity only by default: missing repo or no `.lkml`, unresolved `extends`,
+a verdict that breaks the evidence contract. Findings are counted; `--fail-on` makes them fail:
+
+```bash
+strata check --repo . --schema-fixture schema_facts.json --fail-on drift
+strata check --repo . --usage-fixture usage_facts.json --fail-on dead-code,zombie-pdt --json
+```
+
+`--fail-on` takes `dead-code`, `unused-pdt`, `zombie-pdt`, `drift`, `all` or `none`. A
+category without its fixture is a usage error (exit 2). `--json` prints
+`{passed, failures: [{category, id, message}], counts}`.
 
 ### Build IR cache (so MCP server loads instantly)
 ```bash
