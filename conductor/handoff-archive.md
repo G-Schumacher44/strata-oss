@@ -2,6 +2,77 @@
 
 Older handoff blocks moved out of the thin active log (`handoff-log.md` keeps the current block only — conductor/AGENTS.md).
 
+
+## Date: 2026-11-08 — fix/list-orphans-kind (narrow strata_list_orphans kind)
+
+Commit: c17676f
+  (Implementation commit; the PR squash-merges, post-merge resolve the landed anchor with
+  `gh pr view 59 --json mergeCommit`.)
+Conductor Mode: patch — no version bump.
+Context Budget: low
+Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, mcp/tools.py, mcp/server.py, cli/query.py, README.
+Exact Next Steps: operator merges after the gate passes; no follow-up work.
+
+### What changed
+
+`strata_list_orphans(kind=...)` accepted `explore|field` but only view orphans are recorded, so those kinds always returned `[]` (readable as "none exist"). Narrowed to `all|view`; other values raise `ValueError` with an explicit message. MCP tool schema (`Literal`), CLI `--kind` choice, and README table kept consistent. Closes #49.
+
+### Gates
+
+New `test_strata_list_orphans_rejects_unsupported_kind` fails with src reverted (3 failed), passes with the fix. ruff check/format, mypy src clean; full pytest 184 passed (submodules initialized).
+
+## Date: 2026-11-08 — fix/chart-output-path (chart output: no fixed /tmp path, no symlink following)
+
+Commit: 4afba41 (initial fix; review-round fixes follow it. The PR squash-merges; post-merge resolve
+  the landed anchor with `gh pr view 61 --json mergeCommit`.)
+Conductor Mode: patch — security hardening, no new tool or layer change.
+Context Budget: low
+Context Loaded: AGENTS.md, handoff-log, viz/render.py, cli/chart.py, mcp/tools.py, l1/looker.py
+  (the #58 O_NOFOLLOW pattern), docs/security-hardening.md.
+Exact Next Steps: operator merges after twins/Codex pass; CHANGELOG Unreleased > Security rides the
+  next tag.
+
+### What changed
+
+- `render_chart(out_path=None)` defaults to a fresh `mkstemp("strata_chart_*.html")`; explicit
+  paths are opened with `O_NOFOLLOW` (`_write_html`). Where `O_NOFOLLOW` is absent, an lstat
+  (`is_symlink`) check refuses a symlink instead.
+- `strata chart` / `strata-chart` `--out` no longer defaults to `/tmp/strata_chart.html`.
+- MCP `strata_render_chart` resolves only the parent dir and refuses a final-component symlink
+  before the root check, so confinement does not depend on `O_NOFOLLOW`.
+- `strata query navigate --chart` goes through `strata_render_chart`, so it is covered.
+
+### Verification
+
+- New tests in `tests/test_security.py` (fresh default, normal write, symlink refused in
+  render_chart + MCP, symlink refused with `O_NOFOLLOW` monkeypatched away). Reverting `src/`
+  makes the behavior tests fail; restored, all pass.
+- Full suite 186 passed (with test submodules initialised), ruff, ruff format, mypy clean.
+
+## Date: 2026-11-08 — fix/dashboard-host-check (DNS-rebinding guard on `strata dashboard`)
+
+Commit: e73ccd9 (first implementation commit; review-fix commits follow. The PR squash-merges;
+  resolve the landed anchor with `gh pr view 60 --json mergeCommit`.)
+Conductor Mode: patch — one security fix, no new tool, no layer-boundary change.
+Context Budget: low
+Context Loaded: AGENTS.md, handoff-log, cli/dashboard.py, docs/security-hardening.md.
+Exact Next Steps: operator merges after the gates pass; the fix rides the next release.
+
+### What changed
+
+- `cli/dashboard.py`: `allowed_hosts(port)` / `make_handler(port)`. The handler answers 403 (no
+  artifact content) unless `Host` is `127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>`
+  (case-insensitive); on port 80 the port-less forms are also accepted, since browsers omit the
+  default port. Allowlist only; enforced in `send_head` (GET + HEAD).
+- `tests/test_dashboard_host.py`: loopback forms served; foreign, wrong-port, port-less, empty and
+  missing Host refused; port-less accepted only for port 80.
+- `CHANGELOG.md` (Unreleased > Security), `docs/security-hardening.md` (Network Surface).
+
+### Verification
+
+- Negative control: with the allowlist check disabled, the refusal tests fail (7 of the first 11).
+- Gates (with submodules initialized): pytest, ruff check, ruff format --check, mypy src.
+
 ## Date: 2026-11-04 — fix/security-0.1.9 (security hardening before the 0.1.9 tag)
 
 Commit: 39be7b8 (the fix commit; the docs commit and any review fixes follow it. The PR squash-merges; post-merge resolve

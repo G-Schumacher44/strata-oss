@@ -25,8 +25,11 @@ def strata_query_field(graph: IRGraph, view: str, field: str) -> dict[str, Any]:
 
 
 def strata_list_orphans(graph: IRGraph, kind: str = "all") -> list[dict[str, Any]]:
-    if kind not in {"all", "view", "explore", "field"}:
-        raise ValueError("kind must be one of: all, view, explore, field")
+    if kind not in {"all", "view"}:
+        raise ValueError(
+            "kind must be one of: all, view (only orphan views are detected; "
+            f"explore/field orphans are not supported). Got: {kind!r}"
+        )
     orphans = graph.metadata.get("orphans", [])
     if kind == "all":
         return list(orphans)
@@ -259,7 +262,13 @@ def strata_render_chart(spec_yaml: str, data_json: str, out_path: str) -> dict[s
     """Render a Vega-Lite spec (YAML or JSON string) + JSON data rows to an HTML file."""
     import json as _json
 
-    resolved = Path(out_path).expanduser().resolve()
+    # Resolve the directory only: resolving the final component would follow a symlink there and
+    # defeat both this guard and render_chart's O_NOFOLLOW check.
+    requested = Path(out_path).expanduser()
+    resolved = requested.parent.resolve() / requested.name
+    if resolved.is_symlink():
+        # Refuse here too, not only in render_chart: O_NOFOLLOW is absent on some platforms.
+        raise ValueError(f"out_path must not be a symlink. Got: {out_path!r}")
     allowed_roots = [
         chart_output_dir(),
         Path("/tmp").resolve(),

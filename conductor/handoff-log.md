@@ -4,7 +4,9 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — fix/validate-active-slice (validate Active slice annotation)
 
-Commit: resolve the landed anchor with `gh pr view 62 --json mergeCommit` (the PR squash-merges).
+Commit: 4db71ea
+  (Implementation commit; the PR squash-merges, post-merge resolve the landed anchor with
+  `gh pr view 62 --json mergeCommit`.)
 Conductor Mode: patch — no version bump.
 Context Budget: low
 Context Loaded: AGENTS.md, conductor/AGENTS.md, handoff-log latest block, cli/validate.py, tests/test_cli.py.

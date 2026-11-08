@@ -25,7 +25,7 @@ version: 0.1.0
 |---|---|---|---|
 | `question` | yes | human | What does the chart need to answer? |
 | `data` | yes | human / BQ / strata_mcp | JSON rows or CSV — the data to plot |
-| `out_path` | no | human | Where to save the HTML (default: /tmp/strata_chart.html) |
+| `out_path` | no | human | Where to save the HTML (default: a fresh `strata_chart_*.html` temp file; path is printed) |
 
 ---
 
