@@ -8,6 +8,8 @@ from pathlib import Path
 
 import click
 
+from strata_lookml.bootstrap.plan import FileOp, apply_plan, plan_template_write, report_ops
+
 
 @click.group()
 def conductor() -> None:
@@ -19,49 +21,50 @@ def conductor() -> None:
     """
 
 
+def plan_conductor_init(target: Path, force: bool = False) -> list[FileOp]:
+    """Plan the `conductor/` scaffold under `target` without writing anything."""
+    conductor_dir = target / "conductor"
+    subs = {"{{PROJECT_NAME}}": target.name, "{{DATE}}": date.today().isoformat()}
+
+    def _op(rel: str, template: str, with_subs: bool = True) -> FileOp:
+        return plan_template_write(
+            conductor_dir / rel, template, subs if with_subs else None, force, f"conductor/{rel}"
+        )
+
+    return [
+        FileOp("mkdir", conductor_dir / "templates"),
+        FileOp("mkdir", conductor_dir / "review"),
+        FileOp("mkdir", conductor_dir / "archive"),
+        _op("CONDUCTOR_MODES.md", "conductor_CONDUCTOR_MODES.md", with_subs=False),
+        _op("README.md", "conductor_README.md"),
+        _op("index.md", "conductor_index.md"),
+        _op("handoff-log.md", "conductor_handoff_log.md"),
+        _op("handoff-archive.md", "conductor_handoff_archive.md"),
+        _op(
+            "templates/CONDUCTOR_SLICE_TEMPLATE.md",
+            "conductor_slice_template.md",
+            with_subs=False,
+        ),
+        _op("templates/CONDUCTOR_STARTER_PROMPT_TEMPLATE.md", "conductor_starter_prompt.md"),
+    ]
+
+
 @conductor.command("init")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 @click.option("--force", is_flag=True, help="Overwrite existing conductor/ files")
 def conductor_init(repo: str, force: bool) -> None:
     """Set up the conductor/ directory with modes, templates, and handoff log."""
     target = Path(repo).expanduser().resolve()
-    conductor_dir = target / "conductor"
-    templates_dir = conductor_dir / "templates"
-    templates_dir.mkdir(parents=True, exist_ok=True)
-    (conductor_dir / "review").mkdir(exist_ok=True)
-    (conductor_dir / "archive").mkdir(exist_ok=True)
-
-    tpl_root = Path(__file__).resolve().parent.parent / "bootstrap" / "templates"
-    today = date.today().isoformat()
-    project = target.name
-
-    def _write(dest: Path, src_name: str, subs: dict[str, str] | None = None) -> None:
-        src = tpl_root / src_name
-        if dest.exists() and not force:
-            click.echo(f"  skip (exists): {dest.relative_to(target)}")
-            return
-        content = src.read_text(encoding="utf-8")
-        if subs:
-            for k, v in subs.items():
-                content = content.replace(k, v)
-        dest.write_text(content, encoding="utf-8")
-        click.secho(f"  wrote: {dest.relative_to(target)}", fg="green")
-
-    subs = {"{{PROJECT_NAME}}": project, "{{DATE}}": today}
-
-    _write(conductor_dir / "CONDUCTOR_MODES.md", "conductor_CONDUCTOR_MODES.md")
-    _write(conductor_dir / "README.md", "conductor_README.md", subs)
-    _write(conductor_dir / "index.md", "conductor_index.md", subs)
-    _write(conductor_dir / "handoff-log.md", "conductor_handoff_log.md", subs)
-    _write(conductor_dir / "handoff-archive.md", "conductor_handoff_archive.md", subs)
-    _write(
-        conductor_dir / "templates" / "CONDUCTOR_SLICE_TEMPLATE.md", "conductor_slice_template.md"
-    )
-    _write(
-        conductor_dir / "templates" / "CONDUCTOR_STARTER_PROMPT_TEMPLATE.md",
-        "conductor_starter_prompt.md",
-        subs,
-    )
+    ops = plan_conductor_init(target, force)
+    apply_plan(ops)
+    report_ops(ops)
 
     click.secho(f"\nconductor/ initialised in {target}", fg="green")
     click.echo("Next: strata conductor new-slice 'My first slice'")
@@ -69,7 +72,14 @@ def conductor_init(repo: str, force: bool) -> None:
 
 @conductor.command("new-slice")
 @click.argument("title")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 @click.option(
     "--mode",
     default="slice",
@@ -141,7 +151,14 @@ def conductor_new_slice(title: str, repo: str, mode: str, budget: str) -> None:
 
 
 @conductor.command("status")
-@click.option("--repo", default=".", show_default=True, help="Target repo path")
+@click.option(
+    "--repo",
+    default=".",
+    show_default=True,
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Target repo path",
+)
 def conductor_status(repo: str) -> None:
     """Show the active slice, execution mode, and next steps from handoff-log."""
     target = Path(repo).expanduser().resolve()

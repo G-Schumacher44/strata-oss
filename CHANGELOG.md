@@ -25,6 +25,17 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered
+  before the first write; the writes are a planned list applied with temp file + `os.replace`
+  and rolled back (created files removed, overwritten files restored) if any fails. New flags:
+  `--yes/-y`, `--bq-project`, `--cost-threshold-gb`, `--set-default-repo/--no-set-default-repo`
+  (with `--yes`, default sets `repo_path` only when no `~/.strata/config.json` exists),
+  `--usage-fixture`, `--schema-fixture` (written into `.mcp.json` and `.cursor/mcp.json`),
+  `--dry-run`. With no terminal and no `--yes` it exits 2 before writing anything, naming
+  `--yes`; previously it wrote files and then died on the first prompt.
+- `strata mcp config --client claude|cursor [--repo --usage-fixture --schema-fixture]` prints
+  the exact client config bootstrap writes (one shared renderer). `strata conductor init`
+  uses the same plan/apply path (`plan_conductor_init`).
 - **Breaking, MCP output shape** (release will be 0.2.0). The six list tools
   (`strata_list_orphans`, `strata_dead_code_register`, `strata_pdt_costs`,
   `strata_schema_drift`, `strata_list_skills`, `strata_chart_templates`) now return one JSON
