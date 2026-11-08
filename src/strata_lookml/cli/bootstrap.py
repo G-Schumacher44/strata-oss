@@ -20,8 +20,8 @@ from strata_lookml.bootstrap.plan import (
     plan_template_write,
     render_mcp_client_config,
     render_template,
-    resolve_fixture,
     report_ops,
+    resolve_fixture,
 )
 from strata_lookml.cli.conductor import plan_conductor_init
 
