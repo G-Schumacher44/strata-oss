@@ -717,6 +717,11 @@ _SINK_CALL_RE = re.compile(r"\.insertAdjacentHTML\s*\(\s*['\"][^'\"]*['\"]\s*,\s
 # neither a safe var nor a known template-literal declaration is flagged, not assumed safe.
 _SINK_VAR_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*([A-Za-z_]\w*)\s*;")
 _CONST_RE = re.compile(r"\b(?:const|let)\s+(\[[^\]]*\]|[A-Za-z_]\w*)\s*=\s*")
+# `(item, index) =>` — the callback's second parameter (forEach/map) is always the numeric index.
+_CALLBACK_INDEX_PARAMS_RE = re.compile(r"\(\s*[A-Za-z_]\w*\s*,\s*([A-Za-z_]\w*)\s*\)")
+_CALLBACK_INDEX_CALL_RE = re.compile(
+    r"\.(?:forEach|map)\(\s*\(\s*[A-Za-z_]\w*\s*,\s*([A-Za-z_]\w*)\s*\)\s*=>"
+)
 _TEMPLATE_CONST_RE = re.compile(r"\b(?:const|let)\s+([A-Za-z_]\w*)\s*=\s*`")
 # Top-level (column-0) IIFEs and function declarations — this file's scopes, consistently
 # formatted. Variable-safety is inferred per scope so a `label`/`cls` local in one function
@@ -754,6 +759,18 @@ def _find_matching_paren(text, open_idx, open_ch="(", close_ch=")"):
     return -1
 
 
+class _Placeholder(str):
+    """A `${...}` expression's text, plus the index in the scanned text where it begins — lets
+    a caller tell which enclosing callback body (if any) a flattened nested placeholder is in."""
+
+    pos = -1
+
+    def __new__(cls, text, pos):
+        obj = super().__new__(cls, text)
+        obj.pos = pos
+        return obj
+
+
 def _extract_template_placeholders(text, start):
     """Given text[start] just after an opening backtick, return (placeholders, end_index):
     every `${...}` expression found — including ones nested inside template literals that
@@ -763,6 +780,7 @@ def _extract_template_placeholders(text, start):
     n = len(text)
     mode_stack = ["tmpl"]
     cur_expr = []
+    starts = []
     placeholders = []
     while pos < n:
         ch = text[pos]
@@ -780,6 +798,7 @@ def _extract_template_placeholders(text, start):
             if ch == "$" and pos + 1 < n and text[pos + 1] == "{":
                 mode_stack.append(("expr", 1))
                 cur_expr.append([])
+                starts.append(pos + 2)
                 pos += 2
                 continue
             pos += 1
@@ -808,7 +827,7 @@ def _extract_template_placeholders(text, start):
         if ch == "}":
             if depth == 1:
                 expr_text = "".join(cur_expr.pop())
-                placeholders.append(expr_text)
+                placeholders.append(_Placeholder(expr_text, starts.pop()))
                 mode_stack.pop()
             else:
                 mode_stack[-1] = ("expr", depth - 1)
@@ -887,7 +906,13 @@ def _neutralize_maps_and_slices(expr, safe_vars):
                 continue
             callback = expr[open_idx + 1 : close_idx]
             arrow_parts = _split_top_level(callback, ["=>"])
-            if len(arrow_parts) == 2 and _is_safe_expr(arrow_parts[1], safe_vars):
+            body_safe_vars = safe_vars
+            if len(arrow_parts) == 2:
+                # The map's optional 2nd param is the numeric index — safe inside THIS body only.
+                im = _CALLBACK_INDEX_PARAMS_RE.fullmatch(arrow_parts[0].strip())
+                if im:
+                    body_safe_vars = safe_vars | {im.group(1)}
+            if len(arrow_parts) == 2 and _is_safe_expr(arrow_parts[1], body_safe_vars):
                 out.append(".map()")
                 i = close_idx + 1
                 continue
@@ -1103,12 +1128,34 @@ def _safe_vars_for_scope(block):
         )
         if _is_safe_expr(rhs, safe_vars):
             safe_vars.update(names)
-    # Array.prototype.forEach/map's optional second callback arg is always the numeric index.
-    for im in re.finditer(
-        r"\.(?:forEach|map)\(\s*\(\s*[A-Za-z_]\w*\s*,\s*([A-Za-z_]\w*)\s*\)", block
-    ):
-        safe_vars.add(im.group(1))
     return safe_vars
+
+
+def _callback_index_scopes(block):
+    """`(body_start, body_end, index_name)` for every `.forEach/.map((item, index) => ...)`
+    in `block`. Array.prototype.forEach/map's optional second callback arg is always the
+    numeric index — but only inside that callback, so it is trusted per callback body, never
+    block-wide (an outer data-derived binding with the same name stays unsafe; issue #31)."""
+    # Blank out line comments (same length, so offsets still line up): an apostrophe in prose
+    # ("the slice's own ...") would otherwise derail the paren matcher's string handling. The
+    # leading-whitespace requirement leaves `//` inside URL string literals alone.
+    code = re.sub(
+        r"(?m)(^|\s)//[^\n]*",
+        lambda m: m.group(1) + " " * (len(m.group(0)) - len(m.group(1))),
+        block,
+    )
+    scopes = []
+    for im in _CALLBACK_INDEX_CALL_RE.finditer(code):
+        open_idx = code.index("(", im.start())
+        close_idx = _find_matching_paren(code, open_idx)
+        if close_idx != -1:
+            scopes.append((im.end(), close_idx, im.group(1)))
+    return scopes
+
+
+def _safe_vars_at(safe_vars, scopes, pos):
+    """`safe_vars` plus the index variable of every callback whose body contains `pos`."""
+    return safe_vars | {name for start, end, name in scopes if start <= pos < end}
 
 
 def _template_vars_for_scope(block):
@@ -1127,17 +1174,21 @@ def _find_unescaped_innerhtml_interpolations(html):
     offenders = []
     for block_start, block_end in _iter_top_level_blocks(html):
         block = html[block_start:block_end]
-        safe_vars = _safe_vars_for_scope(block)
+        block_safe_vars = _safe_vars_for_scope(block)
+        scopes = _callback_index_scopes(block)
         template_vars = _template_vars_for_scope(block)
         for regex in (_SINK_ASSIGN_RE, _SINK_CALL_RE):
             for sm in regex.finditer(block):
                 placeholders, _ = _extract_template_placeholders(block, sm.end())
                 line_no = html[: block_start + sm.start()].count("\n") + 1
                 for p in placeholders:
+                    # Flattened nested placeholders may sit inside a callback body.
+                    safe_vars = _safe_vars_at(block_safe_vars, scopes, p.pos)
                     if not _is_safe_expr(p, safe_vars):
                         offenders.append((line_no, p.strip()[:80]))
         for vm in _SINK_VAR_ASSIGN_RE.finditer(block):
             name = vm.group(1)
+            safe_vars = _safe_vars_at(block_safe_vars, scopes, vm.start())
             line_no = html[: block_start + vm.start()].count("\n") + 1
             if name in safe_vars:
                 continue
@@ -1429,3 +1480,37 @@ def test_strata_gate_script_and_output_cli(tmp_path):
     )
     assert generated.returncode == 0, generated.stderr
     assert (out / "cleanup_roadmap.json").exists()
+
+
+def _wrap_in_scope(body):
+    return "(function () {\n" + body + "\n})();\n"
+
+
+def test_guardrail_callback_index_is_scoped_to_its_callback():
+    """Issue #31: a callback's index variable is numeric only inside that callback. An outer
+    data-derived binding with the same name must stay unsafe at a sink outside the callback."""
+    leaked = _wrap_in_scope(
+        "const label = r.name;\nxs.map((x, label) => x);\nli.innerHTML = `${label}`;"
+    )
+    offenders = _find_unescaped_innerhtml_interpolations(leaked)
+    assert [expr for _, expr in offenders] == ["label"]
+
+    # Same shape through the bare-identifier sink form.
+    leaked_var = _wrap_in_scope(
+        "const label = r.name;\nxs.forEach((x, label) => x);\nli.innerHTML = label;"
+    )
+    assert _find_unescaped_innerhtml_interpolations(leaked_var)
+
+
+def test_guardrail_callback_index_is_still_trusted_inside_its_callback():
+    # Inside a forEach body (sink in the callback) ...
+    in_foreach = _wrap_in_scope("xs.forEach((x, i) => {\n  li.innerHTML = `row ${i}`;\n});")
+    assert _find_unescaped_innerhtml_interpolations(in_foreach) == []
+    # ... and inside a map body feeding a sink placeholder.
+    in_map = _wrap_in_scope(
+        "li.innerHTML = `${(xs || []).map((x, i) => `<td>${i}</td>`).join('')}`;"
+    )
+    assert _find_unescaped_innerhtml_interpolations(in_map) == []
+    # The first (item) param is never trusted.
+    item = _wrap_in_scope("li.innerHTML = `${(xs || []).map((x, i) => `<td>${x}</td>`).join('')}`;")
+    assert _find_unescaped_innerhtml_interpolations(item)

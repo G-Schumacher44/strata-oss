@@ -6,6 +6,12 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Test-only: the dashboard innerHTML escaping guardrail now scopes a `forEach`/`map` callback's index
+  variable to that callback's body instead of the whole enclosing block, so an outer data-derived
+  binding with the same name is no longer wrongly treated as safe (#31).
+
 ## [0.1.9] - 2026-11-03
 
 ### Security
