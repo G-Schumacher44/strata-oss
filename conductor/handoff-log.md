@@ -2,28 +2,31 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/s1-error-contract (one error contract for MCP and CLI, spec S1)
+## Date: 2026-11-08 — feat/s4-check-gate (`strata check` is a real CI gate, spec S4)
 
-Commit: d324871
+Commit: d86b7ac
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — spec S1 (D2; findings B5, B7, U3, U6, U12) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
+Conductor Mode: feature — spec S4 (D1 minus baseline; finding B1) of `ux-agentic-cli-docs-spec-2026-11-08.md`.
 Context Budget: medium
-Context Loaded: AGENTS.md, handoff-log, the spec (§1, findings, D2, S1), mcp/tools.py, mcp/server.py, navigate.py, validation.py, pipeline.py, viz/render.py, cli/{main,query,auth,skill,build_ir}.py, the installed mcp 2.3.0 `mcpserver/exceptions.py` + `tools/base.py`.
-Exact Next Steps: twin gate on the PR, operator merges. If S0 (generated reference) lands first, merge `origin/main` and re-run `python scripts/gen_reference.py`. Then wave B (S2 ∥ S4 ∥ S6 ∥ S10) builds on this contract: S2's unknown-skill-lists-names is already done here (the hint lists them); S4's `check` integrity failures should raise `StrataError` rather than add a second exit path.
+Context Loaded: AGENTS.md, handoff-log, the spec (§1, B1, D1, S4), cli/check.py, cli/_contract.py, errors.py, pipeline.py, l1/enrich.py, l1/schema.py, l1/types.py, ir/resolver.py, synthesis/verdicts.py, strata-ci.yml, strata-weekly.yml, README CI sections, docs check examples.
+Exact Next Steps: twin gate on the PR, operator merges. Then S5 (`check --baseline` / `--write-baseline`): filter `evaluate_gate`'s `failures` by `id` — every finding already carries a stable id (`dead:…`, `pdt:<view>`, `schema:…`, `resolution:<kind>:<type>:<subject>`, explore node id for verdict violations).
 
 ### What changed
 
-- `src/strata_lookml/errors.py`: `StrataError(ToolError)` (`mcp.server.mcpserver.exceptions.ToolError`, verified in the installed 2.3.0) with `NotFound` (`not_found`) and `InvalidInput` (`invalid_input`); fields `code`/`message`/`hint`; `str()` = `<message> Hint: <hint>`; `to_dict()` = the CLI JSON envelope.
-- Raised from: `mcp/tools.py` (unknown field/explore/table/skill/model, bad orphan/find-field kind, render_chart path guard + YAML/JSON parse), `navigate.py` (no match), `validation.py` (bad `kind:name` / object), `pipeline._repo_graph` (missing repo, no `.lkml`; every pipeline entry point builds through it), `viz/render.py` (symlink guard, spec must be a mapping). `ir/parser.lkml_paths` is now the one .lkml discovery used by both `parse_repo` and the repo check. The duplicate repo check in `cli/build_ir.py` is gone.
-- CLI seam `cli/_contract.py`: `StrataGroup` is the root group class (stderr `Error:`/`Hint:`, exit 1); `JsonCommand` on all `query` subcommands, `build`, `auth status` (stdout envelope; only with `--json` on commands that have that flag). No per-command try/except. `strata-chart` (argparse) has its one seam in `render.main`. `strata skill <unknown>` keeps exit 1, now through the seam.
-- `auth status` without a token: `NotFound` with hint naming `strata auth login`; unsafe permissions → `InvalidInput` (message has the chmod).
-- `pyproject` floor `mcp>=2.3,<3`. README "Error handling" (under CLI). Navigator skill text updated to the new failure shape. `scripts/test_mcp_live.py` catches `StrataError`.
+- `cli/check.py`: `evaluate_gate(graph, fail_on) -> {passed, failures, counts}` is the one gate decision; the CLI and `tests/test_scenarios.py` both call it. Integrity (resolution errors, verdict-evidence violations) always fails; missing repo / no `.lkml` already raise `StrataError` in `pipeline._repo_graph` (S1) and reach exit 1 through `StrataGroup`, with the `{error, code, hint}` envelope on stdout under `--json` (`JsonCommand`), so there is no second exit path. `--fail-on` (default `none`) adds `dead-code`, `unused-pdt`, `zombie-pdt`, `drift`, or `all`. Unknown category → `BadParameter` (exit 2); a category without its fixture → `UsageError` (exit 2), since it would otherwise pass by construction. `counts` has every category, `null` when its fixture was not loaded; failures sorted, JSON `sort_keys`.
+- `tests/test_scenarios.py`: the old in-command assertions, parametrized over fixtures / gcs_analytics / thelook / enterprise_mono, each with the categories it must produce.
+- CI: `strata-ci.yml` check steps renamed "(integrity gate)"; pytest now carries the scenarios. `strata-weekly.yml`: dropped the `gate: true` special case, `strata check` runs on every playground, plus `pytest tests/test_scenarios.py -k <name>`; checkout now uses `submodules: recursive`.
+- Docs: README CI Gate + demo output + CI pipeline section, cli-guide, runbook, testing, CONTRIBUTING, the `strata_workflow` skill; `docs/reference.md` regenerated.
+
+### Found on the way
+
+- The weekly workflow checked out without submodules, so gcs_analytics and thelook were empty dirs there. That is the likely cause of the old comment's "sparse playgrounds don't reliably produce every signal" / "Py3.11 L1 emptiness bug"; locally on 3.14 both produce all their signals. Since S1 an empty dir fails with `no .lkml files`, so the weekly gcs/thelook jobs would have failed at `strata outputs` anyway. Fixed here with `submodules: recursive`; not verified on a 3.11 runner (the PR's CI runs 3.11 with submodules).
 
 ### Deviation from the spec
 
-- D2 has `errors.py` import the SDK's `ToolError`, but importing any `mcp.*` module runs `mcp/__init__`, which pulls httpx; `test_l0_no_network_imports` (pipeline is L0) failed with an eager import. `pipeline.py` therefore imports the error classes at raise time. Every other module imports them at the top. The L0 test is the negative control (eager import → it fails).
+- None in behaviour. `--fail-on X` without X's fixture is a usage error; the spec does not say, and a silent pass was the alternative.
 
 ### Gates
 
-pytest 229 passed (217 before; +12 in `tests/test_error_contract.py`), ruff check + format --check clean, mypy clean, dashboard JS check pass, the three CI `strata check` scenarios pass, `strata validate` 10 passed. All 12 new tests fail against the pre-change tree (origin/main 5ac4572). Seam mutations, each failing only its own test: StrataError base → Exception (5 MCP cases), StrataGroup catch removed (CLI envelope/hint), `as_json` gate removed (navigate human stdout), lkml check removed (empty repo), repo-dir check removed (`/nonexistent` → not_found), strata-chart catch removed, auth pre-check removed, view_sources model check removed, eager errors import in pipeline (L0 test).
+pytest 241 passed (231 before; +6 in `tests/test_cli.py`, +4 in `tests/test_scenarios.py`), ruff check + format --check clean, mypy clean, `gen_reference.py --check` clean, dashboard JS check pass, the three CI `strata check` steps pass, `strata validate` 10 passed / 1 warning (handoff hash not reachable before this commit). Against the origin/main check.py all 6 CLI tests fail. Mutations, each failing its own test: resolution-error loop removed, fixture requirement removed, `fail_on` ignored (drift ids + JSON), default `all` (thelook default), lkml check removed in pipeline (empty dir), drift findings dropped (all 4 scenarios).
