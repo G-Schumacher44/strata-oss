@@ -34,7 +34,7 @@ semantic-layer change is safe:
 ## What Strata Is
 
 Strata is a local **MCP** server and **CLI** toolkit. Point it at your **LookML** repo. Your AI client
-gets **18 analysis tools** (17 read-only, 1 sandboxed chart renderer), **15 domain skills** with
+gets **19 analysis tools** (18 read-only, 1 sandboxed chart renderer), **15 domain skills** with
 structured investigation procedures, and a pre-built graph of your resolved LookML dependency
 structure, enriched with BigQuery usage and schema facts. Offline-first: connecting to your Looker instance is preferred but optional; no credentials are required to start.
 
@@ -418,7 +418,7 @@ LookML repo (read-only clone)
         │
         ├── JSON artifacts   catalog / dead code / PDT ledger / drift / impact
         ├── HTML dashboard   strata dashboard
-        ├── MCP server       18 tools (17 read-only + 1 sandboxed render), stdio, any MCP client
+        ├── MCP server       19 tools (18 read-only + 1 sandboxed render), stdio, any MCP client
         └── CLI              strata check / outputs / build / validate
 ```
 
@@ -455,7 +455,7 @@ dependencies that are hard to traverse programmatically. LookML's structure is w
 
 ### The MCP Layer
 
-18 tools over stdio — 17 read-only, plus `strata_render_chart`, which writes only to
+19 tools over stdio — 18 read-only, plus `strata_render_chart`, which writes only to
 `~/.strata/output` or `/tmp` (sandboxed, never your LookML repo). Works with any MCP client.
 All tools run against the local IR cache — no live Looker connection required. The cache lives
 at `~/.strata/cache/<repo-name>-<hash>.db` (override: `STRATA_CACHE_PATH`), never in your repo,
@@ -477,7 +477,7 @@ Agent calls: strata_validation_scope(["views/orders.view.lkml"])
 ```
 
 <details>
-<summary>All 18 tools</summary>
+<summary>All 19 tools</summary>
 
 | Tool | Returns |
 |---|---|
@@ -491,6 +491,7 @@ Agent calls: strata_validation_scope(["views/orders.view.lkml"])
 | `strata_usage_summary` | Query counts, top explores, usage gaps |
 | `strata_validation_scope` | Impact set for a set of changed .lkml files |
 | `strata_impact` | Views, explores, and fields affected by a physical table change |
+| `strata_object` | One object (explore, view, PDT, table, field): lineage, findings, coverage, content usage |
 | `strata_find_field` | Search fields by name, SQL, label, description, or tag |
 | `strata_view_sources` | All views with backing BQ table, field count, orphan flag |
 | `strata_navigate` | One-call ticket brief: views/explores/fields for an anchor, cited as file:line |
@@ -519,7 +520,7 @@ keeping per-session context lean without measuring token counts explicitly.
 
 ### Looker OAuth and Token Management
 
-All 18 tools (17 read-only, 1 sandboxed chart renderer) work fully offline against the local
+All 19 tools (18 read-only, 1 sandboxed chart renderer) work fully offline against the local
 IR cache. Live Looker enrichment is opt-in:
 
 ```bash
