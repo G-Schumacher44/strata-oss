@@ -12,8 +12,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from strata_lookml.config import load_repo_path
-from strata_lookml.ir.store import cache_age_seconds, load_ir, save_ir
+from strata_lookml.config import load_cache_path, load_repo_path
 from strata_lookml.ir.types import IRGraph
 from strata_lookml.mcp.tools import (
     FIND_FIELD_DEFAULT_LIMIT,
@@ -73,7 +72,7 @@ from strata_lookml.mcp.tools import (
     strata_view_sources as query_view_sources,
 )
 from strata_lookml.navigate import build_navigate_brief
-from strata_lookml.pipeline import build_graph
+from strata_lookml.pipeline import load_or_build
 
 CACHE_MAX_AGE_SECONDS = 300
 
@@ -88,13 +87,13 @@ def _server_version() -> str:
 
 def load_configured_graph() -> IRGraph:
     repo_path = _repo_path()
-    cache_path = _cache_path(repo_path)
-    age = cache_age_seconds(cache_path)
-    if age is not None and age < CACHE_MAX_AGE_SECONDS:
-        return load_ir(cache_path)
-    graph = build_graph(repo_path, _usage_fixture(), _schema_fixture())
-    save_ir(graph, cache_path)
-    return graph
+    return load_or_build(
+        repo_path,
+        _usage_fixture(),
+        _schema_fixture(),
+        load_cache_path(repo_path),
+        CACHE_MAX_AGE_SECONDS,
+    )
 
 
 # Tool annotations are advisory hints (MCP spec: clients treat them as untrusted unless the
@@ -354,7 +353,7 @@ Configuration (environment):
   STRATA_REPO_PATH        LookML repo to analyze (else ~/.strata/config.json, else cwd)
   STRATA_USAGE_FIXTURE    usage facts JSON for offline L1 enrichment
   STRATA_SCHEMA_FIXTURE   BigQuery schema facts JSON for drift checks
-  STRATA_CACHE_PATH       IR cache file (default: <repo>/strata_ir.db)
+  STRATA_CACHE_PATH       IR cache file (default: ~/.strata/cache/<repo>-<hash>.db)
 
 Check the setup first with `strata mcp validate`; print client config with `strata mcp config`.
 """
@@ -400,13 +399,6 @@ def _conductor_dir() -> Path:
 
 def _repo_path() -> Path:
     return load_repo_path()
-
-
-def _cache_path(repo_path: Path) -> Path:
-    env_path = os.environ.get("STRATA_CACHE_PATH")
-    if env_path:
-        return Path(env_path).expanduser().resolve()
-    return repo_path / "strata_ir.db"
 
 
 def _usage_fixture() -> Path | None:

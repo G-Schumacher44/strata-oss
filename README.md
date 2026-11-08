@@ -438,7 +438,9 @@ dependencies that are hard to traverse programmatically. LookML's structure is w
 
 18 tools over stdio — 17 read-only, plus `strata_render_chart`, which writes only to
 `~/.strata/output` or `/tmp` (sandboxed, never your LookML repo). Works with any MCP client.
-All tools run against the local IR cache — no live Looker connection required. For live usage
+All tools run against the local IR cache — no live Looker connection required. The cache lives
+at `~/.strata/cache/<repo-name>-<hash>.db` (override: `STRATA_CACHE_PATH`), never in your repo,
+and is reused only when the server starts with the same repo and fixtures. For live usage
 enrichment, see [Looker OAuth](#looker-oauth-and-token-management) below.
 
 ```
@@ -626,10 +628,10 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 |---|---|
 | `strata auth` | Authenticate with Looker and manage local OAuth tokens |
 | `strata bootstrap` | Scaffold Strata into a repo — conductor/, .mcp.json, config |
-| `strata build` | Parse LookML and write the IR cache (`strata_ir.db`) |
+| `strata build` | Parse LookML and write the IR cache (`~/.strata/cache/`) |
 | `strata chart` | Render charts to self-contained HTML |
 | `strata check` | Offline governance gates — dead code, drift, PDT, verdict validation |
-| `strata clean` | Remove `output/`, `strata_ir.db`, `__pycache__` |
+| `strata clean` | Remove `output/`, the repo's IR cache entry, legacy in-repo `strata_ir.db`, `__pycache__` |
 | `strata conductor` | Manage slice-based agent workflow and handoffs |
 | `strata dashboard` | Build artifacts and serve the local HTML dashboard |
 | `strata generate-schema` | Pull BigQuery INFORMATION_SCHEMA facts for drift checks |

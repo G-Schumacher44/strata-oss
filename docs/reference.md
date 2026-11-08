@@ -67,10 +67,10 @@ Drop full Strata governance into a repo and prep the environment.
 
 `strata build [OPTIONS]`
 
-Parse a LookML repo and write the IR cache (strata_ir.db).
+Parse a LookML repo and write the IR cache.
 
 - `--repo TEXT` — required — env `STRATA_REPO_PATH` — Path to LookML repo
-- `--cache TEXT` — SQLite cache path (default: <repo>/strata_ir.db)
+- `--cache TEXT` — env `STRATA_CACHE_PATH` — SQLite cache path (default: ~/.strata/cache/<repo-name>-<hash>.db)
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON for L1 enrichment
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON for drift detection
 - `--json` — flag — Print status as JSON
@@ -159,9 +159,9 @@ Gate a LookML repo in CI: exit 0 pass, 1 gate failed, 2 usage error.
 
 `strata clean [OPTIONS]`
 
-Remove generated artifacts from the working directory.
+Remove generated artifacts.
 
-- `--repo TEXT` — Repo path — sweep strata_ir.db and __pycache__ inside it instead of the cwd
+- `--repo TEXT` — env `STRATA_REPO_PATH` — Repo path — clean this repo's IR cache and sweep __pycache__ inside it instead of the cwd
 
 ### `strata conductor`
 

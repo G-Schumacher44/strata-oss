@@ -6,6 +6,7 @@ from pathlib import Path
 
 from strata_lookml.ir.parser import lkml_paths
 from strata_lookml.ir.resolver import build_resolved_graph
+from strata_lookml.ir.store import cache_is_fresh, describe_inputs, load_ir, save_ir
 from strata_lookml.ir.types import IRGraph
 from strata_lookml.l1.enrich import enrich_graph
 from strata_lookml.l1.fixtures import load_usage_facts
@@ -49,6 +50,35 @@ def build_graph(
     if schema_fixture:
         graph = enrich_schema_drift(graph, load_schema_facts(schema_fixture))
     return graph
+
+
+def build_and_cache(
+    repo_path: str | Path,
+    usage_fixture: str | Path | None,
+    schema_fixture: str | Path | None,
+    cache_path: str | Path,
+) -> IRGraph:
+    """Build the graph and write it to the IR cache along with the inputs it was built from."""
+    # Inputs (fixture mtimes) are read before the build: a fixture edited mid-build must not
+    # be recorded as already loaded.
+    inputs = describe_inputs(repo_path, usage_fixture, schema_fixture)
+    graph = build_graph(repo_path, usage_fixture, schema_fixture)
+    save_ir(graph, cache_path, inputs)
+    return graph
+
+
+def load_or_build(
+    repo_path: str | Path,
+    usage_fixture: str | Path | None,
+    schema_fixture: str | Path | None,
+    cache_path: str | Path,
+    max_age_seconds: float,
+) -> IRGraph:
+    """Reuse the cache only if it was built from these exact inputs and is young enough."""
+    inputs = describe_inputs(repo_path, usage_fixture, schema_fixture)
+    if cache_is_fresh(cache_path, inputs, max_age_seconds):
+        return load_ir(cache_path)
+    return build_and_cache(repo_path, usage_fixture, schema_fixture, cache_path)
 
 
 def build_graph_with_provider(repo_path: str | Path, provider: UsageProvider) -> IRGraph:

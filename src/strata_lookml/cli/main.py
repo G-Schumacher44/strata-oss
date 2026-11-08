@@ -31,18 +31,24 @@ def strata_cli() -> None:
 @click.option(
     "--repo",
     default=None,
-    help="Repo path — sweep strata_ir.db and __pycache__ inside it instead of the cwd",
+    envvar="STRATA_REPO_PATH",
+    show_envvar=True,
+    help="Repo path — clean this repo's IR cache and sweep __pycache__ inside it instead of the cwd",
 )
 def clean(repo: str | None) -> None:
-    """Remove generated artifacts from the working directory.
+    """Remove generated artifacts.
 
-    Deletes: output/ in the cwd (where `strata dashboard` writes by default), plus
-    strata_ir.db cache files and __pycache__ dirs under --repo (or the cwd). A repo's own
-    output/ is never touched — Strata does not write there and cannot prove it owns it.
+    Deletes: output/ in the cwd (where `strata dashboard` writes by default); the repo's IR
+    cache entry under ~/.strata/cache/ (--repo, else the cwd); and, under that repo, legacy
+    strata_ir.db cache files (earlier releases wrote the cache there) and __pycache__ dirs. A cache at
+    STRATA_CACHE_PATH / --cache is yours and is not touched. A repo's own output/ is never
+    touched — Strata does not write there and cannot prove it owns it.
     Safe to run at any time — re-run `strata outputs` or `strata build` to regenerate.
     """
     import shutil
     from pathlib import Path
+
+    from strata_lookml.config import LEGACY_CACHE_NAME, default_cache_path
 
     removed = []
 
@@ -52,7 +58,12 @@ def clean(repo: str | None) -> None:
         removed.append("output/")
 
     search_root = Path(repo).expanduser().resolve() if repo else Path.cwd()
-    for db in search_root.rglob("strata_ir.db"):
+    cache_entry = default_cache_path(search_root)
+    if cache_entry.exists():
+        cache_entry.unlink()
+        removed.append(str(cache_entry))
+
+    for db in search_root.rglob(LEGACY_CACHE_NAME):
         db.unlink()
         removed.append(str(db))
 

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
+
+LEGACY_CACHE_NAME = "strata_ir.db"
 
 
 def _read_config() -> dict:
@@ -45,3 +48,53 @@ def load_cost_threshold_gb() -> float:
         except ValueError:
             pass
     return float(_read_config().get("cost_threshold_gb", 100.0))
+
+
+def strata_home() -> Path:
+    """Strata's per-user directory, ~/.strata (read at call time so HOME is honoured)."""
+    return Path.home() / ".strata"
+
+
+def default_cache_path(repo: str | Path) -> Path:
+    """Where a repo's IR cache lives when nothing overrides it.
+
+    ~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db: outside the LookML checkout,
+    one entry per repo, and two repos that share a name never share a cache.
+    """
+    root = Path(repo).expanduser().resolve()
+    digest = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
+    return strata_home() / "cache" / f"{root.name}-{digest}.db"
+
+
+def load_cache_path(repo: str | Path, cache: str | Path | None = None) -> Path:
+    """Resolve the IR cache path: --cache → STRATA_CACHE_PATH env → default_cache_path(repo).
+
+    The one resolver for every reader and writer of the cache (MCP server, `strata build`,
+    `strata mcp validate|config`).
+    """
+    if cache:
+        return Path(cache).expanduser().resolve()
+    env = os.environ.get("STRATA_CACHE_PATH")
+    if env:
+        return Path(env).expanduser().resolve()
+    return default_cache_path(repo)
+
+
+def ensure_private_dir(directory: Path, *, tighten: bool) -> None:
+    """Create `directory` (and any missing parents) mode 0700 on POSIX.
+
+    With `tighten`, an existing directory is chmod-ed to 0700 too; pass it only for a
+    directory Strata owns. umask can only narrow mkdir's mode, so each new level is chmod-ed
+    to exactly 0700.
+    """
+    missing = []
+    level = directory
+    while not level.exists():
+        missing.append(level)
+        level = level.parent
+    for new_dir in reversed(missing):
+        new_dir.mkdir(mode=0o700, exist_ok=True)
+        if os.name == "posix":
+            os.chmod(new_dir, 0o700)
+    if tighten and not missing and os.name == "posix":
+        os.chmod(directory, 0o700)
