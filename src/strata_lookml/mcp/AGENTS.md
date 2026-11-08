@@ -9,7 +9,8 @@
 ## What this layer is
 
 A local stdio MCP server that exposes the pre-built IR (L0) and usage data (L1, Phase 2+)
-as read-only tools in the IDE. The team asks questions; this layer answers from the cache.
+as tools in the IDE (all read-only except `strata_render_chart`, which writes one HTML file
+under `~/.strata/output/` or `/tmp/`). The team asks questions; this layer answers from the cache.
 It never reads raw LookML files directly — it always goes through the IR.
 
 ## Hard constraints (non-negotiable)

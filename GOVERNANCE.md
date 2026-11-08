@@ -59,7 +59,7 @@ These are hard boundaries. Never cross them.
 | **L1 — Usage enrichment** | `src/strata_lookml/l1/` (Phase 2) | Deterministic. Read-only Looker API/MCP only. No LLM. |
 | **L2 — Synthesis** | `src/strata_lookml/synthesis/` (Phase 3) | The only LLM layer. Cheapest model. One explore = one slice. Evidence required for every verdict. |
 | **L3 — Governance** | `conductor/`, `strata validate` | Conductor wraps L2. No verdict ships without its evidence trail. |
-| **MCP server** | `src/strata_lookml/mcp/` | Exposes L0–L1 as read-only tools. stdio only. No HTTP. Never calls write operations. |
+| **MCP server** | `src/strata_lookml/mcp/` | Exposes L0–L1 as 17 read-only tools plus `strata_render_chart`, which writes one HTML file under `~/.strata/output/` or `/tmp/`. stdio only. No HTTP. Never writes to Looker, BigQuery, or the LookML repo. |
 | **Vendor** | `src/vendor/` | Frozen. Do not modify. Cherry-pick from upstream only. |
 
 ---

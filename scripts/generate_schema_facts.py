@@ -17,8 +17,8 @@ Usage:
     [--dry-run]
 
 Requirements:
-  google-cloud-sdk in PATH (for `bq` CLI) and ADC configured:
-    gcloud auth application-default login
+  Google Cloud CLI in PATH (for `bq`), signed in with gcloud's own credentials:
+    gcloud auth login
 """
 
 from __future__ import annotations
@@ -109,7 +109,7 @@ def main() -> int:
                 for t in missing_from_ir[:5]:
                     print(f"    {t}")
             print()
-        print("Run without --dry-run (with ADC) to execute and write schema_facts.json.")
+        print("Run without --dry-run (signed in to gcloud) to execute and write schema_facts.json.")
         return 0
 
     # Live mode — pull from BQ

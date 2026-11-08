@@ -28,7 +28,7 @@ Install with `pip install strata-lookml` (or run any command as `uvx --from stra
 | `strata query navigate <anchor>` | Classify any anchor and produce a navigator brief (view/field/BQ table/explore) |
 | `strata skill [name]` | List bundled skills, or print one skill's full procedure (CLI twin of the MCP skill tools) |
 | `strata conductor` | Slice-based workflow management for agent sessions |
-| `strata generate-schema` | Pull schema facts from BigQuery INFORMATION_SCHEMA (requires ADC) |
+| `strata generate-schema` | Pull schema facts from BigQuery INFORMATION_SCHEMA (requires the `bq` CLI, signed in with `gcloud auth login`) |
 
 ---
 
