@@ -22,6 +22,7 @@ from typing import Any, Literal
 from strata_lookml.config import ensure_private_dir, strata_home
 from strata_lookml.ir.parser import lkml_paths
 from strata_lookml.ir.types import IRGraph
+from strata_lookml.safe_paths import check_write_destination, is_sqlite_file
 
 SCHEMA = """
 CREATE TABLE ir_cache (
@@ -98,13 +99,21 @@ def save_ir(graph: IRGraph, cache_path: str | Path, inputs: dict[str, Any] | Non
     concurrent reader sees the previous complete cache or the new one, never a half-written
     state, and an interrupted write leaves the old cache untouched. If the swap keeps failing
     (Windows, a reader holding the file open) the temp file is dropped, the old cache kept,
-    and a RuntimeWarning emitted; the build itself never fails on it. Whatever was at the path
+    and a RuntimeWarning emitted; the build itself never fails on it. A destination that is a
+    symlink, LookML source, a directory or (outside ~/.strata/cache) a non-SQLite file is
+    refused (`InvalidInput`) before anything is written. Whatever was at the path
     before (an older schema, a corrupt file) is replaced, not migrated (the cache is
     disposable). A missing directory is created 0700; Strata's own ~/.strata/cache is
     tightened to 0700.
     """
-    path = Path(cache_path)
     cache_dir = strata_home() / "cache"
+
+    def is_ours(target: Path) -> bool:
+        # Anything in Strata's own cache dir is Strata's (a damaged entry is rebuilt); at a
+        # user-named path only an existing SQLite file may be replaced.
+        return target.parent == cache_dir.resolve() or is_sqlite_file(target)
+
+    path = check_write_destination(Path(cache_path), what="IR cache", is_ours=is_ours)
     ensure_private_dir(path.parent, tighten=path.parent.resolve() == cache_dir.resolve())
     graph.cache_path = str(path)
     payload = json.dumps(graph.to_dict(), sort_keys=True)

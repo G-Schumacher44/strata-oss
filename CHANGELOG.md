@@ -46,7 +46,9 @@ All notable changes to `strata-lookml` are documented here. The format follows
   was built from, and the MCP server reuses it only when they match and it is younger
   than the max age: `strata build` without fixtures followed by a server start with
   `STRATA_USAGE_FIXTURE` no longer serves a graph with no usage data. `strata clean` removes
-  the repo's cache entry, and `--repo` now reads `STRATA_REPO_PATH`. Compat: an existing
+  the repo's cache entry, and `--repo` now reads `STRATA_REPO_PATH`. A `--cache` / `STRATA_CACHE_PATH` that is a
+  symlink, a `.lkml`/`.lookml` file, a directory or an existing non-SQLite file is refused
+  before anything is written (the same guard as `--write-baseline`). Compat: an existing
   `<repo>/strata_ir.db` is ignored (the first run rebuilds into `~/.strata/cache/`); `strata
   clean` deletes it.
 - `strata bootstrap` is non-interactive-capable and all-or-nothing. Every input is gathered

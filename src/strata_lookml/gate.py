@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from strata_lookml.ir.types import IRGraph
+from strata_lookml.safe_paths import check_write_destination
 from strata_lookml.synthesis.slices import build_explore_slice
 from strata_lookml.synthesis.verdicts import deterministic_verdict, validate_verdict
 
@@ -89,35 +90,22 @@ def baseline_document(graph: IRGraph) -> dict[str, Any]:
     }
 
 
-LOOKML_SUFFIXES = {".lkml", ".lookml"}
-
-
-def _check_baseline_destination(path: Path) -> Path:
-    """The resolved destination, or `BaselineError` if writing there could clobber a non-baseline."""
-    if path.is_symlink():
-        raise BaselineError(f"refusing to write baseline through a symlink: {path}")
-    target = path.resolve()
-    if target.suffix.lower() in LOOKML_SUFFIXES:
-        raise BaselineError(f"refusing to overwrite a LookML file with a baseline: {path}")
-    if target.is_dir():
-        raise BaselineError(f"baseline destination is a directory: {path}")
-    if target.exists():
-        try:
-            load_baseline(target)
-        except BaselineError as exc:
-            raise BaselineError(
-                f"refusing to overwrite {path}: it is not a previous Strata baseline"
-            ) from exc
-    return target
+def _is_baseline(path: Path) -> bool:
+    try:
+        load_baseline(path)
+    except BaselineError:
+        return False
+    return True
 
 
 def write_baseline(graph: IRGraph, path: Path) -> int:
     """Write the baseline file atomically (indented, trailing newline: diff-friendly).
 
-    Refuses (`BaselineError`, before any write) a symlink, a LookML-suffixed path, or an existing
-    file that is not a prior baseline. Returns the id count.
+    Refuses (`InvalidInput`, before any write) a symlink, a LookML-suffixed path, a directory,
+    or an existing file that is not a prior baseline (`safe_paths.check_write_destination`).
+    Returns the id count.
     """
-    target = _check_baseline_destination(path)
+    target = check_write_destination(path, what="baseline", is_ours=_is_baseline)
     document = baseline_document(graph)
     fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".strata-baseline-")
     try:

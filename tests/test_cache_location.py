@@ -241,3 +241,47 @@ def test_load_ir_closes_its_connection(env, monkeypatch):
     for conn in opened:
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):
             conn.execute("SELECT 1")
+
+
+def _build_with_cache(repo, cache):
+    return CliRunner().invoke(strata_cli, ["build", "--repo", str(repo), "--cache", str(cache)])
+
+
+def test_build_refuses_a_lkml_cache_destination(env):
+    # The atomic replace would have swapped a mistyped --cache .lkml for a SQLite database.
+    _, repo = env
+    source = next(repo.glob("*.view.lkml"))
+    before = source.read_bytes()
+    result = _build_with_cache(repo, source)
+    assert result.exit_code == 1 and "LookML" in result.output
+    assert source.read_bytes() == before
+
+
+def test_build_refuses_a_symlink_cache_destination(env, tmp_path):
+    _, repo = env
+    target = tmp_path / "real.db"
+    _strata("build", "--repo", str(repo), "--cache", str(target))
+    link = tmp_path / "link.db"
+    link.symlink_to(target)
+    result = _build_with_cache(repo, link)
+    assert result.exit_code == 1 and "symlink" in result.output
+    assert link.is_symlink()
+
+
+def test_build_refuses_to_overwrite_a_non_sqlite_file(env, tmp_path):
+    _, repo = env
+    other = tmp_path / "notes.txt"
+    other.write_text("keep me\n", encoding="utf-8")
+    result = _build_with_cache(repo, other)
+    assert result.exit_code == 1 and "not a previous Strata IR cache" in result.output
+    assert other.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_build_replaces_an_existing_strata_cache_at_a_custom_path(env, tmp_path):
+    from strata_lookml.ir.store import cache_inputs
+
+    _, repo = env
+    cache = tmp_path / "custom.db"
+    _strata("build", "--repo", str(repo), "--cache", str(cache))
+    _strata("build", "--repo", str(repo), "--cache", str(cache), "--usage-fixture", str(USAGE))
+    assert cache_inputs(cache)["usage_fixture"]["path"] == str(USAGE.resolve())

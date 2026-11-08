@@ -7,6 +7,7 @@ import json
 import click
 
 from strata_lookml.cli._contract import JsonCommand
+from strata_lookml.errors import InvalidInput
 from strata_lookml.gate import (
     FINDING_CATEGORIES,
     BaselineError,
@@ -131,7 +132,7 @@ def check(
     if write_baseline_path:
         try:
             written = write_baseline(graph, Path(write_baseline_path))
-        except BaselineError as exc:
+        except (BaselineError, InvalidInput) as exc:
             raise click.UsageError(str(exc)) from exc
         click.echo(f"Wrote {written} finding ids to {write_baseline_path}", err=True)
     result = evaluate_gate(graph, fail_on, baseline)

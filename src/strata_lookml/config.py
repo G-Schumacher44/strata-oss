@@ -72,11 +72,13 @@ def load_cache_path(repo: str | Path, cache: str | Path | None = None) -> Path:
     The one resolver for every reader and writer of the cache (MCP server, `strata build`,
     `strata mcp validate|config`).
     """
+    # abspath, not resolve(): a symlink at the named path must reach the writer's guard
+    # (safe_paths.check_write_destination) as a symlink, not as its target.
     if cache:
-        return Path(cache).expanduser().resolve()
+        return Path(os.path.abspath(Path(cache).expanduser()))
     env = os.environ.get("STRATA_CACHE_PATH")
     if env:
-        return Path(env).expanduser().resolve()
+        return Path(os.path.abspath(Path(env).expanduser()))
     return default_cache_path(repo)
 
 
