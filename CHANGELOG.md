@@ -6,6 +6,12 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `strata_list_orphans` / `strata query orphans` no longer accept `kind=explore|field`, which always
+  returned an empty list (only orphan views are detected); `kind` is now `all|view` and other
+  values are rejected with a clear error (#49).
+
 ## [0.1.9] - 2026-11-03
 
 ### Security
