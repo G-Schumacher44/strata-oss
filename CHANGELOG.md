@@ -90,8 +90,8 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - A chart whose encoding names a column missing from the data (for example `strata chart line`
   on `month`/`revenue` data) used to render a blank chart and exit 0. `render_chart` now raises
   `InvalidInput` listing the missing and the available columns, so the CLI exits 1 and
-  `strata_render_chart` returns `isError`. Only transform-free specs are checked (Vega-Lite
-  decides a transform's outputs), and row-count channels (`aggregate: count`, field `*`) are
+  `strata_render_chart` returns `isError`. Only the effective encodings of leaf views in
+  transform-free specs are checked (Vega-Lite decides transform outputs and composite views), and row-count channels (`aggregate: count`, field `*`) are
   skipped; Vega field paths (`a.b`, `a[0]`, `a\.b`) are understood.
 
 - `strata_list_orphans` / `strata query orphans` no longer accept `kind=explore|field`, which always

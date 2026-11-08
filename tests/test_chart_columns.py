@@ -219,3 +219,32 @@ def test_count_channel_is_not_validated(tmp_path):
         },
     }
     assert _render(spec, tmp_path).exists()
+
+
+def test_parent_encoding_overridden_by_every_layer_is_not_checked(tmp_path):
+    rows = [{"month": "2026-01-01", "actual": 1, "target": 2}]
+    spec = {
+        "encoding": {"x": {"field": "month"}, "y": {"field": "value"}},
+        "layer": [
+            {"mark": "bar", "encoding": {"y": {"field": "actual"}}},
+            {"mark": "line", "encoding": {"y": {"field": "target"}}},
+        ],
+    }
+    assert _render(spec, tmp_path, rows).exists()
+
+
+def test_layer_inheriting_a_missing_parent_field_still_fails(tmp_path):
+    rows = [{"month": "2026-01-01", "actual": 1}]
+    spec = {
+        "encoding": {"x": {"field": "month"}, "y": {"field": "value"}},
+        "layer": [
+            {"mark": "bar", "encoding": {"y": {"field": "actual"}}},
+            {"mark": "line"},
+        ],
+    }
+    assert "value" in _raises(spec, tmp_path, rows)
+
+
+def test_composite_views_are_skipped(tmp_path):
+    spec = {"hconcat": [{"mark": "bar", "encoding": {"y": {"field": "nope"}}}]}
+    assert _render(spec, tmp_path).exists()

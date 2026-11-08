@@ -170,36 +170,53 @@ def _first_path_component(field: str) -> str:
     return "".join(out)
 
 
-def _unknown_fields(node: dict[str, Any], columns: set[str], skip: bool) -> list[str]:
-    """Encoding fields of `node` (and its layers) that are not columns of the data.
+_COMPOSITE_KEYS = ("concat", "hconcat", "vconcat", "facet", "repeat", "spec")
 
-    The rule is to validate only what is certain: transform-free specs over inspectable data.
-    A (sub)spec with any `transform` is skipped (Vega-Lite decides what its outputs are), as is
-    a channel that counts rows (`aggregate: count`, or field `*`).
+
+def _unknown_fields(
+    node: dict[str, Any],
+    columns: set[str],
+    skip: bool,
+    inherited: dict[str, Any] | None = None,
+) -> list[str]:
+    """Encoding fields of the leaf views under `node` that are not columns of the data.
+
+    The rule is to validate only what is certain: the effective encoding of leaf views over
+    inspectable data. A layer's child sees its own channels, else the parent's; a parent's shared
+    encoding is never checked on its own (every child may override it). Composite views
+    (concat/facet/repeat/...) and any (sub)spec with a `transform` are skipped (Vega-Lite decides),
+    as is a channel that counts rows (`aggregate: count`, or field `*`).
     """
+    if any(key in node for key in _COMPOSITE_KEYS):
+        return []
     skip = skip or bool(node.get("transform"))
-    missing: list[str] = []
-    encoding = node.get("encoding")
-    if not skip and isinstance(encoding, dict):
-        for enc in encoding.values():
-            # A channel is one definition or a list of them (e.g. `tooltip`).
-            for item in enc if isinstance(enc, list) else [enc]:
-                if not isinstance(item, dict) or item.get("aggregate") == "count":
-                    continue
-                field = item.get("field")
-                if (
-                    isinstance(field, str)
-                    and field not in ("", "*")
-                    and _first_path_component(field) not in columns
-                ):
-                    missing.append(field)
+    own = node.get("encoding")
+    encoding = {**(inherited or {}), **(own if isinstance(own, dict) else {})}
     layers = node.get("layer")
-    for layer in layers if isinstance(layers, list) else []:
-        if not isinstance(layer, dict):
-            continue
-        layer_columns = _layer_columns(layer, columns)
-        if layer_columns is not None:  # None: data we cannot inspect, so do not check the layer
-            missing += _unknown_fields(layer, layer_columns, skip)
+    if isinstance(layers, list):
+        missing: list[str] = []
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+            layer_columns = _layer_columns(layer, columns)
+            if layer_columns is not None:  # None: data we cannot inspect, so skip the layer
+                missing += _unknown_fields(layer, layer_columns, skip, encoding)
+        return missing
+    if skip:
+        return []
+    missing = []
+    for enc in encoding.values():
+        # A channel is one definition or a list of them (e.g. `tooltip`).
+        for item in enc if isinstance(enc, list) else [enc]:
+            if not isinstance(item, dict) or item.get("aggregate") == "count":
+                continue
+            field = item.get("field")
+            if (
+                isinstance(field, str)
+                and field not in ("", "*")
+                and _first_path_component(field) not in columns
+            ):
+                missing.append(field)
     return missing
 
 
