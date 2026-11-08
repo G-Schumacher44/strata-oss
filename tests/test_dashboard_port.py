@@ -145,3 +145,27 @@ def test_whole_range_busy_is_a_clear_error(
     assert "No free port" in result.output
     assert f"{fallback[0]}-{fallback[-1]}" in result.output
     assert "bound" not in seen
+
+
+def test_dashboard_and_oauth_share_one_exclusive_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    from strata_lookml.l1 import oauth
+    from strata_lookml.loopback import ExclusiveHTTPServer
+
+    assert oauth.ExclusiveHTTPServer is ExclusiveHTTPServer
+    assert dash.ExclusiveHTTPServer is ExclusiveHTTPServer
+    # Reuse is off wherever it would permit a double bind (Windows), so a busy port is detected.
+    assert ExclusiveHTTPServer.allow_reuse_address == (os.name != "nt")
+
+
+def test_bound_dashboard_port_cannot_be_bound_twice(ports: tuple[int, range]) -> None:
+    from strata_lookml.errors import StrataError
+
+    base, _ = ports
+    first = dash.bind_server(base, explicit=True)
+    try:
+        with pytest.raises(StrataError, match="already in use"):
+            dash.bind_server(base, explicit=True)
+    finally:
+        first.server_close()

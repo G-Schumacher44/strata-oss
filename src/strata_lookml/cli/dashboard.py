@@ -5,7 +5,6 @@ from __future__ import annotations
 import errno
 import http.server
 import json
-import socketserver
 import threading
 import webbrowser
 from pathlib import Path
@@ -14,6 +13,7 @@ from typing import Any
 import click
 
 from strata_lookml.errors import StrataError
+from strata_lookml.loopback import ExclusiveHTTPServer
 
 DEFAULT_PORT = 8765
 # Tried in order when the default port is busy and `--port` was not passed.
@@ -57,7 +57,7 @@ def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:
 
 def bind_server(
     port: int, explicit: bool, fallback_ports: range | None = None
-) -> http.server.HTTPServer:
+) -> ExclusiveHTTPServer:
     """Bind the loopback server, with the Host allow-list built from the port actually bound.
 
     An explicit ``--port`` that is busy fails; the default port falls back through the range.
@@ -67,7 +67,7 @@ def bind_server(
     for candidate in candidates:
         try:
             # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
-            return http.server.HTTPServer(("127.0.0.1", candidate), make_handler(candidate))
+            return ExclusiveHTTPServer(("127.0.0.1", candidate), make_handler(candidate))
         except OSError as exc:
             if exc.errno != errno.EADDRINUSE:
                 raise
@@ -173,7 +173,6 @@ def dashboard(
 
     os.chdir(out_dir)
 
-    socketserver.TCPServer.allow_reuse_address = True
     server = bind_server(port if explicit else DEFAULT_PORT, explicit)
     bound = server.server_address[1]
     url = f"http://127.0.0.1:{bound}/dashboard.html"
