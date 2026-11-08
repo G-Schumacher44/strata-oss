@@ -76,14 +76,17 @@ def _replace(src: str, dst: Path) -> None:
     os.replace(src, dst)
 
 
-def _write_atomic(path: Path, content: str) -> None:
+def _write_atomic(path: Path, data: bytes, mode: int | None = None) -> None:
+    """Temp file in `path`'s directory + `os.replace`; keeps the existing file's mode."""
     tmp = path.with_name(f".{path.name}.strata-tmp-{os.getpid()}")
     fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(content)
-        if path.exists():
-            os.chmod(tmp, path.stat().st_mode & 0o7777)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        if mode is None and path.exists():
+            mode = path.stat().st_mode & 0o7777
+        if mode is not None:
+            os.chmod(tmp, mode)
         _replace(str(tmp), path)
     except BaseException:
         tmp.unlink(missing_ok=True)
@@ -109,13 +112,13 @@ def resolve_fixture(path: str | Path | None) -> Path | None:
 def apply_plan(ops: Sequence[FileOp]) -> None:
     """Apply `ops` in order; on any failure undo this run's changes and raise `StrataError`.
 
-    Rollback is best effort per step: every restore/unlink is attempted even if an earlier one
-    fails, and the raised error says which restores did not work.
+    One rule: before a destination is first touched, its pre-run state (bytes + mode, or
+    "absent") is recorded, keyed by its resolved path. Rollback compares each recorded
+    destination with that state and puts it back through the same atomic writer if it
+    differs. Every step is attempted even if an earlier one fails; failures are summarised.
     """
-    created_files: list[Path] = []
     created_dirs: list[Path] = []
-    overwritten: dict[Path, bytes] = {}
-    inflight: tuple[Path, bytes | None] | None = None
+    backups: dict[Path, tuple[bytes, int] | None] = {}
     try:
         for op in ops:
             if op.action == "skip":
@@ -127,34 +130,25 @@ def apply_plan(ops: Sequence[FileOp]) -> None:
             # Write through a symlink: the link stays a link, its target gets the content.
             dest = Path(os.path.realpath(op.path))
             _make_dirs(dest.parent, created_dirs)
-            prior = dest.read_bytes() if dest.exists() else None
-            inflight = (dest, prior)
-            _write_atomic(dest, op.content)
-            inflight = None
-            # Recorded only once the replace succeeded: a failed write changed nothing.
-            if prior is None:
-                created_files.append(dest)
-            else:
-                overwritten[dest] = prior
+            if dest not in backups:  # first write wins: a later op never re-snapshots
+                backups[dest] = (
+                    (dest.read_bytes(), dest.stat().st_mode & 0o7777) if dest.exists() else None
+                )
+            _write_atomic(dest, op.content.encode("utf-8"))
     except BaseException as exc:  # incl. KeyboardInterrupt: undo, then re-raise it as is
         problems: list[str] = []
-        if inflight is not None:
-            # The replace may have landed just before the interrupt; undo it only if it did.
-            path, prior = inflight
-            if prior is None:
-                created_files.append(path)
-            elif path.exists() and path.read_bytes() != prior:
-                overwritten[path] = prior
-        for path, data in overwritten.items():
+        for path, saved in backups.items():
             try:
-                path.write_bytes(data)
+                if saved is None:
+                    path.unlink(missing_ok=True)
+                elif (
+                    not path.exists()
+                    or path.read_bytes() != saved[0]
+                    or path.stat().st_mode & 0o7777 != saved[1]
+                ):
+                    _write_atomic(path, saved[0], saved[1])
             except OSError as undo_exc:
                 problems.append(f"could not restore {path}: {undo_exc}")
-        for path in created_files:
-            try:
-                path.unlink(missing_ok=True)
-            except OSError as undo_exc:
-                problems.append(f"could not remove {path}: {undo_exc}")
         for d in reversed(created_dirs):
             with contextlib.suppress(OSError):
                 d.rmdir()

@@ -282,3 +282,26 @@ def test_repo_option_declares_env_var_everywhere():
         "/tmp",
         "/private/tmp",
     )
+
+
+def test_aliased_destinations_restore_the_original_bytes(repo, home, monkeypatch):
+    (repo / "AGENTS.md").write_text("original\n")
+    (repo / "CLAUDE.md").symlink_to("AGENTS.md")
+    # gitignore, AGENTS (1st write to the shared target), CLAUDE (2nd write to it), then fail
+    _fail_on(monkeypatch, 4, OSError("boom"))
+    result = invoke("--repo", str(repo), "--yes", "--force")
+    assert result.exit_code == 1
+    assert (repo / "AGENTS.md").read_text() == "original\n"
+    assert (repo / "CLAUDE.md").is_symlink()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
+def test_restore_keeps_mode_and_uses_atomic_replace(repo, home, monkeypatch):
+    agents = repo / "AGENTS.md"
+    agents.write_text("original\n")
+    agents.chmod(0o444)
+    _fail_on(monkeypatch, 3, OSError("boom"))
+    result = invoke("--repo", str(repo), "--yes", "--force")
+    assert result.exit_code == 1
+    assert agents.read_text() == "original\n"
+    assert agents.stat().st_mode & 0o777 == 0o444
