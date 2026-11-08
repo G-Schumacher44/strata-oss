@@ -8,6 +8,8 @@ from pathlib import Path
 
 import click
 
+from strata_lookml.cli._contract import JsonCommand
+from strata_lookml.errors import InvalidInput, NotFound
 from strata_lookml.l1.looker import (
     DEFAULT_CLIENT_ID,
     DEFAULT_REDIRECT_URI,
@@ -125,14 +127,20 @@ def auth_login(
     click.echo(json.dumps(token.redacted(), indent=2, sort_keys=True))
 
 
-@auth.command("status")
+@auth.command("status", cls=JsonCommand)
 @click.option("--token-path", default=str(DEFAULT_TOKEN_PATH), show_default=True)
 def auth_status(token_path: str) -> None:
     """Show redacted local token status."""
+    path = Path(token_path).expanduser()
+    if not path.exists():
+        raise NotFound(
+            f"no Looker token at {path}",
+            hint="Run `strata auth login` to authorize Strata and save a token.",
+        )
     try:
-        token = load_token(token_path)
-    except LiveLookerNotConfigured as exc:
-        raise click.ClickException(str(exc)) from exc
+        token = load_token(path)
+    except LiveLookerNotConfigured as exc:  # unsafe file permissions; the message says the fix
+        raise InvalidInput(str(exc)) from exc
     click.echo(json.dumps(token.redacted(), indent=2, sort_keys=True))
 
 

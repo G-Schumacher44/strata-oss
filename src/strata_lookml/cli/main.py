@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import click
 
+from strata_lookml.cli._contract import StrataGroup
 from strata_lookml.cli.auth import auth
 from strata_lookml.cli.bootstrap import bootstrap
 from strata_lookml.cli.build_ir import build_ir
@@ -20,7 +21,7 @@ from strata_lookml.cli.skill import skill
 from strata_lookml.cli.validate import validate
 
 
-@click.group()
+@click.group(cls=StrataGroup)
 @click.version_option(package_name="strata-lookml")
 def strata_cli() -> None:
     """Strata BI Agentic Toolkit — govern, analyze, and visualize LookML repos."""

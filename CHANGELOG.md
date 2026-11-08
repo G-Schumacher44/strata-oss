@@ -19,6 +19,18 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
+- CLI exits non-zero on not-found/invalid input; MCP tool errors now reach the client. Every
+  anticipated failure raises one error type (`strata_lookml.errors`: `NotFound`, `InvalidInput`,
+  each with a `code`, `message` and `hint`). The CLI prints `Error:` / `Hint:` on stderr and
+  exits 1 (`strata query field v nope` and `strata query status --repo /nonexistent` used to
+  exit 0); JSON commands also print `{"error", "code", "hint"}` on stdout, where `error` is
+  still the message string. Over MCP these come back as `isError: true` with the message: under
+  mcp 2.3 a bad `strata_validation_scope` input or `strata_render_chart` path used to reach the
+  client only as "Error executing tool …", and an unknown field, explore, table or skill came
+  back as a successful result carrying an `error` key or string. `strata_view_sources` now
+  rejects an unknown `model` instead of returning no views, an empty repo (no `.lkml` files)
+  is an error, and `strata auth status` without a token points at `strata auth login`. Requires
+  `mcp>=2.3`.
 - `strata dashboard`: the dependency graph is laid out left to right in layers (explores, views,
   PDTs and tables) with column headers. Labels show the short object name, hide when zoomed too far
   out to read, and always show for the hovered or selected node's neighbors. Node kinds have their

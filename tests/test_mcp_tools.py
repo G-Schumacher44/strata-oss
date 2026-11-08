@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from strata_lookml.errors import InvalidInput, NotFound
 from strata_lookml.ir.resolver import build_resolved_graph
 from strata_lookml.mcp.tools import (
     strata_chart_templates,
@@ -58,7 +59,7 @@ def test_strata_list_orphans_rejects_unsupported_kind(kind):
     # Only view orphans are detected; an empty [] for explore/field would read as "none exist".
     graph = build_resolved_graph(FIXTURES)
 
-    with pytest.raises(ValueError, match="only orphan views are detected"):
+    with pytest.raises(InvalidInput, match="only orphan views are detected"):
         strata_list_orphans(graph, kind)
 
 
@@ -124,9 +125,10 @@ def test_strata_skill_returns_full_content():
     assert "bq show --schema" in content
 
 
-def test_strata_skill_missing_returns_error():
-    result = strata_skill(SKILLS_DIR, "nonexistent_skill")
-    assert "not found" in result
+def test_strata_skill_missing_raises_not_found_listing_skills():
+    with pytest.raises(NotFound, match="skill not found") as err:
+        strata_skill(SKILLS_DIR, "nonexistent_skill")
+    assert "lookml_ticket_navigator" in (err.value.hint or "")
 
 
 def test_strata_conductor_status():
@@ -198,9 +200,8 @@ def test_navigate_brief_view_anchor_and_change_type():
 def test_navigate_brief_missing_anchor_errors():
     graph = build_resolved_graph(FIXTURES)
 
-    brief = build_navigate_brief(graph, "no_such_field_xyz.nope")
-
-    assert "error" in brief
+    with pytest.raises(NotFound, match="No fields matching"):
+        build_navigate_brief(graph, "no_such_field_xyz.nope")
 
 
 def test_view_sources_carries_build_time_source_line():
@@ -236,7 +237,8 @@ def test_navigate_single_token_field_anchor_resolves():
 def test_navigate_unknown_single_token_errors():
     graph = build_resolved_graph(FIXTURES)
 
-    assert "error" in build_navigate_brief(graph, "zzz_not_a_thing_anywhere")
+    with pytest.raises(NotFound, match="No view, explore, or field"):
+        build_navigate_brief(graph, "zzz_not_a_thing_anywhere")
 
 
 def test_strata_chart_templates():

@@ -227,13 +227,18 @@ def parse_file(path: str | Path, repo_root: str | Path | None = None) -> ParsedF
     )
 
 
-def parse_repo(repo_path: str | Path) -> list[ParsedFile]:
+def lkml_paths(repo_path: str | Path) -> list[Path]:
+    """The .lkml files the IR is built from, sorted."""
     root = Path(repo_path)
     real_root = root.resolve()
     # A symlinked .lkml that resolves outside the repo would pull arbitrary local files into
     # the IR (and into MCP answers); skip it.
-    paths = sorted(p for p in root.rglob("*.lkml") if p.resolve().is_relative_to(real_root))
-    return [parse_file(path, root) for path in paths]
+    return sorted(p for p in root.rglob("*.lkml") if p.resolve().is_relative_to(real_root))
+
+
+def parse_repo(repo_path: str | Path) -> list[ParsedFile]:
+    root = Path(repo_path)
+    return [parse_file(path, root) for path in lkml_paths(root)]
 
 
 def _body_to_dict(entries: list[tuple[str, Any]]) -> dict[str, Any]:

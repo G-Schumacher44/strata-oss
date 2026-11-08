@@ -13,6 +13,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+from strata_lookml.errors import InvalidInput, StrataError
+
 
 def _resolve_charts_dir() -> Path:
     env = os.environ.get("STRATA_CHARTS_PATH")
@@ -69,13 +71,13 @@ def _write_html(out_path: Path, html: str) -> None:
     # Where O_NOFOLLOW is unavailable (Windows) the lstat check is the only guard (best effort:
     # it leaves a check-then-open window, but it is no worse than the platform allows).
     if not hasattr(os, "O_NOFOLLOW") and out_path.is_symlink():
-        raise ValueError(f"Refusing to write chart through a symlink: {out_path}")
+        raise InvalidInput(f"Refusing to write chart through a symlink: {out_path}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(out_path, flags, 0o644)
     except OSError as exc:
         if out_path.is_symlink():
-            raise ValueError(f"Refusing to write chart through a symlink: {out_path}") from exc
+            raise InvalidInput(f"Refusing to write chart through a symlink: {out_path}") from exc
         raise
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(html)
@@ -99,6 +101,11 @@ def render_chart(
     With no `out_path`, a fresh temp file is created; an explicit path is never followed through
     a symlink at its final component.
     """
+    if not isinstance(spec, dict):
+        raise InvalidInput(
+            f"chart spec must be a mapping (a YAML/JSON object), got {type(spec).__name__}",
+            hint="See strata_chart_templates for valid specs.",
+        )
     spec = _strip_empty_channels(spec)
     spec = _apply_auto_labels(spec)
     spec = _apply_show_labels(spec)
@@ -208,6 +215,17 @@ def _list_templates() -> None:
 
 
 def main() -> None:
+    # strata-chart is argparse, not the click tree, so this is its one error-contract seam.
+    try:
+        _main()
+    except StrataError as exc:
+        print(f"Error: {exc.message}", file=sys.stderr)
+        if exc.hint:
+            print(f"Hint: {exc.hint}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _main() -> None:
     parser = argparse.ArgumentParser(
         prog="strata-chart",
         description="Render a Vega-Lite chart to interactive HTML",
