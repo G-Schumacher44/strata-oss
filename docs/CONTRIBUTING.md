@@ -11,6 +11,8 @@ Strata changes should preserve the deterministic core:
 Run before opening a PR:
 
 ```bash
+python -m pytest   # includes tests/test_scenarios.py, the playground scenario assertions
+
 strata check \
   --repo tests/lookml/gcs_analytics \
   --usage-fixture tests/fixtures/gcs_usage_facts.json \

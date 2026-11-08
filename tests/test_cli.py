@@ -385,3 +385,110 @@ def test_validate_active_slice_still_fails_on_missing_file(tmp_path):
     line = _validate_active_slice(tmp_path, "Active slice: conductor/gone.md (review)")
 
     assert "conductor/gone.md not found" in line
+
+
+# ── strata check (the CI gate) ────────────────────────────────────────────────
+
+THELOOK = REPO_ROOT / "tests" / "lookml" / "thelook"
+GCS = REPO_ROOT / "tests" / "lookml" / "gcs_analytics"
+
+
+def test_check_passes_a_repo_with_findings_by_default():
+    """Findings alone never fail the default gate; thelook has dead code and no schema facts."""
+    result = run(
+        "check",
+        "--repo",
+        str(THELOOK),
+        "--usage-fixture",
+        str(FIXTURES / "playground_usage_facts.json"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "drift not checked" in result.stdout
+
+
+def test_check_fail_on_drift_names_the_drift_ids():
+    result = run(
+        "check",
+        "--repo",
+        str(GCS),
+        "--schema-fixture",
+        str(FIXTURES / "gcs_schema_facts.json"),
+        "--fail-on",
+        "drift",
+    )
+
+    assert result.returncode == 1
+    assert "FAIL [drift] schema:missing_table:acme-analytics.gold_marts.fct_demand_forecast" in (
+        result.stderr
+    )
+
+
+def test_check_fails_on_resolution_error(tmp_path):
+    (tmp_path / "orders.view.lkml").write_text(
+        "view: orders {\n  extends: [gone]\n  dimension: id { sql: ${TABLE}.id ;; }\n}\n",
+        encoding="utf-8",
+    )
+
+    result = run("check", "--repo", str(tmp_path), "--json")
+
+    assert result.returncode == 1
+    failures = json.loads(result.stdout)["failures"]
+    assert [(f["category"], f["id"]) for f in failures] == [
+        ("integrity", "resolution:view:missing_extends_target:gone")
+    ]
+
+
+def test_check_fails_on_a_dir_without_lkml(tmp_path):
+    result = run("check", "--repo", str(tmp_path), "--json")
+
+    assert result.returncode == 1
+    assert json.loads(result.stdout)["code"] == "invalid_input"
+
+
+def test_check_fail_on_without_its_fixture_is_a_usage_error():
+    """A requested category with no signal would pass by construction; refuse it instead."""
+    result = run("check", "--repo", str(GCS), "--fail-on", "drift")
+
+    assert result.returncode == 2
+    assert "--fail-on drift needs --schema-fixture" in result.stderr
+
+
+def test_check_json_is_stable():
+    args = (
+        "check",
+        "--repo",
+        str(ENTERPRISE),
+        "--usage-fixture",
+        str(ENTERPRISE_USAGE),
+        "--fail-on",
+        "zombie-pdt",
+        "--json",
+    )
+    first, second = run(*args), run(*args)
+
+    assert first.returncode == 1
+    assert first.stdout == second.stdout
+    payload = json.loads(first.stdout)
+    assert payload == {
+        "passed": False,
+        "failures": [
+            {
+                "category": "zombie-pdt",
+                "id": "pdt:pdt_attribution_full_funnel",
+                "message": "zombie PDT, 180 builds",
+            },
+            {
+                "category": "zombie-pdt",
+                "id": "pdt:pdt_customer_value_score",
+                "message": "zombie PDT, 120 builds",
+            },
+        ],
+        "counts": {
+            "integrity": 0,
+            "dead-code": 11,
+            "unused-pdt": 0,
+            "zombie-pdt": 2,
+            "drift": None,
+        },
+    }
