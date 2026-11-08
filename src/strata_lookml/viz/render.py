@@ -227,18 +227,36 @@ def _unknown_fields(
     encoding = node.get("encoding")
     if not opaque and isinstance(encoding, dict):
         for enc in encoding.values():
-            field = enc.get("field") if isinstance(enc, dict) else None
-            if (
-                isinstance(field, str)
-                and field
-                and _first_path_component(field) not in columns | known
-            ):
-                missing.append(field)
+            # A channel is one definition or a list of them (e.g. `tooltip`).
+            for item in enc if isinstance(enc, list) else [enc]:
+                field = item.get("field") if isinstance(item, dict) else None
+                if (
+                    isinstance(field, str)
+                    and field
+                    and _first_path_component(field) not in columns | known
+                ):
+                    missing.append(field)
     layers = node.get("layer")
     for layer in layers if isinstance(layers, list) else []:
-        if isinstance(layer, dict):
-            missing += _unknown_fields(layer, columns, known, opaque)
+        if not isinstance(layer, dict):
+            continue
+        layer_columns = _layer_columns(layer, columns)
+        if layer_columns is not None:  # None: data we cannot inspect, so do not check the layer
+            missing += _unknown_fields(layer, layer_columns, known, opaque)
     return missing
+
+
+def _layer_columns(layer: dict[str, Any], inherited: set[str]) -> set[str] | None:
+    """The columns a layer sees: the parent's, its own inline rows, or None when it reads other
+    data (url, named source, generator) that cannot be inspected statically.
+    """
+    if "data" not in layer:
+        return inherited
+    data = layer["data"]
+    values = data.get("values") if isinstance(data, dict) else None
+    if isinstance(values, list):
+        return {key for row in values if isinstance(row, dict) for key in row}
+    return None
 
 
 def _check_encoding_columns(spec: dict[str, Any], rows: list[dict]) -> None:

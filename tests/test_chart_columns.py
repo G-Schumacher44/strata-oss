@@ -173,3 +173,67 @@ def test_field_access_paths(tmp_path):
     assert "orders.revenue" in _raises(
         {"mark": "bar", "encoding": {"y": {"field": "orders.revenue"}}}, tmp_path, rows
     )
+
+
+def test_layer_with_inline_data_is_checked_against_its_own_rows(tmp_path):
+    rule = {"mark": "rule", "data": {"values": [{"threshold": 20}]}}
+    layers = [{"mark": "line", "encoding": {"y": {"field": "revenue"}}}]
+    ok = {"layer": [*layers, {**rule, "encoding": {"y": {"field": "threshold"}}}]}
+    assert _render(ok, tmp_path).exists()
+    bad = {"layer": [*layers, {**rule, "encoding": {"y": {"field": "revenue"}}}]}
+    assert "revenue" in _raises(bad, tmp_path)
+
+
+def test_layer_with_uninspectable_data_is_skipped(tmp_path):
+    spec = {
+        "layer": [
+            {"mark": "rule", "data": {"url": "t.csv"}, "encoding": {"y": {"field": "anything"}}},
+        ]
+    }
+    assert _render(spec, tmp_path).exists()
+
+
+def test_inheriting_layer_mismatch_still_fails(tmp_path):
+    spec = {"layer": [{"mark": "line", "encoding": {"y": {"field": "nope"}}}]}
+    assert "nope" in _raises(spec, tmp_path)
+
+
+def test_array_encoding_fields_are_checked_and_accepted(tmp_path):
+    tip = {"mark": "bar", "encoding": {"tooltip": [{"field": "month"}, {"field": "revenue"}]}}
+    assert _render(tip, tmp_path).exists()
+    bad = {"mark": "bar", "encoding": {"tooltip": [{"field": "month"}, {"field": "nope"}]}}
+    assert "nope" in _raises(bad, tmp_path)
+
+
+def _cli_charts(charts: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "strata_lookml.cli.main", *args],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "STRATA_CHARTS_PATH": str(charts)},
+    )
+
+
+def test_array_tooltip_template_keeps_cli_and_help_working(tmp_path):
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    (charts / "bar.yml").write_text(
+        "mark: bar\nencoding:\n  x: {field: category}\n  y: {field: value}\n"
+        "  tooltip: [{field: category}, {field: value}]\n",
+        encoding="utf-8",
+    )
+    assert _cli_charts(charts, "--help").returncode == 0
+    result = _cli_charts(charts, "chart", "bar", "--help")
+    assert result.returncode == 0, result.stderr
+    assert "x=category" in result.stdout
+    assert "tooltip=category,value" in result.stdout
+
+
+def test_malformed_template_does_not_break_startup(tmp_path):
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    (charts / "bar.yml").write_text("mark: [unclosed\n  : :\n", encoding="utf-8")
+    assert _cli_charts(charts, "--help").returncode == 0
+    assert _cli_charts(charts, "chart", "bar", "--help").returncode == 0

@@ -17,13 +17,28 @@ _OUT_HELP = (
 
 
 def _template_help(name: str, summary: str) -> str:
-    """Command help: the summary plus the template's columns, read from its YAML."""
-    path = _CHARTS_DIR / f"{name}.yml"
-    if not path.exists():
+    """Command help: the summary plus the template's columns, read from its YAML.
+
+    Help is decoration: a template that cannot be read for it falls back to the plain summary
+    rather than breaking CLI startup.
+    """
+    try:
+        encoding = _load_spec(_CHARTS_DIR / f"{name}.yml").get("encoding", {})
+        required: list[str] = []
+        optional: list[str] = []
+        for channel, enc in encoding.items():
+            # A channel is one definition or a list of them (e.g. `tooltip`).
+            fields = [
+                item["field"]
+                for item in (enc if isinstance(enc, list) else [enc])
+                if isinstance(item, dict) and item.get("field")
+            ]
+            if fields:
+                required.append(f"{channel}={','.join(fields)}")
+            else:
+                optional.append(channel)
+    except Exception:
         return summary
-    encoding = _load_spec(path).get("encoding", {})
-    required = [f"{ch}={enc['field']}" for ch, enc in encoding.items() if enc.get("field")]
-    optional = [ch for ch, enc in encoding.items() if not enc.get("field")]
     text = f"{summary}\n\nRequired columns (default names): {', '.join(required)}."
     if optional:
         text += f" Optional channels: {', '.join(optional)}."
