@@ -11,7 +11,7 @@ or Jira. Its writes are local files. Every command that writes or deletes files,
 | `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
 | `strata build` | The IR cache: `<repo>/strata_ir.db`, or `--cache`. |
 | `strata outputs` / `strata dashboard` | JSON artifacts and `dashboard.html` under `--out` (dashboard default: `./output/<repo-name>`). |
-| `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default `/tmp/strata_chart.html`); any path the user names. |
+| `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default: a fresh `strata_chart_*.html` in the system temp dir, path printed); any path the user names, never written through a symlink at the final component. |
 | `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
 | `strata conductor init` / `new-slice` | `conductor/` files in the target repo. |
 | `strata validate` | Appends one row to `<project>/conductor/.validation-log` (or `CONDUCTOR_VALIDATION_LOG`). |
