@@ -35,6 +35,10 @@ All notable changes to `strata-lookml` are documented here. The format follows
   (read only) and `--workbench-url` / `STRATA_WORKBENCH_URL` (warned about when it names another port than the
   one bound).
 
+- `strata findings`, `strata ack` and `strata unack`: triage from the terminal (workbench S4c). `findings`
+  lists the triage rows (`--status`, `--category`, `--baseline`, `--format table|lines|json`); `lines` is
+  `file:line: [category] label — message (id)` for fzf and vim quickfix (`-:0:` when a row has no file).
+  `findings --workbench-url` adds finding links. `ack`/`unack` take ids (or `-` for stdin) and write only the out-of-repo triage store.
 - Workbench links out: `--workbench-url` / `STRATA_WORKBENCH_URL` / config `workbench_url` (one resolver, never guessed). With a base, `strata check` failures carry a `url` (JSON) / `<url>` (text), PR comment explore bullets link to their pages, and MCP `strata_object` returns `workbench_url`. With no base nothing changes.
 - Triage core (`strata_lookml.triage`, workbench S4b): `TriageStore` keeps acknowledged finding ids in
   `~/.strata/triage/<repo_key>.json` (0600, atomic replace, writers serialized by an OS advisory lock plus a `rev` check, ids allowlisted against the

@@ -677,10 +677,11 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 
 ## CLI
 
-15 commands. Full reference: [`docs/cli-guide.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/cli-guide.md).
+18 commands. Full reference: [`docs/cli-guide.md`](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/cli-guide.md).
 
 | Command | What it does |
 |---|---|
+| `strata ack` | Acknowledge findings by id (stored in `~/.strata/triage/`, never in the repo) |
 | `strata auth` | Authenticate with Looker and manage local OAuth tokens |
 | `strata bootstrap` | Scaffold Strata into a repo — conductor/, .mcp.json, config |
 | `strata build` | Parse LookML and write the IR cache (`~/.strata/cache/`) |
@@ -690,13 +691,34 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 | `strata conductor` | Manage slice-based agent workflow and handoffs |
 | `strata diff` | Findings a branch introduces or fixes, against production usage |
 | `strata dashboard` | Alias of `strata workbench`; `--out DIR` writes and serves the static HTML dashboard |
+| `strata findings` | List findings with triage status — table, `file:line:` lines for fzf/vim, or JSON |
 | `strata generate-schema` | Pull BigQuery INFORMATION_SCHEMA facts for drift checks |
 | `strata mcp` | Run, validate, and inspect MCP server configuration |
 | `strata outputs` | Write 8 JSON artifacts to an output directory |
 | `strata query` | Inspect the IR from the terminal |
 | `strata skill` | List bundled skills or print a skill procedure |
+| `strata unack` | Withdraw acknowledgements by id |
 | `strata validate` | Conductor spine check — handoff format, active slice, replay facts |
 | `strata workbench` | Serve the local triage workbench (findings, overview, a page per object) |
+
+### Triage from the terminal
+
+`strata findings` lists what `strata check` would report, with a triage status (`new` by default;
+`--status acknowledged|baselined|fixed|not_checked|all`, `--category`, `--baseline FILE`).
+`--format lines` prints one finding per line, `file:line: [category] label — message (id)`;
+a finding with no file prints `-:0:`. With a workbench base (`--workbench-url`, `STRATA_WORKBENCH_URL` or config) each row also gets its finding URL (` <url>` after the id in `lines`, a `url` key in `json`). Paths are relative to the repo root, so run these from it.
+Acknowledgements live in `~/.strata/triage/`, never in the repo, and never change `strata check`.
+
+```bash
+# fzf: pick findings, acknowledge them (the id is the trailing "(...)")
+strata findings --format lines | fzf -m | sed -E 's/.* \((.*)\)( <[^>]*>)?$/\1/' | strata ack - --note "known"
+
+# vim quickfix: the lines match vim's default errorformat (%f:%l:%m)
+vim -q <(strata findings --format lines)
+
+strata ack <id>...      # `-` reads ids from stdin, one per line
+strata unack <id>...
+```
 
 ### Error handling
 

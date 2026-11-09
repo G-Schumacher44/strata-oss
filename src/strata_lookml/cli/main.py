@@ -12,6 +12,7 @@ from strata_lookml.cli.chart import chart
 from strata_lookml.cli.check import check
 from strata_lookml.cli.conductor import conductor
 from strata_lookml.cli.diff import diff
+from strata_lookml.cli.findings import ack, findings, unack
 from strata_lookml.cli.generate_schema import generate_schema
 from strata_lookml.cli.lint import lint
 from strata_lookml.cli.mcp import mcp
@@ -94,6 +95,9 @@ strata_cli.add_command(build_ir, name="build")
 strata_cli.add_command(validate)
 strata_cli.add_command(diff)
 strata_cli.add_command(generate_schema)
+strata_cli.add_command(findings)
+strata_cli.add_command(ack)
+strata_cli.add_command(unack)
 
 if __name__ == "__main__":
     strata_cli()

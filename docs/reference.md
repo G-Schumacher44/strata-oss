@@ -4,9 +4,21 @@
 > change the help string or tool docstring, then run `python scripts/gen_reference.py`.
 > `tests/test_docs_consistency.py` fails when this file is stale.
 
-At a glance: 41 CLI commands (incl. subcommands), 19 MCP tools (18 read-only).
+At a glance: 44 CLI commands (incl. subcommands), 19 MCP tools (18 read-only).
 
 ## CLI
+
+### `strata ack`
+
+`strata ack [OPTIONS] IDS...`
+
+Acknowledge findings by id (`-` reads ids from stdin, one per line).
+
+- `--repo TEXT` — env `STRATA_REPO_PATH` — Path to LookML repo (defaults to the configured repo, else cwd)
+- `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON — explore query counts and PDT build costs.
+- `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON — warehouse column inventory for drift detection.
+- `--note TEXT` — Why (stored with the acknowledgement; max 2000 chars).
+- `IDS...` — argument — required
 
 ### `strata auth`
 
@@ -243,6 +255,21 @@ Which findings does a branch introduce or fix? Exit 0, or 1 with --fail-on-new.
 - `--fail-on-new` — flag — Exit 1 if the head introduces any new finding (CI use).
 - `--json` — flag — Print {base, head, new, fixed, unchanged_count}
 
+### `strata findings`
+
+`strata findings [OPTIONS]`
+
+List findings with their triage status (new by default).
+
+- `--repo TEXT` — env `STRATA_REPO_PATH` — Path to LookML repo (defaults to the configured repo, else cwd)
+- `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON — explore query counts and PDT build costs.
+- `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON — warehouse column inventory for drift detection.
+- `--baseline FILE` — Baseline file (as for `strata check`): its ids show as baselined.
+- `--status [new|acknowledged|baselined|fixed|not_checked|all]` — default `new` — Only rows in this status.
+- `--category [integrity|dead-code|unused-pdt|zombie-pdt|drift]` — Only rows in this finding category.
+- `--workbench-url TEXT` — Workbench base URL (http(s)://… or an export .html; else STRATA_WORKBENCH_URL / config workbench_url): each row gets a link to its finding page. No base, no links.
+- `--format [table|lines|json]` — default `table` — table for people; lines for fzf and vim quickfix; json for scripts.
+
 ### `strata generate-schema`
 
 `strata generate-schema [OPTIONS]`
@@ -432,6 +459,17 @@ List all views with their physical BQ table and field counts.
 List bundled skills, or print one skill's full procedure.
 
 - `[NAME]` — argument — optional
+
+### `strata unack`
+
+`strata unack [OPTIONS] IDS...`
+
+Withdraw acknowledgements by id (`-` reads ids from stdin, one per line).
+
+- `--repo TEXT` — env `STRATA_REPO_PATH` — Path to LookML repo (defaults to the configured repo, else cwd)
+- `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON — explore query counts and PDT build costs.
+- `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON — warehouse column inventory for drift detection.
+- `IDS...` — argument — required
 
 ### `strata validate`
 

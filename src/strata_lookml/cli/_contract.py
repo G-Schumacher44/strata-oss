@@ -38,18 +38,27 @@ class StrataGroup(click.Group):
             raise _StrataClickError(exc) from exc
 
 
+def _json_mode(params: dict[str, Any]) -> bool:
+    if "as_json" in params:
+        return bool(params["as_json"])
+    if "fmt" in params:
+        return params["fmt"] == "json"
+    return True
+
+
 class JsonCommand(click.Command):
     """A command whose stdout is JSON: a `StrataError` also prints its envelope there.
 
     The envelope is `{"error": <message>, "code": <code>, "hint": <hint>}`; `error` stays a
     string so `.error` checks written against the old soft-error output keep working. A
-    command with an `as_json` flag (`--json`) emits it only when the flag is set.
+    command with an `as_json` flag (`--json`) emits it only when the flag is set; one with a
+    `--format` option (parameter `fmt`) only when it is `json`.
     """
 
     def invoke(self, ctx: click.Context) -> Any:
         try:
             return super().invoke(ctx)
         except StrataError as exc:
-            if ctx.params.get("as_json", True):
+            if _json_mode(ctx.params):
                 click.echo(json.dumps(exc.to_dict(), indent=2))
             raise
