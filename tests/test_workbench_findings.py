@@ -343,3 +343,8 @@ def test_workbench_js_passes_node_check() -> None:
     assert node is not None
     result = subprocess.run([node, "--check", str(WORKBENCH_JS)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_every_finding_category_has_a_label() -> None:
+    """A category added to the gate without a label would KeyError every /findings request."""
+    assert set(page.CATEGORY_LABELS) == set(page.CATEGORIES)

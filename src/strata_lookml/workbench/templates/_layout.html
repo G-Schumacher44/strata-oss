@@ -5,7 +5,7 @@
 <style>:root { {{ palette_css }} }</style>
 <script src="/static/workbench.js" defer></script>
 {% endblock %}
-{% block nav %}<div class="bar">
+{% block nav %}<div class="topbar">
 <a class="brand" href="/findings">strata <span class="repo">{{ repo_name }}</span></a>
 {% for key, label in [("findings", "Findings"), ("overview", "Overview"), ("graph", "Graph"), ("search", "Search")] %}<a class="navlink" href="/{{ key }}"{% if nav == key %} aria-current="page"{% endif %}>{{ label }}</a>
 {% endfor %}<span class="spacer"></span>

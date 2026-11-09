@@ -31,12 +31,12 @@ kbd { font:11px/1 var(--mono); color:var(--text-2); background:var(--surface2); 
 
 /* ---------- Frame ---------- */
 body > nav { position:sticky; top:0; z-index:20; background:color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
-.bar { display:flex; align-items:center; gap:4px; height:44px; padding:0 16px; max-width:1360px; margin:0 auto; }
+.topbar { display:flex; align-items:center; gap:4px; height:44px; padding:0 16px; max-width:1360px; margin:0 auto; }
 .brand { display:flex; align-items:baseline; gap:8px; font-weight:600; letter-spacing:-.01em; margin-right:14px; }
 .brand .repo { color:var(--muted); font-weight:400; font-family:var(--mono); font-size:12px; }
 .navlink { padding:5px 10px; border-radius:var(--r); color:var(--muted); }
 .navlink[aria-current="page"] { color:var(--text); background:var(--surface2); }
-.bar .spacer { flex:1; }
+.topbar .spacer { flex:1; }
 .kbtn { display:inline-flex; align-items:center; gap:8px; height:28px; padding:0 10px; margin-left:8px; border:1px solid var(--border); border-radius:var(--r); color:var(--muted); background:var(--surface); }
 .kbtn:hover { color:var(--text); border-color:var(--muted); }
 .coverage { display:flex; flex-wrap:wrap; gap:6px 20px; padding:6px 16px 7px; max-width:1360px; margin:0 auto; color:var(--muted); font-size:12px; }
