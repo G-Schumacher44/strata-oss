@@ -4,7 +4,7 @@
 > change the help string or tool docstring, then run `python scripts/gen_reference.py`.
 > `tests/test_docs_consistency.py` fails when this file is stale.
 
-At a glance: 43 CLI commands (incl. subcommands), 19 MCP tools (18 read-only).
+At a glance: 44 CLI commands (incl. subcommands), 19 MCP tools (18 read-only).
 
 ## CLI
 
@@ -228,14 +228,16 @@ Show the active slice, execution mode, and next steps from handoff-log.
 
 `strata dashboard [OPTIONS]`
 
-Build all artifacts and open an interactive observability dashboard.
+Alias of `strata workbench` (same options).
 
 - `--repo TEXT` — required — env `STRATA_REPO_PATH` — Path to LookML repo
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON
 - `--looker-url TEXT` — Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)
 - `--days INTEGER` — default `30` — Looker usage window in days
-- `--out TEXT` — Output directory (default: output/<repo-name>)
+- `--baseline FILE` — Baseline file (from `strata check --write-baseline`): its ids show as baselined. Read only.
+- `--workbench-url TEXT` — Workbench base URL that check, PR reports and MCP results link to (else STRATA_WORKBENCH_URL / config workbench_url); warned about when it names another port
+- `--out TEXT` — Instead of the workbench: write the JSON artifacts and the static dashboard.html to this directory and serve it
 - `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
 - `--no-browser` — flag — Skip opening the browser
 
@@ -478,6 +480,23 @@ Validate the Conductor spine and (optionally) replay L1 facts.
 - `--project-root TEXT` — env `CONDUCTOR_PROJECT_ROOT` — Project root to validate (default: STRATA_REPO_PATH / configured repo / cwd)
 - `--check-replay` — flag — Also validate tests/fixtures/replay_facts.json
 - `--replay TEXT` — Replay facts JSON (with --check-replay; default: <project>/tests/fixtures/replay_facts.json if present)
+
+### `strata workbench`
+
+`strata workbench [OPTIONS]`
+
+Serve the triage workbench on 127.0.0.1: findings, overview and a page per object.
+
+- `--repo TEXT` — required — env `STRATA_REPO_PATH` — Path to LookML repo
+- `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON
+- `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON
+- `--looker-url TEXT` — Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)
+- `--days INTEGER` — default `30` — Looker usage window in days
+- `--baseline FILE` — Baseline file (from `strata check --write-baseline`): its ids show as baselined. Read only.
+- `--workbench-url TEXT` — Workbench base URL that check, PR reports and MCP results link to (else STRATA_WORKBENCH_URL / config workbench_url); warned about when it names another port
+- `--out TEXT` — Instead of the workbench: write the JSON artifacts and the static dashboard.html to this directory and serve it
+- `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
+- `--no-browser` — flag — Skip opening the browser
 
 ## MCP tools
 

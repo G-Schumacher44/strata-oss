@@ -11,7 +11,6 @@ from strata_lookml.cli.build_ir import build_ir
 from strata_lookml.cli.chart import chart
 from strata_lookml.cli.check import check
 from strata_lookml.cli.conductor import conductor
-from strata_lookml.cli.dashboard import dashboard
 from strata_lookml.cli.diff import diff
 from strata_lookml.cli.findings import ack, findings, unack
 from strata_lookml.cli.generate_schema import generate_schema
@@ -21,6 +20,7 @@ from strata_lookml.cli.outputs import outputs
 from strata_lookml.cli.query import query
 from strata_lookml.cli.skill import skill
 from strata_lookml.cli.validate import validate
+from strata_lookml.cli.workbench import dashboard, workbench
 
 
 @click.group(cls=StrataGroup)
@@ -86,6 +86,7 @@ strata_cli.add_command(conductor)
 strata_cli.add_command(bootstrap)
 strata_cli.add_command(check)
 strata_cli.add_command(outputs)
+strata_cli.add_command(workbench)
 strata_cli.add_command(dashboard)
 strata_cli.add_command(lint)
 strata_cli.add_command(query)

@@ -76,9 +76,7 @@ from strata_lookml.mcp.tools import (
     strata_view_sources as query_view_sources,
 )
 from strata_lookml.navigate import build_navigate_brief
-from strata_lookml.pipeline import load_or_build
-
-CACHE_MAX_AGE_SECONDS = 300
+from strata_lookml.pipeline import CACHE_MAX_AGE_SECONDS, load_or_build
 
 
 def _server_version() -> str:

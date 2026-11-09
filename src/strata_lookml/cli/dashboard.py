@@ -1,4 +1,8 @@
-"""strata dashboard — build artifacts and serve observability dashboard."""
+"""Loopback serving shared by `strata workbench` and the legacy `strata dashboard --out` export.
+
+`allowed_hosts` and `bind_server` serve both. `make_handler` and `export_and_serve` are the
+legacy static-directory path, kept only for `--out` until the workbench export replaces it.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import http.server
 import json
 import threading
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -55,18 +60,24 @@ def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:
 
 
 def bind_server(
-    port: int, explicit: bool, fallback_ports: range | None = None
+    port: int,
+    explicit: bool,
+    fallback_ports: range | None = None,
+    handler_factory: Callable[[int], type[http.server.BaseHTTPRequestHandler]] | None = None,
 ) -> ExclusiveHTTPServer:
     """Bind the loopback server, with the Host allow-list built from the port actually bound.
 
-    An explicit ``--port`` that is busy fails; the default port falls back through the range.
+    ``handler_factory(port)`` builds the handler for the candidate port (default: the legacy
+    static handler). An explicit ``--port`` that is busy fails; the default port falls back
+    through the range.
     """
     fallback = FALLBACK_PORTS if fallback_ports is None else fallback_ports
+    factory = make_handler if handler_factory is None else handler_factory
     candidates = [port] if explicit else [port, *fallback]
     for candidate in candidates:
         try:
             # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
-            return ExclusiveHTTPServer(("127.0.0.1", candidate), make_handler(candidate))
+            return ExclusiveHTTPServer(("127.0.0.1", candidate), factory(candidate))
         except OSError as exc:
             if not port_in_use(exc):
                 raise
@@ -83,67 +94,26 @@ def bind_server(
     )
 
 
-@click.command("dashboard")
-@click.option(
-    "--repo", required=True, envvar="STRATA_REPO_PATH", show_envvar=True, help="Path to LookML repo"
-)
-@click.option(
-    "--usage-fixture",
-    default=None,
-    envvar="STRATA_USAGE_FIXTURE",
-    show_envvar=True,
-    help="Usage facts JSON",
-)
-@click.option(
-    "--schema-fixture",
-    default=None,
-    envvar="STRATA_SCHEMA_FIXTURE",
-    show_envvar=True,
-    help="Schema facts JSON",
-)
-@click.option(
-    "--looker-url",
-    default=None,
-    help="Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)",
-)
-@click.option("--days", default=30, show_default=True, help="Looker usage window in days")
-@click.option("--out", default=None, help="Output directory (default: output/<repo-name>)")
-@click.option(
-    "--port",
-    default=DEFAULT_PORT,
-    show_default=True,
-    help="Local server port (without --port, the next free port is used if the default is busy)",
-)
-@click.option("--no-browser", is_flag=True, help="Skip opening the browser")
-def dashboard(
+def export_and_serve(
     repo: str,
     usage_fixture: str | None,
     schema_fixture: str | None,
     looker_url: str | None,
     days: int,
-    out: str | None,
+    out: str,
     port: int,
+    explicit: bool,
     no_browser: bool,
 ) -> None:
-    """Build all artifacts and open an interactive observability dashboard.
-
-    Writes JSON artifacts to OUT/ (dead code, PDT costs, schema drift, etc.),
-    generates a self-contained dashboard.html, and serves it locally. Opens
-    the browser automatically — use --no-browser for headless environments.
-
-    \b
-    strata dashboard \\
-      --repo tests/lookml/enterprise_mono \\
-      --usage-fixture tests/fixtures/enterprise_usage_facts.json \\
-      --schema-fixture tests/fixtures/enterprise_schema_facts.json
-    """
+    """The pre-workbench `strata dashboard --out`: write the JSON artifacts and a self-contained
+    dashboard.html to OUT, then serve OUT (unchanged until the workbench export replaces it)."""
     from strata_lookml.cli.outputs import live_looker_graph
     from strata_lookml.outputs import write_artifacts
     from strata_lookml.outputs.dashboard import build_dashboard_html
     from strata_lookml.pipeline import build_graph
 
     _repo = Path(repo).expanduser().resolve()
-    out_dir = Path(out).expanduser().resolve() if out else Path.cwd() / "output" / _repo.name
+    out_dir = Path(out).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     click.echo(f"Building IR for {_repo.name}...")
@@ -164,10 +134,6 @@ def dashboard(
     dashboard_path.write_text(html, encoding="utf-8")
     click.secho(f"Dashboard: {dashboard_path}", fg="green")
 
-    explicit = (
-        click.get_current_context().get_parameter_source("port")
-        is not click.core.ParameterSource.DEFAULT
-    )
     import os
 
     os.chdir(out_dir)

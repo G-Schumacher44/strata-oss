@@ -34,7 +34,7 @@ LookML repository or warehouse control plane.
   log) and `strata bootstrap`'s agent/MCP config files. `strata clean` deletes the
   repo's cache entry and any legacy in-repo `strata_ir.db`. The full list is in
   [Security Hardening](./security-hardening.md#what-strata-reads-and-writes).
-- Local listeners: `strata dashboard` serves on `127.0.0.1` (default port 8765);
+- Local listeners: `strata workbench` (alias `strata dashboard`) serves on `127.0.0.1` (default port 8765);
   `strata auth login` listens on its loopback redirect port until the redirect
   arrives or it times out. The MCP server
   is stdio-only.

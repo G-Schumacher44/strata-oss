@@ -378,11 +378,15 @@ tools are complementary layers, not competitors.
 
 ### Dashboard
 
-`strata dashboard` builds all 8 output artifacts and serves a self-contained HTML observability
-panel at `127.0.0.1:8765`. No JavaScript framework, no CDN — all JS is bundled locally so it
-works in air-gapped or corp-network environments.
+`strata workbench` (alias: `strata dashboard`) serves a local triage workbench at
+`127.0.0.1:8765`: a page per finding and per explore, view, PDT, table and field, at stable URLs,
+read from the same IR cache as the MCP server. The workbench pages are being built out slice by
+slice; until they land, `strata dashboard --out DIR` keeps the static dashboard: all 8 output
+artifacts plus a self-contained HTML observability panel, served from DIR. No JavaScript
+framework, no CDN — all JS is bundled locally so it works in air-gapped or corp-network
+environments.
 
-The dashboard has four panels:
+The static dashboard has four panels:
 
 - **Overview** — KPI tiles (active explores, dead artifacts, total PDT cost, schema drift hits) + the full dependency graph
 - **Dead Code Register** — every flagged explore and view with dual-evidence badges (structural + usage). Click any node to see what backs it.
@@ -393,7 +397,8 @@ The dashboard has four panels:
 strata dashboard \
   --repo tests/lookml/enterprise_mono \
   --usage-fixture tests/fixtures/enterprise_usage_facts.json \
-  --schema-fixture tests/fixtures/enterprise_schema_facts.json
+  --schema-fixture tests/fixtures/enterprise_schema_facts.json \
+  --out output/enterprise_mono
 ```
 
 ![Strata dashboard overview — enterprise_mono synthetic demo fixture: 23 active explores (11 dead), 11 dead artifacts, 14,242 queries, $63,755.94 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph with zombie PDT diamonds in purple](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
@@ -442,7 +447,7 @@ LookML repo (read-only clone)
 L0 never calls any LLM or external API — pure offline deterministic Python. L1 enrichment
 is offline by default (fixture JSON); live Looker System Activity API access is opt-in via
 `strata auth login`. The MCP server transport is stdio-only — it opens no port and has no cloud
-dependency (`strata dashboard` is the one command that runs a local web server, on `127.0.0.1`).
+dependency (`strata workbench` / `strata dashboard` is the one command that runs a local web server, on `127.0.0.1`).
 Strata never modifies `.lkml` files; the local files it does write are listed in
 [Security Hardening](https://github.com/G-Schumacher44/strata-oss/blob/main/docs/security-hardening.md#what-strata-reads-and-writes).
 
@@ -685,7 +690,7 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 | `strata clean` | Remove `output/`, the repo's IR cache entry, legacy in-repo `strata_ir.db`, `__pycache__` |
 | `strata conductor` | Manage slice-based agent workflow and handoffs |
 | `strata diff` | Findings a branch introduces or fixes, against production usage |
-| `strata dashboard` | Build artifacts and serve the local HTML dashboard |
+| `strata dashboard` | Alias of `strata workbench`; `--out DIR` writes and serves the static HTML dashboard |
 | `strata findings` | List findings with triage status — table, `file:line:` lines for fzf/vim, or JSON |
 | `strata generate-schema` | Pull BigQuery INFORMATION_SCHEMA facts for drift checks |
 | `strata mcp` | Run, validate, and inspect MCP server configuration |
@@ -694,6 +699,7 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 | `strata skill` | List bundled skills or print a skill procedure |
 | `strata unack` | Withdraw acknowledgements by id |
 | `strata validate` | Conductor spine check — handoff format, active slice, replay facts |
+| `strata workbench` | Serve the local triage workbench (findings, overview, a page per object) |
 
 ### Triage from the terminal
 

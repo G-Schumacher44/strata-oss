@@ -8,6 +8,12 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Security
 
+- The workbench server checks `Host` against the loopback allow-list before routing every request, answers only
+  GET and HEAD (405 otherwise), serves static files from a fixed allow-list map (never a filesystem path or
+  directory), and sends `Content-Security-Policy` (`default-src 'self'; script-src 'self'; style-src 'self'
+  'unsafe-inline'; frame-ancestors 'none'`), `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`
+  on every response, errors included. Each process generates a random page token for the later triage POST; a
+  refused Host gets a plain-text 403 that never carries it.
 - `strata chart` / `strata-chart` no longer default to the fixed, world-guessable
   `/tmp/strata_chart.html`: the default is a fresh per-invocation `mkstemp` file
   (`strata_chart_*.html`), and the path written is printed. Chart output (CLI, MCP
@@ -18,6 +24,16 @@ All notable changes to `strata-lookml` are documented here. The format follows
   DNS-rebinding path to the artifact JSON.
 
 ### Added
+
+- `strata workbench` (workbench S4): a local server on `127.0.0.1` with stable URLs for every finding and
+  object (`/findings`, `/overview`, `/explore/<model>.<explore>`, `/view/<v>`, `/pdt/<v>`, `/table/<t>`,
+  `/field/<view>.<field>`, `/finding/<id>`, `/graph`, `/search`, `/api/index.json`); `/` redirects to
+  `/findings`. Pages are placeholders until their own slices land. It loads the IR once from the cache the MCP
+  server uses (a second start on unchanged inputs does not rebuild), re-fingerprints the inputs at most every 10 s
+  and shows a "restart to reload" banner when they change. Unknown objects are a 404 page with the error's message
+  and hint; ambiguous explore or table names a 300 page linking each candidate. New options: `--baseline FILE`
+  (read only) and `--workbench-url` / `STRATA_WORKBENCH_URL` (warned about when it names another port than the
+  one bound).
 
 - `strata findings`, `strata ack` and `strata unack`: triage from the terminal (workbench S4c). `findings`
   lists the triage rows (`--status`, `--category`, `--baseline`, `--format table|lines|json`); `lines` is
@@ -69,6 +85,13 @@ All notable changes to `strata-lookml` are documented here. The format follows
   unreadable baseline is a usage error (exit 2).
 
 ### Changed
+
+- `strata dashboard` is now an alias of `strata workbench`. `strata dashboard --out DIR` keeps the static
+  export (JSON artifacts plus `dashboard.html`, written to DIR and served from it); without `--out` nothing is
+  written to `./output/` any more. `--baseline` and `--workbench-url` are refused with `--out`.
+- `gate.findings_by_node` is the one rule for which findings sit on a node (`strata_object` and the workbench both
+  read it); `identifiers.explore_matches` / `table_matches` expose the candidates an ambiguous name resolves to;
+  the IR cache max age (`pipeline.CACHE_MAX_AGE_SECONDS`, 300 s) is shared by the MCP server and the workbench.
 
 - `strata mcp validate` is honest about readiness: it builds the IR graph and reports node counts;
   a missing cache, missing Looker token or unset fixtures are `~` advisories (exit 0, no `✗`),

@@ -1,0 +1,11 @@
+{% extends "_base.html" %}
+{% block title %}{{ title }} · Strata workbench{% endblock %}
+{% block head %}<meta name="strata-token" content="{{ token }}">
+{% endblock %}
+{% block nav %}<a href="/findings">Findings</a> · <a href="/overview">Overview</a> · <a href="/graph">Graph</a> · <a href="/search">Search</a>{% endblock %}
+{% block main %}
+{% if stale %}<p role="status" class="stale">The repo or its fixtures changed since the workbench started. Restart it to reload.</p>
+{% endif %}
+<p class="coverage">{{ coverage | join(" | ") }}</p>
+{% block content %}{% endblock %}
+{% endblock %}

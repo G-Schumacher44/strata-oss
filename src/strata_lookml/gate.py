@@ -149,6 +149,26 @@ def finding_records(graph: IRGraph) -> list[dict[str, Any]]:
     return _integrity_records(graph) + _opt_in_records(graph)
 
 
+def findings_by_node(records: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Each IR node's finding ids (sorted, unique), from `finding_records` output.
+
+    A finding sits on its `subject_id`; a table also carries the column drift on it (that
+    record's subject is the field, but its evidence names the table). The one rule
+    `strata_object` and the workbench index both read.
+    """
+    by_node: dict[str, set[str]] = {}
+    for record in records:
+        nodes = {record["subject_id"]} if record["subject_id"] else set()
+        nodes |= {
+            "physical_table:" + e.removeprefix("schema_table:")
+            for e in record["evidence_ids"]
+            if e.startswith("schema_table:")
+        }
+        for node_id in nodes:
+            by_node.setdefault(node_id, set()).add(record["id"])
+    return {node_id: sorted(ids) for node_id, ids in by_node.items()}
+
+
 def _opt_in_records(graph: IRGraph) -> list[dict[str, Any]]:
     l1 = graph.metadata.get("l1", {})
     explore_ids = {
