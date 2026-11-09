@@ -114,6 +114,22 @@ def strata_ir_status(graph: IRGraph) -> dict[str, Any]:
     }
 
 
+TOP_EXPLORES = 6
+
+
+def _top_explores(usage: dict[str, Any], total_queries: int) -> list[dict[str, Any]]:
+    """The busiest explores (queries > 0), each with its share of all queries."""
+    ranked = sorted(
+        ((key, item.get("query_count", 0)) for key, item in usage.items()),
+        key=lambda kv: (-kv[1], kv[0]),
+    )
+    return [
+        {"explore_key": key, "queries": n, "share": round(n / total_queries, 4)}
+        for key, n in ranked[:TOP_EXPLORES]
+        if n > 0 and total_queries > 0
+    ]
+
+
 def strata_usage_summary(graph: IRGraph) -> dict[str, Any]:
     l1 = graph.metadata.get("l1", {})
     usage = l1.get("explore_usage", {})
@@ -147,6 +163,9 @@ def strata_usage_summary(graph: IRGraph) -> dict[str, Any]:
         # None when the usage checks did not run: no dead-code verdict exists to subtract.
         "active_explore_count": (ir_explore_count - dead_explore_count) if usage_checked else None,
         "total_queries": total_queries,
+        # None when the usage checks did not run; else the busiest explores with their share of
+        # all queries (share = queries / total_queries, 0-1).
+        "top_explores": _top_explores(usage, total_queries) if usage_checked else None,
         "dead_code_count": len(dead_code),
         "pdt_count": len(l1.get("pdt_ledger", [])),
         "unused_pdt_count": sum(

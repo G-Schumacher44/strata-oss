@@ -1,0 +1,87 @@
+{% extends "_layout.html" %}
+{% block head %}{{ super() }}<style>
+:root { color-scheme: light dark; --bg: #fbfaf7; --fg: #1d1b18; --muted: #6b665e; --rule: #dedad2; --track: #e6e2d9; --fill: #2f8f6b; --warn: #c2453b; --zombie: #7b5cc4; --drift: #3b7bc2; }
+@media (prefers-color-scheme: dark) { :root { --bg: #10151c; --fg: #e8e6e1; --muted: #98a0ab; --rule: #27303b; --track: #232c38; --fill: #3fbf93; --warn: #f0685e; --zombie: #a58bf0; --drift: #6aa5ee; } }
+body { background: var(--bg); color: var(--fg); margin: 0; font: 15px/1.5 system-ui, sans-serif; }
+nav, .coverage { padding: .5rem 1.25rem; color: var(--muted); }
+nav a { color: inherit; }
+.report { max-width: 44rem; margin: 2rem auto 4rem; padding: 0 1.25rem; font: 1.125rem/1.65 Charter, "Iowan Old Style", Georgia, serif; }
+.report h1 { font-weight: 400; font-size: 2.1rem; line-height: 1.2; margin: 0 0 .25rem; }
+.report h2 { font: 600 .95rem system-ui, sans-serif; margin: 2.5rem 0 .5rem; }
+.dek, .notrun { color: var(--muted); font-size: .95rem; }
+.notrun { font-style: italic; }
+.report a { color: inherit; text-decoration-color: var(--muted); }
+code, .mono { font: .85rem ui-monospace, Menlo, monospace; }
+.rtable { width: 100%; border-collapse: collapse; font: .9rem system-ui, sans-serif; margin: 1rem 0; }
+.rtable th { text-align: left; font-weight: 400; color: var(--muted); }
+.rtable th, .rtable td { padding: .35rem .5rem .35rem 0; border-bottom: 1px solid var(--rule); }
+.rtable .num { text-align: right; font-variant-numeric: tabular-nums; }
+svg.bar { vertical-align: middle; }
+svg.bar .track { fill: var(--track); }
+svg.bar .fill { fill: var(--fill); }
+.dead svg.bar .fill { fill: var(--warn); }
+.pdt svg.bar .fill { fill: var(--zombie); }
+.drift svg.bar .fill { fill: var(--drift); }
+.actions { list-style: none; padding: 0; font: .95rem system-ui, sans-serif; }
+.actions > li { padding: .6rem 0; border-bottom: 1px solid var(--rule); }
+.actions .n { display: inline-block; min-width: 2rem; font-weight: 600; }
+.actions ul { margin: .4rem 0 0 2.25rem; padding: 0; list-style: none; }
+</style>
+{% endblock %}
+{% block content %}
+<article class="report">
+<h1>{{ headline.repo }}: {{ headline.objects }} objects{% if headline.findings == "0" and not (headline.usage_ran or headline.schema_ran) %}, findings not run{% else %}, {{ headline.findings }} findings{% endif %}</h1>
+<p class="dek">{% if headline.commit %}Analysed commit <code>{{ headline.commit }}</code>{% if headline.branch %} on <code>{{ headline.branch }}</code>{% endif %}. {% endif %}{% if headline.window %}Usage window: {{ headline.window }}. {% endif %}Read from the IR cache.</p>
+<p>Strata resolved {% for n, kind in headline.kinds %}<strong>{{ n }}</strong> {{ kind }}{% if not loop.last %}{% if loop.revindex == 2 %} and {% else %}, {% endif %}{% endif %}{% endfor %}, joined by <strong>{{ headline.edges }}</strong> edges.{% if headline.categories %} The findings fall into {% for label, n in headline.categories %}<strong>{{ n }}</strong> {{ label }}{% if not loop.last %}{% if loop.revindex == 2 %} and {% else %}, {% endif %}{% endif %}{% endfor %}.{% endif %}{% if not headline.usage_ran %} Usage checks: not run, load usage facts.{% endif %}{% if not headline.schema_ran %} Schema checks: not run, load schema facts.{% endif %}</p>
+
+<h2>Usage</h2>
+{% if usage.ran %}
+<p class="dead">{% if usage.window %}Over {{ usage.window }}{% else %}Over the usage window (length not recorded){% endif %} the instance ran <strong>{{ usage.queries }}</strong> queries across <strong>{{ usage.explores }}</strong> explores. <strong>{{ usage.active }}</strong> are active and <strong>{{ usage.dead }}</strong> are dead {{ usage.dead_bar }}{% if usage.content_ran %}: no queries and no content references{% else %}: no queries (content references not loaded, load content facts to confirm){% endif %}. <strong>{{ usage.dead_views }}</strong> {{ usage.dead_views_noun }} {{ "is" if usage.dead_views == "1" else "are" }} dead too.{% if usage.top_share %} The busiest explore, <code>{{ usage.top_key }}</code>, carries <strong>{{ usage.top_share }}</strong> of all queries.{% endif %}</p>
+{% if usage.top %}<table class="rtable"><thead><tr><th>Explore</th><th class="num">Queries</th><th class="num">Share</th><th></th></tr></thead><tbody>
+{% for row in usage.top %}<tr><td class="mono">{% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</td><td class="num">{{ row.queries }}</td><td class="num">{{ row.share }}</td><td>{{ row.bar }}</td></tr>
+{% endfor %}</tbody></table>{% endif %}
+{% else %}
+<p class="notrun">Not run — load usage facts to see query volume and dead explores.</p>
+{% endif %}
+
+<h2>PDT spend</h2>
+{% if not pdt.ran %}
+<p class="notrun">Not run — load usage facts and PDT build facts to see PDT cost.</p>
+{% elif pdt.count == "0" %}
+<p>This repo defines no PDTs.</p>
+{% elif not pdt.built %}
+<p class="notrun">Not run — load PDT build facts: {{ pdt.count }} {{ pdt.count_noun }} {{ "has" if pdt.count == "1" else "have" }} no cost data.</p>
+{% else %}
+<p class="pdt">The zombie or unused {{ pdt.wasted_noun }} (<strong>{{ pdt.wasted_count }}</strong>) account for <strong>{{ pdt.wasted_cost }}</strong> {{ pdt.wasted_bar }} of the <strong>{{ pdt.total }}</strong> estimated rebuild cost {% if pdt.window %}over {{ pdt.window }}{% else %}over the usage window (length not recorded){% endif %}.{% if pdt.missing_facts != "0" %} <strong>{{ pdt.missing_facts }}</strong> {{ pdt.missing_noun }} without build facts {{ "is" if pdt.missing_facts == "1" else "are" }} not counted.{% endif %}</p>
+<table class="rtable pdt"><thead><tr><th>PDT</th><th>Status</th><th class="num">Builds</th><th class="num">Cost{% if pdt.window %} / {{ pdt.window }}{% endif %}</th><th></th></tr></thead><tbody>
+{% for row in pdt.rows %}<tr><td class="mono">{% if row.href %}<a href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td><td>{{ row.status }}</td><td class="num">{{ row.builds }}</td><td class="num">{{ row.cost }}</td><td>{{ row.bar }}</td></tr>
+{% endfor %}</tbody></table>
+{% endif %}
+
+<h2>Schema drift</h2>
+{% if not schema.ran %}
+<p class="notrun">Not run — load schema facts to compare fields against the warehouse.</p>
+{% elif not schema.any %}
+<p>No field references a column or table the schema facts lack.</p>
+{% else %}
+<p class="drift">The schema facts show <strong>{{ schema.columns }}</strong> missing-column {{ "reference" if schema.columns == "1" else "references" }} and <strong>{{ schema.tables_missing }}</strong> {{ schema.missing_noun }}, across <strong>{{ schema.tables }}</strong> {{ schema.tables_noun }} with drift.</p>
+<table class="rtable drift"><thead><tr><th>Table</th><th class="num">Missing refs</th><th></th></tr></thead><tbody>
+{% for row in schema.rows %}<tr><td class="mono">{% if row.href %}<a href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td><td class="num">{{ row.refs }}</td><td>{{ row.bar }}</td></tr>
+{% endfor %}</tbody></table>
+{% if schema.more != "0" %}<p class="dek">and {{ schema.more }} more tables.</p>{% endif %}
+{% endif %}
+
+<h2>Next actions</h2>
+{% if not (headline.usage_ran or headline.schema_ran) %}
+<p class="notrun">Not run — load usage and schema facts to get a cleanup roadmap.</p>
+{% else %}
+{% if actions %}<ul class="actions">
+{% for group in actions %}<li><span class="n">{{ group.count }}</span> {{ group.label }}<ul>
+{% for item in group["items"] %}<li class="mono">{% if item.href %}<a href="{{ item.href }}">{{ item.target }}</a>{% else %}{{ item.target }}{% endif %}</li>
+{% endfor %}{% if group.more != "0" %}<li class="dek">and {{ group.more }} more</li>{% endif %}</ul></li>
+{% endfor %}</ul>{% else %}<p>Nothing to clean up in the checks that ran.</p>{% endif %}
+{% if not headline.usage_ran %}<p class="notrun">Usage-based actions: not run — load usage facts.</p>{% endif %}
+{% if not headline.schema_ran %}<p class="notrun">Schema actions: not run — load schema facts.</p>{% endif %}
+{% endif %}
+</article>
+{% endblock %}

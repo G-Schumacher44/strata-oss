@@ -48,6 +48,7 @@ def write_artifacts(graph: IRGraph, output_dir: str | Path) -> dict[str, str]:
 
 
 def cleanup_roadmap(l1: dict[str, Any]) -> list[dict[str, Any]]:
+    """The ordered cleanup actions the L1 facts imply (dead code, PDT cost, schema drift)."""
     items: list[dict[str, Any]] = []
     for record in l1.get("dead_code", []):
         items.append(

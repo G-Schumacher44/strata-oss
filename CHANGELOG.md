@@ -25,6 +25,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- `/overview` in the workbench (workbench S7) is a written report: fixed sentence templates filled from `strata_ir_status`, `strata_usage_summary`, `strata_pdt_costs`, schema drift and the cleanup roadmap, with server-built inline SVG bars (`workbench/charts.py`, numeric attributes only; no Chart.js). A section whose check did not run says "not run — load <X> facts" instead of a number, and the PDT cost window is labelled by the usage period's real length (never "/mo" unless the facts say 30 days). `outputs.artifacts.cleanup_roadmap` is now public. `strata_usage_summary` gains `top_explores` (busiest explores with their share of all queries; null when usage was not checked).
 - Workbench detail pages (workbench S6): `/explore/<model>.<explore>`, `/view/<v>`, `/pdt/<v>`, `/table/<t>`,
   `/field/<view>.<field>` and `/finding/<id>` share one frame: kind, name, `file:line` with a copy button, a verdict
   line (an explore's is `deterministic_verdict` with its rationale; any other object shows its cleanup-roadmap

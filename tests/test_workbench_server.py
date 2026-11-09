@@ -485,6 +485,19 @@ _SHELL_TAGS = {
     "button",
     "textarea",
     "pre",
+    # /overview report (S7): structure, table and the server-built SVG bars
+    "article",
+    "h2",
+    "strong",
+    "code",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "svg",
+    "rect",
 }
 _DETAIL_SCRIPT = '<script src="/static/detail.js" defer></script>'
 
@@ -524,6 +537,14 @@ def _assert_inert(target: str, response: Response) -> None:
             "data-copy-from",
             "data-node-id",
             "data-loc",
+            "width",
+            "height",
+            "viewbox",
+            "x",
+            "y",
+            "rx",
+            "aria-hidden",
+            "focusable",
         }, (
             target,
             name,
