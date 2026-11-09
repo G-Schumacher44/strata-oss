@@ -1,0 +1,22 @@
+{% extends "_detail_frame.html" %}
+{% from "_lineage.html" import chips, lineage, finding_cards %}
+{% block body %}
+{% if evidence %}<div class="sec">Evidence</div>
+{{ chips(evidence) }}
+{% endif %}
+{% if facts %}<div class="sec">{{ "Usage" if kind == "explore" else "Details" }}</div>
+<div class="facts">{% for label, value in facts %}<div><div class="l">{{ label }}</div><div class="v">{{ value }}</div></div>{% endfor %}</div>
+{% endif %}
+{% if sql %}<div class="sec">Field SQL</div><pre class="sql">{{ sql }}</pre>
+{% endif %}
+{% if upstream %}{{ lineage("Upstream · reads from", upstream) }}{% endif %}
+{% if kind != "explore" or downstream %}{{ lineage("Downstream · referenced by", downstream) }}{% endif %}
+{% if content %}<div class="sec">Downstream · Looker content</div>
+{% if content.loaded %}<div class="facts"><div><div class="l">Content references</div><div class="v">{{ content.count }}</div></div><div><div class="l">Window</div><div class="v">{{ content.window }}</div></div>{% for t, n in content.by_type %}<div><div class="l">{{ t }}</div><div class="v">{{ n }}</div></div>{% endfor %}</div>
+{% if content["items"] %}<ul class="links">
+{% for i in content["items"] %}<li><span>{{ i.title }}</span><span class="rel">{{ i.type }}</span></li>
+{% endfor %}{% if content.more %}<li class="none">and {{ content.more }} more</li>{% endif %}</ul>{% endif %}
+{% else %}<ul class="links"><li class="none">{{ content.note }}</li></ul>{% endif %}
+{% endif %}
+{% endblock %}
+{% block side %}{{ finding_cards(findings) }}{% endblock %}

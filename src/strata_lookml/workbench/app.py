@@ -22,9 +22,13 @@ from strata_lookml.identifiers import explore_matches, explores_by_key, table_ma
 from strata_lookml.ir.types import explore_id, explore_key
 from strata_lookml.links import finding_path, object_path
 from strata_lookml.mcp.tools import strata_object
+from strata_lookml.outputs.artifacts import cleanup_roadmap
 from strata_lookml.outputs.dashboard import _embed_json
+from strata_lookml.triage import TriageRow, TriageStore, triage_rows
+from strata_lookml.workbench.detail import Detail
 from strata_lookml.workbench.index import Staleness, Workbench
 from strata_lookml.workbench.overview import overview_context
+from strata_lookml.workbench.pr_text import pr_comment
 from strata_lookml.workbench.render import render
 
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
@@ -46,6 +50,7 @@ STATIC_ASSETS: Mapping[str, tuple[str, str]] = {
     "cytoscape.min.js": ("strata_lookml.assets.js", "cytoscape.min.js"),
     "dagre.min.js": ("strata_lookml.assets.js", "dagre.min.js"),
     "cytoscape-dagre.min.js": ("strata_lookml.assets.js", "cytoscape-dagre.min.js"),
+    "detail.js": ("strata_lookml.assets.js", "detail.js"),
 }
 _STATIC_TYPES = {".js": "text/javascript; charset=utf-8"}
 
@@ -99,6 +104,8 @@ class App:
         self.hosts = hosts
         self.token = token
         self.staleness = staleness
+        self._store = TriageStore.open(workbench.repo, workbench.graph)
+        self._detail = Detail(workbench, cleanup_roadmap(workbench.graph.metadata.get("l1", {})))
         self._pages: dict[str, Callable[[Mapping[str, list[str]]], Response]] = {
             "/findings": self._findings,
             "/overview": self._overview,
@@ -257,18 +264,21 @@ class App:
             if not candidates:
                 raise
             return self._candidates_page(kind, name, exc.message, candidates)
-        facts = [("kind", obj["kind"]), ("id", obj["id"])]
-        if obj["source_file"]:
-            line = obj["source_line"]
-            facts.append(
-                ("defined in", f"{obj['source_file']}:{line}" if line else obj["source_file"])
-            )
-        return self._placeholder(
-            f"{kind} {obj['name']}",
-            "The detail page arrives in a later release.",
-            facts=facts,
-            links=self._finding_links(self.workbench.findings_by_node.get(obj["id"], ())),
+        page = self._detail.object_page(obj, self._triage_rows())
+        records = page.pop("records")
+        pr_text = pr_comment(
+            records,
+            obj,
+            self.workbench.base_url,
+            verdict=(page["verdict"]["label"], page["verdict"]["why"]),
         )
+        return self._page("detail.html", f"{kind} {obj['name']}", pr_text=pr_text, **page)
+
+    def _triage_rows(self) -> dict[str, TriageRow]:
+        """Each current finding id's triage row, read fresh (an ack made by the CLI shows)."""
+        wb = self.workbench
+        baseline = None if wb.baseline is None else {k: set(v) for k, v in wb.baseline.items()}
+        return {r.id: r for r in triage_rows(wb.graph, baseline, self._store)}
 
     def _candidates_page(
         self, kind: str, name: str, message: str, links: list[tuple[str, str]]
@@ -307,29 +317,10 @@ class App:
                 hint="It may be fixed, or its category was not run. The findings list shows "
                 "every current id.",
             )
-        facts: list[tuple[str, str]] = []
-        for record in records:
-            facts.append(("category", record["category"]))
-            facts.append(("message", record["message"]))
-            if record["source_file"]:
-                line = record["source_line"]
-                facts.append(
-                    (
-                        "defined in",
-                        f"{record['source_file']}:{line}" if line else record["source_file"],
-                    )
-                )
-        links = []
-        for record in records:
-            path = object_path(record["subject_id"]) if record["subject_id"] else None
-            if path is not None:
-                links.append((path, record["subject_id"]))
-        return self._placeholder(
-            f"finding {finding_id}",
-            f"{len(records)} record(s). The finding page arrives in a later release.",
-            facts=facts,
-            links=links,
-        )
+        page = self._detail.finding_page(finding_id, records, self._triage_rows())
+        subject = {"kind": "finding", "id": finding_id, "name": finding_id}
+        pr_text = pr_comment(records, subject, self.workbench.base_url)
+        return self._page("finding.html", f"finding {finding_id}", pr_text=pr_text, **page)
 
     def _static(self, name: str) -> Response:
         if name not in STATIC_ASSETS:
