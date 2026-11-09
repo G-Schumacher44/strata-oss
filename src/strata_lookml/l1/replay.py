@@ -39,8 +39,11 @@ class ReplayLookerUsageProvider:
             for (model, explore), data in sorted(by_key.items())
         ]
 
-    def content_references(self) -> list[ContentReference]:
-        rows = self._load().get("content_usage_rows", [])
+    def content_references(self) -> list[ContentReference] | None:
+        data = self._load()
+        if "content_usage_rows" not in data:
+            return None
+        rows = data["content_usage_rows"]
         refs: list[ContentReference] = []
         for row in rows:
             refs.append(

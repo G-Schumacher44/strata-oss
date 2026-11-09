@@ -558,7 +558,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Object** (read-only)
 
-Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage was not checked (coverage.usage_checked false) and for other kinds. An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found.
+Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage or content-reference facts were not loaded (coverage.usage_checked / coverage.content_checked false) and for other kinds. An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found.
 
 Parameters:
 - `kind` — 'explore' | 'view' | 'pdt' | 'table' | 'field' — required — What kind of object to read.

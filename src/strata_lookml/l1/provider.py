@@ -13,7 +13,7 @@ class UsageProvider(Protocol):
 
     def explore_usage(self) -> list[ExploreUsage]: ...
 
-    def content_references(self) -> list[ContentReference]: ...
+    def content_references(self) -> list[ContentReference] | None: ...
 
     def pdt_builds(self) -> list[PDTBuild]: ...
 
@@ -21,7 +21,8 @@ class UsageProvider(Protocol):
 @dataclass(frozen=True)
 class UsageFacts:
     explore_usage: list[ExploreUsage]
-    content_references: list[ContentReference]
+    # None = the provider supplied no content facts (not checked); [] = checked, no rows.
+    content_references: list[ContentReference] | None
     pdt_builds: list[PDTBuild]
     period: dict[str, Any] | None = None
 

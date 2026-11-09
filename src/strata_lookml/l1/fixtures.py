@@ -40,8 +40,10 @@ class FixtureUsageProvider:
         data = self._load()
         return [_coerce(ExploreUsage, item) for item in data.get("explore_usage", [])]
 
-    def content_references(self) -> list[ContentReference]:
+    def content_references(self) -> list[ContentReference] | None:
         data = self._load()
+        if "content_references" not in data:
+            return None
         return [_coerce(ContentReference, item) for item in data.get("content_references", [])]
 
     def pdt_builds(self) -> list[PDTBuild]:

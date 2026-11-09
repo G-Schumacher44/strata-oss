@@ -155,6 +155,13 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Fixed
 
+- L1 coverage now records `content` (true only when content-reference facts were supplied, even
+  as an empty list) beside `usage`/`schema`. A usage fixture or provider with no content
+  section used to store `[]`, so `strata_object` reported 0 dashboards/Looks for an explore;
+  it now returns `content: null` with `coverage.content_checked: false`, and
+  `strata_usage_summary` carries `content_checked`. Dead-explore verdicts are unchanged
+  (the existing "content not provided, skip" path now also covers an absent section).
+
 - Explores with the same name in different models are now separate explores. The resolver
   collected explores by name across models, so a second model's `orders` became a refinement of
   the first: one IR node with the second model's base view and joins, the first model's view
