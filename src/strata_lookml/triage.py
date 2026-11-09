@@ -14,6 +14,8 @@ an entry is removed only once its id has been absent, from a category whose chec
 `ABSENT_TTL`. Writes use optimistic concurrency on `rev`: re-read, apply per id, and replace the
 file only if `rev` is still the one read, retrying `_RETRIES` times. The rev check and the replace
 run under an O_EXCL lock file (portable, no fcntl), so two writers can never both pass the check.
+The lock is never broken automatically (breaking a "stale" lock races a live writer): one left by
+a writer killed inside that one-read-one-rename window makes writes fail with a hint to delete it.
 """
 
 from __future__ import annotations
@@ -40,8 +42,6 @@ ABSENT_TTL = timedelta(days=90)
 MAX_NOTE_CHARS = 2000
 _RETRIES = 3
 _BACKOFF_S = 0.05
-# The lock covers one read and one rename; one this old was left by a crashed writer.
-_STALE_LOCK_S = 10.0
 
 Status = Literal["new", "acknowledged", "baselined", "fixed", "not_checked"]
 
@@ -143,15 +143,10 @@ def _current_rev(path: Path) -> int:
 
 def _acquire(lock: Path) -> bool:
     """Take the store's write lock (create `lock` exclusively); False if another writer holds
-    it. A lock older than `_STALE_LOCK_S` is broken, so the next try can take it."""
+    it. Only its holder ever removes it, so a held lock is always the holder's own."""
     try:
         os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
     except FileExistsError:
-        try:
-            if time.time() - lock.stat().st_mtime > _STALE_LOCK_S:
-                lock.unlink(missing_ok=True)
-        except FileNotFoundError:
-            pass
         return False
     return True
 
@@ -232,6 +227,9 @@ class TriageStore:
                 )
                 entry["acked_at"] = now
                 entry.pop("unacked_at", None)
+                if finding_id in self._findings.current:
+                    # Present now: a later absence starts a fresh retention period.
+                    entry.pop("first_absent_at", None)
                 if note is not None:
                     entry["note"] = note
             return bool(wanted)
@@ -286,6 +284,7 @@ class TriageStore:
         return self.snapshot()
 
     def _mutate(self, apply: Callable[[dict[str, Any]], bool]) -> None:
+        outcome = "changed"
         for attempt in range(_RETRIES):
             if attempt:
                 time.sleep(_BACKOFF_S * attempt)
@@ -294,15 +293,26 @@ class TriageStore:
             if not apply(document["ids"]):
                 return
             document["rev"] = base_rev + 1
-            if self._replace(document, base_rev):
+            outcome = self._replace(document, base_rev)
+            if outcome == "replaced":
                 return
+        if outcome == "locked":
+            raise StrataError(
+                f"triage store is locked by another writer: {self._lock}",
+                hint="Retry. If no Strata process is running, a writer was killed mid-write: "
+                "delete the lock file.",
+            )
         raise StrataError("triage state changed concurrently", hint="retry")
 
-    def _replace(self, document: dict[str, Any], base_rev: int) -> bool:
-        """Write `document` beside the store and swap it in, unless another writer holds the
-        lock or the store's `rev` moved past `base_rev` meanwhile (False). The check and the
-        swap run under the lock. The file is 0600; an interrupted write leaves the previous
-        store untouched."""
+    @property
+    def _lock(self) -> Path:
+        return self._path.parent / f".{self._path.name}.lock"
+
+    def _replace(self, document: dict[str, Any], base_rev: int) -> str:
+        """Write `document` beside the store and swap it in: "replaced", or "locked" (another
+        writer holds the lock) / "changed" (the store's `rev` moved past `base_rev`) with the
+        store untouched. The check and the swap run under the lock. The file is 0600; an
+        interrupted write leaves the previous store untouched."""
         ensure_private_dir(self._path.parent, tighten=self._path.parent == strata_home() / "triage")
         target = check_write_destination(self._path, what="triage store", is_ours=_is_triage_store)
         fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".strata-triage-")
@@ -311,21 +321,20 @@ class TriageStore:
                 os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
-            lock = target.parent / f".{target.name}.lock"
-            if not _acquire(lock):
+            if not _acquire(self._lock):
                 Path(tmp).unlink(missing_ok=True)
-                return False
+                return "locked"
             try:
                 if _current_rev(target) != base_rev:
                     Path(tmp).unlink(missing_ok=True)
-                    return False
+                    return "changed"
                 os.replace(tmp, target)
             finally:
-                lock.unlink(missing_ok=True)
+                self._lock.unlink(missing_ok=True)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise
-        return True
+        return "replaced"
 
 
 def triage_rows(

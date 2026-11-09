@@ -159,6 +159,21 @@ def test_first_absent_at_stamps_clears_and_ttl_prunes(graph, ids):
     assert ids["d1"] not in _store(fixed).snapshot()["ids"]
 
 
+def test_acknowledging_a_present_id_restarts_its_retention(graph, ids):
+    """An absence stamp from before a reappearance never shortens a fresh acknowledgement."""
+    clock = Clock()
+    _store(graph, clock).acknowledge([ids["d1"]])
+    fixed = _without(graph, ids["d1"])
+    _statuses(fixed, clock=clock)  # absent: stamped at T0
+
+    clock.now = T0 + ABSENT_TTL + timedelta(days=1)
+    _store(graph, clock).acknowledge([ids["d1"]], note="back again")  # present, no observe
+    assert "first_absent_at" not in _store(graph).snapshot()["ids"][ids["d1"]]
+
+    clock.now += timedelta(days=1)
+    assert _statuses(fixed, clock=clock)[ids["d1"]].note == "back again"
+
+
 def test_reads_write_nothing_when_nothing_changed(graph):
     _statuses(graph)
     assert not triage_path(REPO).exists()
@@ -240,7 +255,7 @@ def test_no_write_lands_between_another_writers_check_and_replace(graph, ids, mo
     def replace(src, dst):
         if not raced:
             raced.append(True)
-            with pytest.raises(StrataError, match="changed concurrently"):
+            with pytest.raises(StrataError, match="locked by another writer"):
                 second.acknowledge([ids["d2"]])
         real_replace(src, dst)
 
@@ -250,17 +265,22 @@ def test_no_write_lands_between_another_writers_check_and_replace(graph, ids, mo
     assert set(stored["ids"]) == {ids["d1"]} and stored["rev"] == 1
 
 
-def test_a_stale_lock_is_broken_and_a_fresh_one_is_not(graph, ids):
+def test_a_held_lock_is_never_broken(graph, ids):
+    """Only the holder removes the lock: a lock however old blocks writes (loudly, naming the
+    lock) and is left in place, so no writer can ever delete another's live lock."""
     path = triage_path(REPO)
     path.parent.mkdir(parents=True)
     lock = path.parent / f".{path.name}.lock"
     lock.touch()
-    with pytest.raises(StrataError, match="changed concurrently"):
-        _store(graph).acknowledge([ids["d1"]])
-    assert not path.exists()
-
-    old = lock.stat().st_mtime - 60
+    old = lock.stat().st_mtime - 3600
     os.utime(lock, (old, old))
+
+    with pytest.raises(StrataError, match="locked by another writer") as caught:
+        _store(graph).acknowledge([ids["d1"]])
+    assert "delete the lock file" in caught.value.hint
+    assert lock.exists() and not path.exists()
+
+    lock.unlink()
     _store(graph).acknowledge([ids["d1"]])
     assert ids["d1"] in _store(graph).snapshot()["ids"] and not lock.exists()
 
