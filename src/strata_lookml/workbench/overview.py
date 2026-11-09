@@ -12,7 +12,7 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import Any
 
-from strata_lookml.ir.types import explore_id
+from strata_lookml.ir.types import explore_key
 from strata_lookml.links import object_path
 from strata_lookml.mcp.tools import (
     strata_ir_status,
@@ -25,7 +25,6 @@ from strata_lookml.workbench.charts import bar
 from strata_lookml.workbench.index import Workbench
 from strata_lookml.workbench.render import safe_svg
 
-TOP_EXPLORES = 6
 TABLE_ROWS = 10
 ACTION_ITEMS = 8
 _ACTIONS = {
@@ -70,6 +69,14 @@ def _link(graph_has: Any, node_id: str | None) -> str | None:
     return object_path(node_id) if node_id and graph_has(node_id) else None
 
 
+def _explore_node(graph: Any, key: str) -> str | None:
+    """The id of the explore node whose `model.explore` key is `key`, if the IR resolved it."""
+    for node in graph.nodes_by_kind("explore"):
+        if explore_key(node.attrs.get("model", ""), node.name) == key:
+            return str(node.id)
+    return None
+
+
 def overview_context(wb: Workbench) -> dict[str, Any]:
     graph = wb.graph
     l1 = graph.metadata.get("l1", {})
@@ -96,12 +103,8 @@ def overview_context(wb: Workbench) -> dict[str, Any]:
     }
 
     # --- usage ---------------------------------------------------------------------------
-    rows = sorted(
-        l1.get("explore_usage", {}).values(),
-        key=lambda r: (-r["query_count"], r["model"], r["explore"]),
-    )[:TOP_EXPLORES]
-    top_total = sum(r["query_count"] for r in rows)
-    top_max = rows[0]["query_count"] if rows else 0
+    rows = usage["top_explores"] or []
+    top_max = rows[0]["queries"] if rows else 0
     ir_explores = usage["ir_explore_count"]
     usage_ctx: dict[str, Any] = {
         "ran": bool(cov.get("usage")),
@@ -113,20 +116,16 @@ def overview_context(wb: Workbench) -> dict[str, Any]:
         "dead_bar": _bar(usage["dead_explore_count"], ir_explores, 160),
         "dead_views": num(usage["dead_view_count"]),
         "dead_views_noun": plural(usage["dead_view_count"], "view"),
-        "top_noun": plural(len(rows), "explore"),
         "content_ran": bool(cov.get("content")),
-        "top_n": num(len(rows)),
-        "top_share": (
-            f"{round(100 * top_total / usage['total_queries'])}%"
-            if usage["total_queries"] > 0
-            else None
-        ),
+        "top_share": f"{round(100 * rows[0]['share'])}%" if rows else None,
+        "top_key": rows[0]["explore_key"] if rows else None,
         "top": [
             {
-                "label": f"{r['model']}.{r['explore']}",
-                "href": _link(exists, explore_id(r["model"], r["explore"])),
-                "queries": num(r["query_count"]),
-                "bar": _bar(r["query_count"], top_max, 180),
+                "label": r["explore_key"],
+                "href": _link(exists, _explore_node(graph, r["explore_key"])),
+                "queries": num(r["queries"]),
+                "share": f"{round(100 * r['share'])}%",
+                "bar": _bar(r["queries"], top_max, 180),
             }
             for r in rows
         ],

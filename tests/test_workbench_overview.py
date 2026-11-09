@@ -187,3 +187,21 @@ def test_no_chartjs_in_workbench_templates() -> None:
     for path in (*root.glob("templates/*"), *root.glob("*.py")):
         text = path.read_text(encoding="utf-8").lower()
         assert "chart.umd" not in text and "chart.js" not in text, path
+
+
+def test_top_explores_come_from_the_usage_summary(full: tuple[Workbench, str]) -> None:
+    wb, html = full
+    top = strata_usage_summary(wb.graph)["top_explores"]
+    assert top and top[0]["queries"] >= top[-1]["queries"] > 0
+    assert all(0 < t["share"] <= 1 for t in top)
+    text = _text(html)
+    for t in top:
+        assert f"{t['explore_key']} {t['queries']:,} {round(100 * t['share'])}%" in text
+    assert f"carries {round(100 * top[0]['share'])}% of all queries" in text
+    assert '<a href="/explore/' in html  # rows link to resolved explores
+
+
+def test_top_explores_absent_when_usage_not_checked() -> None:
+    wb = _wb(REPO, None, SCHEMA)
+    assert strata_usage_summary(wb.graph)["top_explores"] is None
+    assert "busiest explore" not in _text(_page(wb))

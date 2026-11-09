@@ -36,9 +36,9 @@ svg.bar .fill { fill: var(--fill); }
 
 <h2>Usage</h2>
 {% if usage.ran %}
-<p class="dead">{% if usage.window %}Over {{ usage.window }}{% else %}Over the usage window (length not recorded){% endif %} the instance ran <strong>{{ usage.queries }}</strong> queries across <strong>{{ usage.explores }}</strong> explores. <strong>{{ usage.active }}</strong> are active and <strong>{{ usage.dead }}</strong> are dead {{ usage.dead_bar }}{% if usage.content_ran %}: no queries and no content references{% else %}: no queries (content references not loaded, load content facts to confirm){% endif %}. <strong>{{ usage.dead_views }}</strong> {{ usage.dead_views_noun }} {{ "is" if usage.dead_views == "1" else "are" }} dead too.{% if usage.top_share %} The top {{ usage.top_n }} {{ usage.top_noun }} carry <strong>{{ usage.top_share }}</strong> of all queries.{% endif %}</p>
-{% if usage.top %}<table class="rtable"><thead><tr><th>Explore</th><th class="num">Queries</th><th></th></tr></thead><tbody>
-{% for row in usage.top %}<tr><td class="mono">{% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</td><td class="num">{{ row.queries }}</td><td>{{ row.bar }}</td></tr>
+<p class="dead">{% if usage.window %}Over {{ usage.window }}{% else %}Over the usage window (length not recorded){% endif %} the instance ran <strong>{{ usage.queries }}</strong> queries across <strong>{{ usage.explores }}</strong> explores. <strong>{{ usage.active }}</strong> are active and <strong>{{ usage.dead }}</strong> are dead {{ usage.dead_bar }}{% if usage.content_ran %}: no queries and no content references{% else %}: no queries (content references not loaded, load content facts to confirm){% endif %}. <strong>{{ usage.dead_views }}</strong> {{ usage.dead_views_noun }} {{ "is" if usage.dead_views == "1" else "are" }} dead too.{% if usage.top_share %} The busiest explore, <code>{{ usage.top_key }}</code>, carries <strong>{{ usage.top_share }}</strong> of all queries.{% endif %}</p>
+{% if usage.top %}<table class="rtable"><thead><tr><th>Explore</th><th class="num">Queries</th><th class="num">Share</th><th></th></tr></thead><tbody>
+{% for row in usage.top %}<tr><td class="mono">{% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</td><td class="num">{{ row.queries }}</td><td class="num">{{ row.share }}</td><td>{{ row.bar }}</td></tr>
 {% endfor %}</tbody></table>{% endif %}
 {% else %}
 <p class="notrun">Not run — load usage facts to see query volume and dead explores.</p>

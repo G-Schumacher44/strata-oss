@@ -24,9 +24,9 @@ Exact Next Steps: twin gate, operator merges. S10 deletes the old dashboard (and
 
 ### Deviations from the brief
 
-- The top-explores share ("top N carry X%") is the ratio of two tool numbers (the listed rows' query counts over `total_queries`); the rows come from `l1.explore_usage`, which no tool lists per explore. Only explores with queries are listed.
-- Next-actions links go to the object page of each item (`evidence_ids[0]`); finding-page links wait for S6 and the findings list (S5).
+- The top-explores share lives in the read layer: `strata_usage_summary` gained `top_explores: [{explore_key, queries, share}]` (top 6, share = queries / total_queries; None when usage was not checked), so MCP/CLI get it too; the overview only renders it (the sentence names the busiest explore's share).
+- Next-actions links go to each object's page via `evidence_ids[0]`; finding-page links wait for S5/S6.
 
 ### Gates
 
-pytest 605 passed, 1 skipped; ruff check + format --check clean; mypy clean; `gen_reference.py --check` clean. Fail-before: `tests/test_workbench_overview.py` against origin/main (detached worktree) errors at collection (no `workbench.overview`). Negative control: forcing the usage section's `ran` to True fails `test_not_run_without_facts_never_zero` and `test_mutation_flipping_coverage_changes_the_sentence`; reverted, 8 pass. Screenshots: /Volumes/t9/dev/dev_project_tmp/wb-s7/{full,notrun}.png.
+pytest 607 passed, 1 skipped; ruff check + format --check clean; mypy clean; `gen_reference.py --check` and `check_dashboard_js_syntax.py` clean. Fail-before: `tests/test_workbench_overview.py` against origin/main (detached worktree) errors at collection (no `workbench.overview`). Negative control: forcing the usage section's `ran` to True fails `test_not_run_without_facts_never_zero` and `test_mutation_flipping_coverage_changes_the_sentence`; reverted, 8 pass. Screenshots: /Volumes/t9/dev/dev_project_tmp/wb-s7/{full,notrun}.png.
