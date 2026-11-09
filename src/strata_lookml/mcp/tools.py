@@ -445,6 +445,17 @@ def _edge_targets(graph: IRGraph, source: str, relation: str, prefix: str) -> li
     )
 
 
+def _view_ancestors(chain: Sequence[str], own_name: str) -> list[str]:
+    """Ancestors from a view's resolution chain: `+` refinement markers stripped, the view
+    itself dropped (a refined view's chain ends in its own `+name`), duplicates removed in order."""
+    ancestors: dict[str, None] = {}
+    for entry in chain:
+        entry = entry.lstrip("+")
+        if entry != own_name:
+            ancestors.setdefault(entry)
+    return list(ancestors)
+
+
 def _node_finding_ids(graph: IRGraph, kind: str, node_id: str, name: str) -> list[str]:
     """Ids of the findings on one node, taken from `findings_by_category` (the same records
     `strata check` gates on), matched by each category's own subject."""
@@ -565,7 +576,7 @@ def strata_object(graph: IRGraph, kind: str, name: str) -> dict[str, Any]:
                     graph, node.id, "view→physical_table", "physical_table:"
                 ),
                 "pdt": _edge_targets(graph, node.id, "view→pdt", "pdt:"),
-                "extends": [c.lstrip("+") for c in node.attrs.get("resolution_chain", [])[:-1]],
+                "extends": _view_ancestors(node.attrs.get("resolution_chain", []), node.name),
             }
             downstream = {"explore": view_consumer_map(graph).get(name, [])}
             details = {"field_count": _field_count_for_view(graph, name)}

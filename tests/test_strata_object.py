@@ -147,3 +147,18 @@ def test_schema_drift_lands_on_its_field_and_table(graph):
     ]
     table = strata_object(graph, "table", "acme-analytics.silver.int_attributed_purchases")
     assert field["findings"][0] in table["findings"]
+
+
+def test_refined_view_does_not_list_itself_as_an_ancestor(tmp_path):
+    (tmp_path / "base.view.lkml").write_text("view: base { dimension: id {} }\n")
+    (tmp_path / "orders.view.lkml").write_text(
+        "view: orders { extends: [base] dimension: a {} }\n"
+        "view: +orders { dimension: b {} }\n"
+        "view: +orders { dimension: c {} }\n"
+    )
+    (tmp_path / "m.model.lkml").write_text("explore: orders {}\n")
+    graph = build_resolved_graph(tmp_path)
+    chain = graph.nodes["view:orders"].attrs["resolution_chain"]
+    assert any(c.startswith("+") for c in chain)  # the fixture really is a refined view
+    assert strata_object(graph, "view", "orders")["upstream"]["extends"] == ["base"]
+    assert strata_object(graph, "view", "base")["upstream"]["extends"] == []
