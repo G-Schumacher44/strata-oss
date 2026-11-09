@@ -229,3 +229,40 @@ def test_build_output_and_graph_metadata_carry_source(lookml_repo, tmp_path):
     from strata_lookml.ir.store import load_ir
 
     assert load_ir(tmp_path / "c.db").metadata["source"]["commit"] == head
+
+
+# -- read-only guarantees and the API --------------------------------------------------------
+
+
+def index_state(repo):
+    index = repo / ".git" / "index"
+    return index.read_bytes(), index.stat().st_mtime_ns
+
+
+def test_provenance_and_diff_never_rewrite_the_git_index(lookml_repo, tmp_path):
+    """A touched file (stat change only) makes a plain `git status` refresh and rewrite .git/index."""
+    touched = lookml_repo / LEGACY_MODEL
+    os.utime(touched, (1_000_000_000, 1_000_000_000))
+    before = index_state(lookml_repo)
+
+    from strata_lookml.provenance import git_source
+
+    assert git_source(lookml_repo)["dirty"] is False  # content unchanged: stat noise is not dirty
+    assert index_state(lookml_repo) == before
+    check_json(lookml_repo, tmp_path)
+    strata(
+        "diff", "main", "--repo", str(lookml_repo), "--usage-fixture", str(USAGE),
+        home=tmp_path / "home",
+    )  # fmt: skip
+    assert index_state(lookml_repo) == before
+
+
+def test_diff_findings_api(lookml_repo):
+    from strata_lookml.diff import diff_findings
+
+    result = diff_findings(lookml_repo, "main", "feature", usage_fixture=USAGE)
+
+    assert [r["id"] for r in result.new] == [NEW_EXPLORE]
+    assert {r["id"] for r in result.fixed} == FIXED_IDS
+    assert result.to_dict()["unchanged_count"] == result.unchanged_count
+    assert result.head["commit"] == git(lookml_repo, "rev-parse", "feature").strip()

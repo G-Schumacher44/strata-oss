@@ -6,6 +6,7 @@ writes to the user's repo, its `.git`, its refs or its worktrees.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tarfile
 import tempfile
@@ -15,13 +16,21 @@ from pathlib import Path
 from typing import Any
 
 _GIT_TIMEOUT = 30
+# `git status` refreshes and rewrites .git/index when file stat info changed (a touched mtime);
+# optional locks off makes every call here a pure read. Set as both flag and env, belt and braces.
+_GIT_PREFIX = ["git", "--no-optional-locks"]
+
+
+def _git_env() -> dict[str, str]:
+    return {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
 
 
 def _git(repo: Path, *args: str) -> str | None:
     """stdout of a read-only git call, or None when git is absent, fails, or `repo` is no checkout."""
     try:
         proc = subprocess.run(
-            ["git", "-C", str(repo), *args],
+            [*_GIT_PREFIX, "-C", str(repo), *args],
+            env=_git_env(),
             capture_output=True,
             text=True,
             timeout=_GIT_TIMEOUT,
@@ -88,7 +97,8 @@ def materialised(repo: str | Path, commit: str) -> Iterator[Path]:
     with tempfile.TemporaryDirectory(prefix="strata-diff-") as tmp:
         try:
             proc = subprocess.Popen(
-                ["git", "-C", str(root), "archive", "--format=tar", commit],
+                [*_GIT_PREFIX, "-C", str(root), "archive", "--format=tar", commit],
+                env=_git_env(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
