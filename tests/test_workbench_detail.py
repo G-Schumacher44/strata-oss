@@ -357,3 +357,16 @@ def test_roadmap_actions_match_by_node_identity_not_name(tmp_path: Path) -> None
     explore = _page(app, "/explore/sales.orders")
     assert '<span class="v">DEPRECATE</span>' in explore
     assert "REVIEW FOR DEPRECATION" in _page(app, "/view/v")  # its own record, by its own id
+
+
+def test_last_queried_is_never_only_for_a_zero_count() -> None:
+    wb = _wb()
+    usage = wb.graph.metadata["l1"]["explore_usage"]
+    usage["em_marketing_base.cart_analysis"].update(query_count=40, last_queried_at=None)
+    app = _app(wb)
+    page = _page(app, "/explore/em_marketing_base.cart_analysis")
+    assert "not recorded" in page and "never" not in page.split("Last queried")[1][:60]
+    zero = _page(app, "/explore/em_legacy_v2.dead_finance_v2")  # a measured zero
+    assert "never" in zero.split("Last queried")[1][:60]
+    off = _page(_app(_wb(usage=False)), "/explore/em_marketing_base.cart_analysis")
+    assert "not loaded" in off and "Last queried" not in off

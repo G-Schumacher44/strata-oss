@@ -244,8 +244,16 @@ class Detail:
             if not cov["usage_checked"]:
                 facts.append(("Queries", "not loaded"))
             else:
-                facts.append(("Queries", str((usage or {}).get("query_count", 0))))
-                facts.append(("Last queried", str((usage or {}).get("last_queried_at") or "never")))
+                count = (usage or {}).get("query_count", 0)
+                last = (usage or {}).get("last_queried_at")
+                # "never" only for a measured zero; a count without a timestamp is not "never".
+                facts.append(("Queries", str(count)))
+                facts.append(
+                    (
+                        "Last queried",
+                        str(last) if last else "never" if not count else "not recorded",
+                    )
+                )
             facts += [
                 ("Model", str(details["model"])),
                 ("Views joined", str(len(details["joins"]))),
