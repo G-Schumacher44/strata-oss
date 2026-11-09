@@ -7,10 +7,12 @@ from click.testing import CliRunner
 
 from strata_lookml.cli.main import strata_cli as cli
 from strata_lookml.errors import InvalidInput, NotFound
+from strata_lookml.identifiers import resolve_field
 from strata_lookml.ir.resolver import build_resolved_graph
 from strata_lookml.mcp.tools import (
     strata_explore_deps,
     strata_impact,
+    strata_object,
     strata_query_field,
     strata_validation_scope,
     strata_view_sources,
@@ -94,6 +96,23 @@ def test_field_as_one_argument(graph):
     )
     with pytest.raises(InvalidInput, match="view.field"):
         strata_query_field(graph, "customer_extended")
+
+
+def test_field_on_a_dotted_view_resolves_by_the_longest_known_view(tmp_path):
+    """G17: `view.field` splits after the longest view name it starts with, not the first dot."""
+    (tmp_path / "v.view.lkml").write_text(
+        'view: "sales.orders" { dimension: id { sql: 1 ;; } }\n'
+        "view: sales { dimension: id { sql: 2 ;; } }\n"
+    )
+    (tmp_path / "m.model.lkml").write_text('connection: "c"\ninclude: "*.view.lkml"\n')
+    g = build_resolved_graph(tmp_path)
+    assert resolve_field("sales.orders.id", graph=g) == ("sales.orders", "id")
+    assert resolve_field("sales.id", graph=g) == ("sales", "id")
+    assert strata_query_field(g, "sales.orders.id")["sql"] == "1"
+    assert strata_object(g, "field", "sales.orders.id")["id"] == "field:sales.orders.id"
+    # Without the graph (or with no view as a prefix) it still splits at the first dot.
+    assert resolve_field("sales.orders.id") == ("sales", "orders.id")
+    assert resolve_field("nope.x", graph=g) == ("nope", "x")
 
 
 def test_view_sources_unknown_model_is_not_found(graph):

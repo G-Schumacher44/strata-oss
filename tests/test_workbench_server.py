@@ -21,9 +21,7 @@ from strata_lookml import pipeline
 from strata_lookml.cli import dashboard as dash
 from strata_lookml.cli.dashboard import allowed_hosts
 from strata_lookml.cli.main import strata_cli
-from strata_lookml.errors import InvalidInput
-from strata_lookml.identifiers import resolve_field
-from strata_lookml.links import finding_path, object_path
+from strata_lookml.links import finding_path, graph_path, object_path
 from strata_lookml.workbench.app import SECURITY_HEADERS, App, Response
 from strata_lookml.workbench.index import Staleness, Workbench, index_graph, load_graph
 from strata_lookml.workbench.server import make_handler, new_token
@@ -151,7 +149,15 @@ def test_root_redirects_to_findings(twin: App) -> None:
 
 
 @pytest.mark.parametrize(
-    "target", ["/findings", "/overview", "/graph?focus=x&hops=1", "/search?q=x", "/findings?page=2"]
+    "target",
+    [
+        "/findings",
+        "/overview",
+        "/graph",
+        "/graph?focus=view%3Aaccounts&hops=1",
+        "/search?q=x",
+        "/findings?page=2",
+    ],
 )
 def test_fixed_pages_render(twin: App, target: str) -> None:
     r = _get(twin, target)
@@ -162,7 +168,7 @@ def test_fixed_pages_render(twin: App, target: str) -> None:
 def test_api_index_lists_every_object_page(twin: App) -> None:
     r = _get(twin, "/api/index.json")
     assert ("Content-Type", "application/json; charset=utf-8") in r.headers
-    paths = {o["path"] for o in json.loads(r.body)["objects"]}
+    paths = {o["path"] for o in json.loads(r.body)["items"]}
     assert {"/explore/retail.orders", "/explore/wholesale.orders", "/view/accounts"} <= paths
 
 
@@ -233,14 +239,6 @@ def test_unresolved_pages_render_the_error_contract(
     assert '<p class="hint">' in body, "every StrataError raised here carries a hint"
 
 
-def _splits(name: str) -> bool:
-    try:
-        resolve_field(name)
-    except InvalidInput:
-        return False
-    return True
-
-
 def test_every_object_and_finding_link_round_trips(hostile: App) -> None:
     """links.py builds each path; the router parses it back to the same object or finding."""
     graph = hostile.workbench.graph
@@ -250,12 +248,8 @@ def test_every_object_and_finding_link_round_trips(hostile: App) -> None:
         if path is None:
             continue
         r = _get(hostile, path)
-        if node.kind == "field" and not _splits(node.name):
-            # Known gap (predates the workbench): `identifiers.resolve_field` splits
-            # `view.field` at the first dot, so a field of a view named `..` has no page.
-            # It must still be a clean error page, never a crash.
-            assert r.status == 400 and "view.field" in _text(r), path
-            continue
+        # Fields of the `..` view included: resolve_field splits after the longest known
+        # view name (G17), so every field has its own page.
         assert r.status in (200, 300), (path, _text(r))
         if r.status == 200:
             assert f'data-node-id="{escape(node.id)}"' in _text(r), (
@@ -506,6 +500,8 @@ _SHELL_TAGS = {
     "td",
     "svg",
     "rect",
+    # /search highlights the matched characters (S8)
+    "mark",
 }
 _SHELL_ATTRS = {
     "lang",
@@ -541,12 +537,20 @@ _SHELL_ATTRS = {
     "focusable",
     # the detail frame (S6)
     "readonly",
+    # the ⌘K palette's text input (S8)
+    "autocomplete",
+    "spellcheck",
 }
 # The only scripts a page may load: allow-listed /static/ files behind the CSP's
 # script-src 'self', each at most once. Nothing else that opens a <script> may appear.
 _SANCTIONED_SCRIPTS = (
     '<script src="/static/workbench.js" defer></script>',
     '<script src="/static/detail.js" defer></script>',
+    # the graph page (S8): the vendored Cytoscape + dagre and the page script
+    '<script src="/static/cytoscape.min.js" defer></script>',
+    '<script src="/static/dagre.min.js" defer></script>',
+    '<script src="/static/cytoscape-dagre.min.js" defer></script>',
+    '<script src="/static/graph.js" defer></script>',
 )
 
 
@@ -589,7 +593,11 @@ def test_hostile_names_never_reach_a_response_as_markup(hostile: App) -> None:
         f"/findings?status=all&q={q}",
         "/overview",
         f"/graph?focus={q}&hops={q}",
+        f"/graph?focus={q}",
+        f"/api/graph?focus={q}&hops={q}",
+        f"/api/graph?focus={q}",
         f"/search?q={q}",
+        "/search?q=" + quote("<", safe=""),  # matches every hostile name
         "/api/index.json",
         f"/explore/{q}",
         f"/view/{q}",
@@ -603,6 +611,13 @@ def test_hostile_names_never_reach_a_response_as_markup(hostile: App) -> None:
         "/explore/a%3C%2Fscript%3Eb",  # ambiguous across the two models: candidates page
     ]
     targets += [p for n in wb.graph.nodes.values() if (p := object_path(n.id))]
+    # Every graph node as a focus, through the page and the JSON it draws from, at full reach.
+    targets += [
+        f"{prefix}{graph_path(n.id, up=2, down=2, siblings=True)}"
+        for n in wb.graph.nodes.values()
+        if n.kind in {"explore", "view", "pdt", "physical_table"}
+        for prefix in ("", "/api")
+    ]
     targets += [finding_path(i) for i in wb.findings_by_id]
     statuses = set()
     for target in targets:

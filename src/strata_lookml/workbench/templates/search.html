@@ -1,0 +1,15 @@
+{% extends "_layout.html" %}
+{% block content %}
+<section class="search-page">
+<h1>Search</h1>
+<form class="filter search-form" method="get" action="/search" role="search">
+<input type="search" name="q" value="{{ q }}" placeholder="An explore, view, PDT, table, field or finding" aria-label="Search objects and findings">
+</form>
+{% if q %}<p class="hint">{% if total %}{{ results | length }} of {{ total }} match{{ "" if total == 1 else "es" }} for “{{ q }}”{% else %}Nothing matches “{{ q }}”{% endif %}</p>
+{% if results %}<ul class="links results">
+{% for r in results %}<li><a class="mono" href="{{ r.path }}">{% for text, hit in r.runs %}{% if hit %}<mark>{{ text }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}</a><span class="rel">{{ r.kind_label }}</span></li>
+{% endfor %}</ul>{% endif %}
+{% else %}<p class="hint">Type part of a name; letters in order also match (<code>lgcy ord</code> finds <code>legacy_order_detail</code>). <kbd>⌘K</kbd> does the same from any page.</p>
+{% endif %}
+</section>
+{% endblock %}

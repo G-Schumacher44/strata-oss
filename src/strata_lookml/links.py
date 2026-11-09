@@ -1,14 +1,14 @@
 """The one place a workbench URL is built from an IR node id or a finding id.
 
 Paths follow the workbench URL scheme: `/explore/<model>.<explore>`, `/view/<v>`, `/pdt/<v>`,
-`/table/<dataset.table>`, `/field/<view>.<field>`, `/finding/<id>`. `link` joins a path to the
+`/table/<dataset.table>`, `/field/<view>.<field>`, `/finding/<id>`, `/graph?focus=<node-id>`. `link` joins a path to the
 configured base; with no base there is no link (a guessed port would be wrong). Plain Python:
 check, PR reports, MCP, the workbench and the TUI all link through here.
 """
 
 from __future__ import annotations
 
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from strata_lookml.ir.types import explore_key
 
@@ -36,6 +36,16 @@ def object_path(node_id: str) -> str | None:
 def finding_path(finding_id: str) -> str:
     """The workbench path of a finding: its id quoted whole (`/` and `:` included)."""
     return f"/finding/{_segment(finding_id)}"
+
+
+def graph_path(node_id: str, up: int = 1, down: int = 1, siblings: bool = False) -> str:
+    """The graph page focused on an IR node: `hops=N` when both directions walk N hops, else
+    `up=`/`down=` apiece; `siblings=1` only when siblings are on."""
+    params: list[tuple[str, str | int]] = [("focus", node_id)]
+    params += [("hops", up)] if up == down else [("up", up), ("down", down)]
+    if siblings:
+        params.append(("siblings", 1))
+    return "/graph?" + urlencode(params, quote_via=quote, safe="")
 
 
 def link(base: str | None, path: str | None) -> str | None:

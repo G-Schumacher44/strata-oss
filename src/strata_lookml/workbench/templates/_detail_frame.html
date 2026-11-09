@@ -1,52 +1,5 @@
 {% extends "_layout.html" %}
 {% block head %}{{ super() }}<script src="/static/detail.js" defer></script>
-<style>
-.detail { --bg:#121820; --surface:#19212b; --surface2:#202a36; --border:#2b3645; --hair:rgba(43,54,69,.65); --text:#e8ecf1; --text-2:#b7c0cc; --muted:#8794a6; --focus:#8cc4ff; --dead:#f06b5d; --zombie:#a98bf5; --drift:#6aa5e0; --ok:#3fbf8f; }
-@media (prefers-color-scheme: light) { .detail { --bg:#f7f8fa; --surface:#fff; --surface2:#f1f3f6; --border:#dde1e7; --hair:rgba(0,0,0,.07); --text:#1a2230; --text-2:#445064; --muted:#6a778a; --focus:#1f6feb; --dead:#c9372c; --zombie:#7c4dd6; --drift:#2b6cb0; --ok:#1f8f63; } }
-.detail { background:var(--bg); padding:8px 20px 28px; margin-top:8px; border-radius:10px; color:var(--text); font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif; }
-.detail a { color:var(--text); text-decoration:none; }
-.detail a:hover { text-decoration:underline; }
-.detail .mono, .detail code, .detail pre { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
-.crumbs { color:var(--muted); font-size:12px; margin:6px 0 14px; }
-.dgrid { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:24px; align-items:start; }
-@media (max-width: 860px) { .dgrid { grid-template-columns:minmax(0,1fr); } }
-.dhead { padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:18px; }
-.kind { font-size:12px; color:var(--muted); margin-bottom:6px; }
-.dname { font:600 22px/1.25 ui-monospace,"SF Mono",Menlo,Consolas,monospace; letter-spacing:-.02em; word-break:break-all; margin:0; }
-.dloc { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; color:var(--text-2); }
-.btn { display:inline-flex; align-items:center; height:24px; padding:0 8px; border:1px solid var(--border); border-radius:6px; background:transparent; color:var(--muted); font:12px inherit; cursor:pointer; }
-.btn:hover:not(:disabled) { color:var(--text); border-color:var(--muted); }
-.btn:disabled { opacity:.55; cursor:not-allowed; }
-.verdict { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px; padding:12px 14px; border:1px solid var(--border); border-left:3px solid var(--vc,var(--muted)); border-radius:6px; background:var(--surface); margin-bottom:16px; }
-.verdict .v { font-weight:700; font-size:12px; color:var(--vc,var(--text)); }
-.verdict .why { color:var(--text-2); }
-.v-dead { --vc:var(--dead); } .v-zombie { --vc:var(--zombie); } .v-drift { --vc:var(--drift); } .v-ok { --vc:var(--ok); } .v-muted { --vc:var(--muted); }
-.sec { margin:20px 0 8px; font-size:12px; font-weight:600; }
-.sec.first { margin-top:0; }
-.chips { display:flex; flex-wrap:wrap; gap:6px; }
-.ev { font-size:11.5px; padding:3px 8px; border-radius:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text-2); word-break:break-all; }
-a.ev:hover { border-color:var(--focus); }
-.facts { display:flex; flex-wrap:wrap; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
-.facts > div { flex:1 1 150px; background:var(--surface); padding:10px 12px; }
-.facts .l { color:var(--muted); font-size:11.5px; }
-.facts .v { font-size:15px; font-weight:500; margin-top:2px; overflow-wrap:anywhere; }
-.links { list-style:none; padding:0; margin:0; border:1px solid var(--border); border-radius:6px; background:var(--surface); }
-.links li { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:7px 12px; border-bottom:1px solid var(--hair); overflow-wrap:anywhere; }
-.links li:last-child { border-bottom:0; }
-.links .rel { margin-left:auto; color:var(--muted); font-size:11.5px; }
-.links .none { color:var(--muted); }
-.pill { font-size:11.5px; color:var(--text-2); }
-.pill.dead, .pill.dead-code { color:var(--dead); } .pill.zombie, .pill.zombie-pdt { color:var(--zombie); } .pill.drift { color:var(--drift); }
-.side .card { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:14px; margin-bottom:14px; }
-.fcard { border-top:1px solid var(--hair); padding:10px 0; overflow-wrap:anywhere; }
-.fcard:first-of-type { border-top:0; padding-top:0; }
-.fcard .id { font-size:11.5px; display:block; margin-top:6px; word-break:break-all; }
-.fcard .msg { color:var(--muted); font-size:12px; margin-top:2px; }
-.fcard .acts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
-.sql { font-size:12px; line-height:1.5; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:10px 12px; white-space:pre-wrap; color:var(--text-2); margin:0; overflow-wrap:anywhere; }
-.prtext { width:100%; box-sizing:border-box; min-height:12em; font-size:12px; background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:10px 12px; }
-.muted { color:var(--muted); }
-</style>
 {% endblock %}
 {% block content %}
 <div class="detail">
@@ -59,6 +12,7 @@ a.ev:hover { border-color:var(--focus); }
 <div class="dloc">
 {% if loc %}<span class="mono" data-loc>{{ loc }}</span><button class="btn" type="button" data-copy="{{ loc }}">Copy file:line</button>
 {% else %}<span class="mono muted">no source file</span>{% endif %}
+{% if graph_href %}<a class="btn" href="{{ graph_href }}">Open in graph</a>{% endif %}
 </div>
 </div>
 {% if verdict %}<div class="verdict v-{{ verdict.cls }}"><span class="v">{{ verdict.label }}</span><span class="why">{{ verdict.why }}</span></div>
