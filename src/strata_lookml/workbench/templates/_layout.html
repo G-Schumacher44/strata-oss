@@ -1,11 +1,43 @@
 {% extends "_base.html" %}
 {% block title %}{{ title }} · Strata workbench{% endblock %}
 {% block head %}<meta name="strata-token" content="{{ token }}">
+<link rel="stylesheet" href="/static/workbench.css">
+<style>:root { {{ palette_css }} }</style>
+<script src="/static/workbench.js" defer></script>
 {% endblock %}
-{% block nav %}<a href="/findings">Findings</a> · <a href="/overview">Overview</a> · <a href="/graph">Graph</a> · <a href="/search">Search</a>{% endblock %}
+{% block nav %}<div class="topbar">
+<a class="brand" href="/findings">strata <span class="repo">{{ repo_name }}</span></a>
+{% for key, label in [("findings", "Findings"), ("overview", "Overview"), ("graph", "Graph"), ("search", "Search")] %}<a class="navlink" href="/{{ key }}"{% if nav == key %} aria-current="page"{% endif %}>{{ label }}</a>
+{% endfor %}<span class="spacer"></span>
+<button class="kbtn" type="button" data-action="theme" hidden>Light</button>
+<button class="kbtn" type="button" data-action="help" aria-label="Keyboard shortcuts" hidden><kbd>?</kbd></button>
+</div>
+<p class="coverage">{% for ran, text in coverage %}<span><i class="dot {{ 'ok' if ran else 'no' }}"></i>{{ text }}</span>
+{% endfor %}</p>{% endblock %}
 {% block main %}
 {% if stale %}<p role="status" class="stale">The repo or its fixtures changed since the workbench started. Restart it to reload.</p>
 {% endif %}
-<p class="coverage">{{ coverage | join(" | ") }}</p>
 {% block content %}{% endblock %}
+<dialog id="help" class="dialog help" aria-label="Keyboard shortcuts">
+<h2>Keyboard</h2>
+<dl>
+<div class="grp">Findings list</div>
+<dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move down / up</dd>
+<dt><kbd>↵</kbd> <kbd>o</kbd></dt><dd>Open finding</dd>
+<dt><kbd>x</kbd></dt><dd>Select row</dd>
+<dt><kbd>a</kbd> <kbd>u</kbd></dt><dd>Acknowledge / unacknowledge (from the web with S9; use <code>strata ack</code>)</dd>
+<dt><kbd>c</kbd></dt><dd>Copy PR comment (selected, else cursor row)</dd>
+<dt><kbd>y</kbd></dt><dd>Copy file:line</dd>
+<dt><kbd>/</kbd></dt><dd>Filter</dd>
+<dt><kbd>f</kbd></dt><dd>Cycle category</dd>
+<dt><kbd>1</kbd>–<kbd>6</kbd></dt><dd>New · Acknowledged · Baselined · Fixed · Not checked · All</dd>
+<div class="grp">Anywhere</div>
+<dt><kbd>g</kbd> <kbd>f</kbd></dt><dd>Go to findings</dd>
+<dt><kbd>g</kbd> <kbd>o</kbd></dt><dd>Go to overview</dd>
+<dt><kbd>g</kbd> <kbd>g</kbd></dt><dd>Go to graph</dd>
+<dt><kbd>esc</kbd></dt><dd>Close / clear selection</dd>
+<dt><kbd>?</kbd></dt><dd>This help</dd>
+</dl>
+<form method="dialog" class="dialog-actions"><button class="btn" type="submit" aria-label="Close help">Close</button></form>
+</dialog>
 {% endblock %}

@@ -25,6 +25,16 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- Workbench **Findings** page (workbench S5), the landing page at `/findings?status=&category=&q=&page=`:
+  rows come from the triage core (statuses are never derived in the browser), with status tabs and counts
+  (New, Acknowledged, Baselined, Fixed, Not checked, All), category chips, a filter over label, id and file,
+  200 rows per page, cost where present, and a coverage strip (usage window, schema, content, baseline, analysed
+  commit and branch). A PDT reported both as dead code and as a zombie/unused PDT is one row with both
+  category chips; the ids are unchanged. Works without JavaScript; `workbench.js` (served from the static
+  allow-list, DOM built with `textContent` only) adds the keyboard map (`j`/`k`, `Enter`/`o`, `x`, `/`, `f`,
+  `1`–`6`, `?`, `g f`/`g o`/`g g`, `Esc`) and client-side copy of a PR comment (`c`, links only with a
+  workbench base URL) and `file:line` (`y`). Acknowledge/unacknowledge show in the UI but point to
+  `strata ack` until the triage POST lands. Dark by default, with a light theme.
 - `/overview` in the workbench (workbench S7) is a written report: fixed sentence templates filled from `strata_ir_status`, `strata_usage_summary`, `strata_pdt_costs`, schema drift and the cleanup roadmap, with server-built inline SVG bars (`workbench/charts.py`, numeric attributes only; no Chart.js). A section whose check did not run says "not run — load <X> facts" instead of a number, and the PDT cost window is labelled by the usage period's real length (never "/mo" unless the facts say 30 days). `outputs.artifacts.cleanup_roadmap` is now public. `strata_usage_summary` gains `top_explores` (busiest explores with their share of all queries; null when usage was not checked).
 - Workbench detail pages (workbench S6): `/explore/<model>.<explore>`, `/view/<v>`, `/pdt/<v>`, `/table/<t>`,
   `/field/<view>.<field>` and `/finding/<id>` share one frame: kind, name, `file:line` with a copy button, a verdict

@@ -1,0 +1,38 @@
+{% extends "_layout.html" %}
+{% block content %}
+<section class="findings" data-findings>
+<h1 class="sr-only">Findings</h1>
+<div class="ftop">
+<nav class="tabs" aria-label="Status">{% for tab in tabs %}<a class="tab" href="{{ tab.href }}" data-key="{{ loop.index }}"{% if tab.current %} aria-current="page"{% endif %}>{{ tab.label }} <span class="n">{{ tab.count }}</span> <span class="k">{{ loop.index }}</span></a>{% endfor %}</nav>
+<form class="filter" method="get" action="/findings" role="search">
+<input type="hidden" name="status" value="{{ query.status }}">
+{% if query.category != "all" %}<input type="hidden" name="category" value="{{ query.category }}">
+{% endif %}<input type="search" name="q" value="{{ query.q }}" placeholder="Filter by label, id or file" aria-label="Filter findings" data-filter>
+<kbd>/</kbd>
+</form>
+</div>
+<nav class="cats" aria-label="Category">{% for chip in chips %}<a class="chip" href="{{ chip.href }}" data-chip{% if chip.current %} aria-current="page"{% endif %}{% if chip.count == 0 and not chip.current and chip.key != "all" %} data-empty{% endif %}>{{ chip.label }} <span class="n">{{ chip.count }}</span></a>{% endfor %}<span class="hint"><kbd>f</kbd> cycles category</span></nav>
+<div class="list" role="table" aria-label="Findings">
+<div class="lhead" role="row"><span role="columnheader"><input type="checkbox" class="cbx" aria-label="Select all shown" data-select-all disabled></span><span role="columnheader" class="h-cat">Category</span><span role="columnheader">Finding</span><span role="columnheader" class="h-loc">Location</span><span role="columnheader" class="h-cost">{{ cost_heading }}</span><span role="columnheader">Status</span></div>
+{% for item in items %}<div class="row" role="row" data-row data-ids="{{ item.ids_json }}" data-locations="{{ item.locations_json }}"{% if item.href %} data-href="{{ item.href }}"{% endif %}>
+<span role="cell"><input type="checkbox" class="cbx" aria-label="Select {{ item.title }}" data-select disabled></span>
+<span role="cell" class="cats-cell">{% for key, label in item.chips %}<span class="pill cat-{{ key }}"><i></i><span>{{ label }}</span></span>{% endfor %}</span>
+<span role="cell" class="fid">{% if item.href %}<a href="{{ item.href }}" title="{{ item.title }}">{{ item.label }}</a>{% else %}<span class="gone" title="{{ item.title }}">{{ item.label }}</span>{% endif %}{% for other in item.also %}<span class="also">+ {% if other.href %}<a href="{{ other.href }}" title="{{ other.label }}">{{ other.label }}</a>{% else %}{{ other.label }}{% endif %}</span>{% endfor %}<span class="msg">{{ item.message }}</span></span>
+<span role="cell" class="loc"{% if item.location %} title="{{ item.locations }}"{% endif %}><bdi>{{ item.location or "—" }}</bdi></span>
+<span role="cell" class="cost{% if not item.cost %} none{% endif %}">{{ item.cost or "—" }}</span>
+<span role="cell" class="st st-{{ item.status }}"><i></i>{{ item.status_label }}</span>
+</div>
+{% else %}<div class="empty"><b>{{ empty[0] }}</b>{{ empty[1] }}</div>
+{% endfor %}</div>
+<div class="lfoot"><span>{% if items %}{{ first }}–{{ last }} of {{ shown }} shown · {{ total }} rows{% else %}0 of {{ total }} rows{% endif %} · 200 per page</span>
+{% if pages %}<nav class="pager" aria-label="Pages">{% for p in pages %}<a href="{{ p.href }}"{% if p.number == page %} aria-current="page"{% endif %}>{{ p.number }}</a>{% endfor %}</nav>
+{% endif %}<span class="keys"><kbd>j</kbd> <kbd>k</kbd> move <kbd>x</kbd> select <kbd>↵</kbd> open <kbd>?</kbd> help</span></div>
+<div class="actionbar" role="toolbar" aria-label="Actions on selected findings" data-actionbar hidden>
+<span class="count zero" data-count>Cursor row</span>
+<button class="abtn" type="button" data-action="ack" aria-disabled="true" title="Acknowledging from the web arrives with S9; use `strata ack`">Acknowledge <kbd>a</kbd></button>
+<button class="abtn" type="button" data-action="unack" aria-disabled="true" title="Unacknowledging from the web arrives with S9; use `strata unack`">Unacknowledge <kbd>u</kbd></button>
+<button class="abtn" type="button" data-action="comment">Copy PR comment <kbd>c</kbd></button>
+<button class="abtn" type="button" data-action="path">Copy path <kbd>y</kbd></button>
+</div>
+</section>
+{% endblock %}

@@ -380,7 +380,13 @@ tools are complementary layers, not competitors.
 
 `strata workbench` (alias: `strata dashboard`) serves a local triage workbench at
 `127.0.0.1:8765`: a page per finding and per explore, view, PDT, table and field, at stable URLs,
-read from the same IR cache as the MCP server. The workbench pages are being built out slice by
+read from the same IR cache as the MCP server. It opens on **Findings**, the triage list: status
+tabs (New, Acknowledged, Baselined, Fixed, Not checked, All) with counts, category chips, a text
+filter and 200 rows per page, all plain links and query strings, so it works without JavaScript.
+With JavaScript the list is keyboard-driven (`j`/`k` move, `Enter` open, `x` select, `/` filter,
+`f` category, `1`–`6` tabs, `c` copy a PR comment, `y` copy `file:line`, `?` the full map).
+Acknowledge from the terminal with `strata ack` for now; the web button arrives with the triage
+POST. The other workbench pages are being built out slice by
 slice; until they land, `strata dashboard --out DIR` keeps the static dashboard: all 8 output
 artifacts plus a self-contained HTML observability panel, served from DIR. No JavaScript
 framework, no CDN — all JS is bundled locally so it works in air-gapped or corp-network

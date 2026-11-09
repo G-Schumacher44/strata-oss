@@ -14,6 +14,7 @@ import pytest
 from jinja2 import Environment, UndefinedError
 
 from strata_lookml.workbench import render as wb
+from strata_lookml.workbench.app import STATIC_ASSETS
 
 SRC = Path(wb.__file__).resolve().parents[1]  # src/strata_lookml
 TEMPLATES = Path(wb.__file__).resolve().parent / "templates"
@@ -169,6 +170,8 @@ def test_templates_are_package_data():
     root = resources.files("strata_lookml.workbench") / "templates"
     for name in ("_base.html", "_smoke.html"):
         assert (root / name).is_file()
+    for package, resource in STATIC_ASSETS.values():
+        assert (resources.files(package) / resource).is_file()
 
 
 def test_templates_ship_in_the_built_wheel(tmp_path):
@@ -195,5 +198,7 @@ def test_templates_ship_in_the_built_wheel(tmp_path):
     names = zipfile.ZipFile(wheel).namelist()
     for f in sorted(TEMPLATES.iterdir()):
         assert f"strata_lookml/workbench/templates/{f.name}" in names
+    for package, resource in STATIC_ASSETS.values():  # every /static/ asset ships too
+        assert f"{package.replace('.', '/')}/{resource}" in names
     meta = next(n for n in names if n.endswith("METADATA"))
     assert "Requires-Dist: jinja2" in zipfile.ZipFile(wheel).read(meta).decode()
