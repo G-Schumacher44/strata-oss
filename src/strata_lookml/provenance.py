@@ -82,6 +82,22 @@ def resolve_commit(repo: str | Path, ref: str) -> str:
     return commit.strip()
 
 
+def _extract_filter(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo | None:
+    """`tarfile.data_filter`, except a link that points outside the export is skipped, not fatal.
+
+    The IR parser (`lkml_paths`) already ignores a symlinked .lkml that resolves outside the
+    repo, so an out-of-project link can never be analysed either way: dropping it keeps a stray
+    `link -> /etc/hosts` from aborting the whole export. Any other rejection (an absolute or
+    `..` path, a device file, ...) still raises.
+    """
+    try:
+        return tarfile.data_filter(member, dest)
+    except (tarfile.AbsoluteLinkError, tarfile.LinkOutsideDestinationError):
+        if member.issym() or member.islnk():
+            return None
+        raise
+
+
 @contextmanager
 def materialised(repo: str | Path, commit: str) -> Iterator[Path]:
     """The LookML project at `commit`, exported read-only into a temp dir that is removed on exit.
@@ -107,7 +123,7 @@ def materialised(repo: str | Path, commit: str) -> Iterator[Path]:
         assert proc.stdout is not None and proc.stderr is not None
         try:
             with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
-                tar.extractall(tmp, filter="data")
+                tar.extractall(tmp, filter=_extract_filter)
         except (tarfile.TarError, OSError) as exc:
             proc.kill()
             raise InvalidInput(f"could not export {commit[:7]} from git: {exc}") from exc

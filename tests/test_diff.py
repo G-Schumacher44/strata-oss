@@ -275,3 +275,54 @@ def test_dirty_sees_untracked_files_despite_user_git_config(lookml_repo):
     git(lookml_repo, "config", "status.showUntrackedFiles", "no")
     (lookml_repo / "views" / "untracked.view.lkml").write_text("view: untracked_v {}\n")
     assert git_source(lookml_repo)["dirty"] is True
+
+
+# -- hostile / stray links in the exported ref -------------------------------------------------
+
+
+def commit_links(repo):
+    """Commit an out-of-project absolute link, an escaping relative link and an in-project one."""
+    (repo / "unrelated-link").symlink_to("/etc/hosts")
+    (repo / "escape-link").symlink_to("../../outside")
+    (repo / "views" / "alias.view.lkml").symlink_to("legacy/legacy_order_detail.view.lkml")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "links")
+
+
+def test_out_of_project_links_are_skipped_not_fatal(lookml_repo, tmp_path):
+    commit_links(lookml_repo)
+    before = {p.name for p in tmp_path.iterdir()}
+    result = strata(
+        "diff", "HEAD", "HEAD", "--repo", str(lookml_repo), "--usage-fixture", str(USAGE), "--json",
+        home=tmp_path / "home",
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+    assert out["new"] == [] and out["fixed"] == []
+    assert {p.name for p in tmp_path.iterdir()} == before  # nothing written beside the export
+
+
+def test_in_project_symlink_is_extracted(lookml_repo):
+    from strata_lookml.provenance import materialised, resolve_commit
+
+    commit_links(lookml_repo)
+    with materialised(lookml_repo, resolve_commit(lookml_repo, "HEAD")) as snap:
+        assert (snap / "views" / "alias.view.lkml").is_symlink()
+        assert (snap / "views" / "alias.view.lkml").resolve().is_file()
+        assert not (snap / "unrelated-link").exists()
+        assert not (snap / "escape-link").is_symlink()
+
+
+def test_extract_filter_still_raises_for_non_link_escapes(tmp_path):
+    import tarfile
+
+    from strata_lookml.provenance import _extract_filter
+
+    for name in ("../evil.lkml", "a/../../evil.lkml"):
+        member = tarfile.TarInfo(name)
+        with pytest.raises(tarfile.FilterError):
+            _extract_filter(member, str(tmp_path))
+    device = tarfile.TarInfo("dev")
+    device.type = tarfile.CHRTYPE
+    with pytest.raises(tarfile.FilterError):
+        _extract_filter(device, str(tmp_path))
