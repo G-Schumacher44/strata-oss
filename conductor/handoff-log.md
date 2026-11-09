@@ -25,6 +25,7 @@ Exact Next Steps: twin gate, operator merges. S10 deletes the old dashboard (and
 ### Deviations from the brief
 
 - The top-explores share lives in the read layer: `strata_usage_summary` gained `top_explores: [{explore_key, queries, share}]` (top 6, share = queries / total_queries; None when usage was not checked), so MCP/CLI get it too; the overview only renders it (the sentence names the busiest explore's share).
+- Drift sentence counts field-to-column references, so it reads "N missing-column references" (Codex P2: it had read as distinct columns); no counting added to overview.py.
 - Next-actions links go to each object's page via `evidence_ids[0]`; finding-page links wait for S5/S6.
 
 ### Gates

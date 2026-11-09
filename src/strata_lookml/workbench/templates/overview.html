@@ -64,7 +64,7 @@ svg.bar .fill { fill: var(--fill); }
 {% elif not schema.any %}
 <p>No field references a column or table the schema facts lack.</p>
 {% else %}
-<p class="drift">Missing from the warehouse: <strong>{{ schema.columns }}</strong> referenced {{ "column" if schema.columns == "1" else "columns" }} and <strong>{{ schema.tables_missing }}</strong> {{ schema.missing_noun }}, across <strong>{{ schema.tables }}</strong> {{ schema.tables_noun }} with drift.</p>
+<p class="drift">The schema facts show <strong>{{ schema.columns }}</strong> missing-column {{ "reference" if schema.columns == "1" else "references" }} and <strong>{{ schema.tables_missing }}</strong> {{ schema.missing_noun }}, across <strong>{{ schema.tables }}</strong> {{ schema.tables_noun }} with drift.</p>
 <table class="rtable drift"><thead><tr><th>Table</th><th class="num">Missing refs</th><th></th></tr></thead><tbody>
 {% for row in schema.rows %}<tr><td class="mono">{% if row.href %}<a href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td><td class="num">{{ row.refs }}</td><td>{{ row.bar }}</td></tr>
 {% endfor %}</tbody></table>

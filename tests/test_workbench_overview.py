@@ -96,7 +96,7 @@ def test_mutation_flipping_coverage_changes_the_sentence() -> None:
     schema_only = _text(_page(_wb(REPO, None, SCHEMA)))
     assert "Not run — load schema facts" in usage_only and "are dead" in usage_only
     assert "Not run — load usage facts to see query volume" in schema_only
-    assert "Missing from the warehouse" in schema_only and "are dead" not in schema_only
+    assert "The schema facts show" in schema_only and "are dead" not in schema_only
 
 
 def test_window_label_is_honest() -> None:
@@ -205,3 +205,22 @@ def test_top_explores_absent_when_usage_not_checked() -> None:
     wb = _wb(REPO, None, SCHEMA)
     assert strata_usage_summary(wb.graph)["top_explores"] is None
     assert "busiest explore" not in _text(_page(wb))
+
+
+def test_drift_counts_references_not_distinct_columns(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.model.lkml").write_text(
+        'connection: "c"\ninclude: "*.view.lkml"\nexplore: v { }\n', encoding="utf-8"
+    )
+    (repo / "v.view.lkml").write_text(
+        "view: v { sql_table_name: p.d.t ;; dimension: a { sql: ${TABLE}.gone ;; }"
+        " dimension: b { sql: ${TABLE}.gone ;; } }\n",
+        encoding="utf-8",
+    )
+    schema = tmp_path / "s.json"
+    schema.write_text(json.dumps({"tables": [{"name": "p.d.t", "columns": ["id"]}]}))
+    text = _text(_page(_wb(repo, None, schema)))
+    # two fields, one missing column: two references, never "1 column" or "2 columns"
+    assert "2 missing-column references" in text
+    assert "referenced column" not in text
