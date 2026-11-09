@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s4b-triage-core (triage core and link builder, workbench S4b)
 
-Commit: f6d0d50
-  (Latest implementation commit, review round 1; first implementation commit 8dba45c. The PR squash-merges.)
+Commit: 629002d
+  (Latest implementation commit, review round 2; earlier 8dba45c, f6d0d50. The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S4b of `workbench-spec-2026-11-08.md` (D2, D3, D4; mockup items M6, M8).
 Context Budget: low
@@ -16,7 +16,7 @@ Exact Next Steps: twin gate, operator merges. Then S4 (router + server) consumes
 
 - `triage.py`: `TriageStore.open(repo, graph)` at `config.triage_path(repo)` = `~/.strata/triage/<repo_key>.json` (dir via `ensure_private_dir`, file 0600, write via `check_write_destination` + temp + `os.replace`). Document `{version, rev, ids: {id: {category, acked_at, note?, unacked_at?, first_absent_at?}}}`. `.acknowledge(ids, note=None)`, `.unacknowledge(ids)`, `.snapshot()`, `.observe()`.
 - Append-only (M8): unack sets `unacked_at`; re-ack clears it. `observe()` stamps `first_absent_at` the first time a stored id is absent from a category whose check ran, clears it when the id reappears, and prunes the entry once absent for 90 days (`ABSENT_TTL`). A category that did not run is never stamped.
-- Concurrency: re-read, apply per id, write `rev+1`, replace only if the on-disk `rev` is still the one read; 3 tries (50/100 ms backoff) then `StrataError("triage state changed concurrently", hint="retry")`. The rev check and `os.replace` run under an O_EXCL lock file `.<store>.lock` (no fcntl, per D4; works on Windows); a writer that cannot take it retries; a lock older than 10 s (crashed writer) is broken.
+- Concurrency: re-read, apply per id, write `rev+1`, replace only if the on-disk `rev` is still the one read; 3 tries (50/100 ms backoff) then `StrataError("triage state changed concurrently", hint="retry")`. The rev check and `os.replace` run under an O_EXCL lock file `.<store>.lock` (no fcntl, per D4; works on Windows); a writer that cannot take it retries. Only the holder removes the lock (never broken automatically, round 2); a lock left by a writer killed inside that window makes writes fail with `triage store is locked by another writer: <lock>` and a hint to delete it, distinct from a rev conflict.
 - Allowlist: `acknowledge` accepts an id only if a current finding carries it or the store already holds it; `unacknowledge` only stored ids. Any miss -> `InvalidInput`, nothing written. Notes cap at 2000 chars.
 - `triage_rows(graph, baseline, store)`: frozen `TriageRow`s, status derived once (D4): baselined (wins over acknowledged, ack record kept, M6) / acknowledged / new for current ids; then acked or baselined ids absent now: fixed when their category ran, not_checked when it did not. Integrity counts as always checked.
 - `links.py`: `object_path` (explore/view/pdt/table/field; None for kinds with no page), `finding_path` (`quote(id, safe="")`), `link(base, path)` (no base -> None; `.html` or `#` base -> `<base>#/<path>` replacing any old fragment; else `<base>/<path>`).
@@ -37,6 +37,13 @@ Exact Next Steps: twin gate, operator merges. Then S4 (router + server) consumes
 - Artemis should_fix (note validation untested): `test_acknowledge_refuses_a_bad_note` (non-string, over 2000 chars; exactly 2000 accepted).
 - Apollo ACCEPT (note: could not re-run gates read-only).
 
+### Review round 2 (PR #85 @ ae6b416)
+
+- Codex P2 + Artemis should_fix (stale-lock recovery races: A stats a stale lock, B breaks it and takes a fresh one, A unlinks B's live lock): fixed by never breaking the lock. Conservative choice over an fcntl/msvcrt lock, which D4 rules out; the cost is a manual delete after a SIGKILL in a one-read-one-rename window.
+- Artemis note (lock contention reported as "changed concurrently"): contention now raises its own "locked by another writer" error.
+- Codex P2 (an old `first_absent_at` survived re-acknowledging a present id, so the TTL could prune a fresh ack a day later): `acknowledge` clears it when the graph shows the id present.
+- Apollo ACCEPT_WITH_NOTES (could not re-run gates read-only).
+
 ### Gates
 
-pytest 479 passed, 1 skipped after merging origin/main `dab9f57` (G16 #83; main alone 428 passed, 1 skipped; this slice adds 51); ruff check + format --check clean on src/ tests/ scripts/; mypy `src/strata_lookml --ignore-missing-imports` clean; `check_dashboard_js_syntax.py` and `gen_reference.py --check` pass (no CLI/MCP surface change). Fail-before: `tests/test_triage.py` against origin/main (detached worktree) errors at collection (no `strata_lookml.triage`). Negative controls, each mutation in a throwaway detached worktree failing at least one test: ack-wins-over-baseline, not_checked->fixed, rev check removed (2 fail), allowlist removed, TTL prune removed, re-ack keeps `unacked_at`, symlink read refusal removed, file mode 0644, hash-form link for `#` bases; the import guard fails on each of six planted imports (http, from-http, textual, jinja2, workbench, tui) placed one module down inside a function. Round 1 controls: lock never taken -> the race test fails (plus the three lock-seam tests); stale lock never broken -> the stale-lock test fails; note validation removed -> both bad-note cases fail.
+pytest 480 passed, 1 skipped after merging origin/main `dab9f57` (G16 #83; main alone 428 passed, 1 skipped; this slice adds 52); ruff check + format --check clean on src/ tests/ scripts/; mypy `src/strata_lookml --ignore-missing-imports` clean; `check_dashboard_js_syntax.py` and `gen_reference.py --check` pass (no CLI/MCP surface change). Fail-before: `tests/test_triage.py` against origin/main (detached worktree) errors at collection (no `strata_lookml.triage`). Negative controls, each mutation in a throwaway detached worktree failing at least one test: ack-wins-over-baseline, not_checked->fixed, rev check removed (2 fail), allowlist removed, TTL prune removed, re-ack keeps `unacked_at`, symlink read refusal removed, file mode 0644, hash-form link for `#` bases; the import guard fails on each of six planted imports (http, from-http, textual, jinja2, workbench, tui) placed one module down inside a function. Round 1 controls: lock never taken -> the race test fails (plus the three lock-seam tests); note validation removed -> both bad-note cases fail. Round 2 controls: lock never taken -> 4 fail (race, held-lock, both interleave tests); lock deleted on contention -> race + held-lock tests fail; ack keeping the old absence stamp -> the retention test fails.
