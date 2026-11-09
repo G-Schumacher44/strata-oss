@@ -29,7 +29,6 @@ from strata_lookml.workbench.server import make_handler, new_token
 
 ROOT = Path(__file__).resolve().parent
 TWIN = ROOT / "lookml" / "twin_models"
-GCS = ROOT / "lookml" / "gcs_analytics"
 PORT = 18765  # only ever a Host string for App-level tests, never bound
 HOST = f"127.0.0.1:{PORT}"
 TOKEN = "test-token-not-secret"
@@ -536,8 +535,8 @@ def test_second_start_hits_the_ir_cache(monkeypatch: pytest.MonkeyPatch) -> None
         return real(*args, **kwargs)
 
     monkeypatch.setattr(pipeline, "build_graph", counting)
-    first = _workbench(GCS)
-    second = _workbench(GCS)
+    first = _workbench(TWIN)
+    second = _workbench(TWIN)
     assert len(builds) == 1, "the second start must load the cache, not rebuild"
     assert [dict(r) for r in first.records] == [dict(r) for r in second.records]
 
