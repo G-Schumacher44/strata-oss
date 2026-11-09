@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from strata_lookml.ir.types import explore_key
+from strata_lookml.links import link, object_path
 
 
 def build_pr_comment(
@@ -12,7 +13,10 @@ def build_pr_comment(
     file_to_views: dict[str, list[str]],
     scope: dict[str, Any],
     dead_code: list[dict[str, Any]],
+    workbench_base: str | None = None,
 ) -> str:
+    """The PR impact comment. With `workbench_base`, each explore links to its workbench page;
+    without one the text is unchanged (no guessed links)."""
     explores = scope.get("explores", [])
     dead_names = {item["name"] for item in dead_code}
     n = len(changed_files)
@@ -58,7 +62,9 @@ def build_pr_comment(
             label = explore_key(exp["model"], exp["explore"])
             dead_flag = " ⚠️ **dead code**" if label in dead_names else ""
             via = ", ".join(f"`{v}`" for v in exp.get("impacted_views", []))
-            lines.append(f"- `{label}`{dead_flag} — via {via}")
+            url = link(workbench_base, object_path(f"explore:{exp['model']}:{exp['explore']}"))
+            shown = f"[`{label}`]({url})" if url else f"`{label}`"
+            lines.append(f"- {shown}{dead_flag} — via {via}")
         lines.append("")
         lines.append("</details>")
         lines.append("")

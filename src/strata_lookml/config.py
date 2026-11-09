@@ -39,6 +39,37 @@ def load_bq_project() -> str | None:
     return _read_config().get("bq_project")
 
 
+def _valid_workbench_url(value: str) -> bool:
+    if value.startswith(("http://", "https://")):
+        return len(value.split("://", 1)[1]) > 0
+    return value.endswith(".html") or "#" in value
+
+
+def load_workbench_url(flag: str | None = None) -> str | None:
+    """Resolve the workbench base URL: flag → STRATA_WORKBENCH_URL env → config `workbench_url`.
+
+    None when unset: there is no default, because the workbench port can fall back and a
+    guessed URL would be wrong. A base is `http(s)://…` (a running server) or a path ending
+    `.html` / containing `#` (a static export); anything else is InvalidInput.
+    """
+    from strata_lookml.errors import InvalidInput
+
+    source, value = "--workbench-url", flag
+    if not value:
+        source, value = "STRATA_WORKBENCH_URL", os.environ.get("STRATA_WORKBENCH_URL")
+    if not value:
+        source, value = "config workbench_url", _read_config().get("workbench_url")
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or not _valid_workbench_url(value.strip()):
+        raise InvalidInput(
+            f"invalid workbench URL from {source}: {value!r}",
+            hint="Use http(s)://host:port for a running workbench, or a path ending .html "
+            "(or containing #) for a static export.",
+        )
+    return value.strip()
+
+
 def load_cost_threshold_gb() -> float:
     """Resolve BQ cost threshold: STRATA_COST_THRESHOLD_GB env → ~/.strata/config.json → 100.0."""
     env = os.environ.get("STRATA_COST_THRESHOLD_GB")

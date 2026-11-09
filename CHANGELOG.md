@@ -19,6 +19,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- Workbench links out: `--workbench-url` / `STRATA_WORKBENCH_URL` / config `workbench_url` (one resolver, never guessed). With a base, `strata check` failures carry a `url` (JSON) / `<url>` (text), PR comment explore bullets link to their pages, and MCP `strata_object` returns `workbench_url`. With no base nothing changes.
 - Triage core (`strata_lookml.triage`, workbench S4b): `TriageStore` keeps acknowledged finding ids in
   `~/.strata/triage/<repo_key>.json` (0600, atomic replace, writers serialized by an OS advisory lock plus a `rev` check, ids allowlisted against the
   current findings), append-only (unacknowledge sets `unacked_at`; an entry is pruned only 90 days after its id was

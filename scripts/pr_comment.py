@@ -21,6 +21,7 @@ if str(SRC) not in sys.path:
 # posting a fresh one on every push (one always-current comment per PR).
 BOT_MARKER = "<!-- strata-bot -->"
 
+from strata_lookml.config import load_workbench_url  # noqa: E402
 from strata_lookml.mcp.tools import strata_dead_code_register, strata_validation_scope  # noqa: E402
 from strata_lookml.outputs.pr_report import build_pr_comment  # noqa: E402
 from strata_lookml.pipeline import build_graph  # noqa: E402
@@ -114,6 +115,11 @@ def main() -> int:
     )
     parser.add_argument("--usage-fixture", help="Optional usage facts JSON for L1 enrichment")
     parser.add_argument("--schema-fixture", help="Optional schema facts JSON for L1 enrichment")
+    parser.add_argument(
+        "--workbench-url",
+        help="Workbench base URL: explore bullets link to their pages "
+        "(else STRATA_WORKBENCH_URL / config)",
+    )
     parser.add_argument("--pr", help="PR number to comment on (omit with --dry-run)")
     parser.add_argument(
         "--dry-run", action="store_true", help="Print comment to stdout instead of posting"
@@ -130,7 +136,13 @@ def main() -> int:
         scope = strata_validation_scope(graph, [f"view:{v}" for v in changed_views])
         dead_code = strata_dead_code_register(graph)
 
-        comment = build_pr_comment(lkml_files, file_to_views, scope, dead_code)
+        comment = build_pr_comment(
+            lkml_files,
+            file_to_views,
+            scope,
+            dead_code,
+            load_workbench_url(args.workbench_url),
+        )
     else:
         comment = "## Strata Analysis\n\nNo LookML files modified in this PR.\n"
 
