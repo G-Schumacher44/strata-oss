@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s5-findings (Findings triage page + keyboard map; workbench S5)
 
-Commit: 363b5be
-  (Latest implementation commit: review round 1 + post-merge fix; earlier 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
+Commit: 48bdcb0
+  (Latest implementation commit: review round 2; earlier 363b5be (review round 1 + post-merge fix), 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S5 of `workbench-spec-2026-11-08.md` (D1, D4, §4 Findings wireframe + keyboard map, §6b M2/M3/M6).
 Context Budget: medium
@@ -41,4 +41,8 @@ Visual: headless Chrome (isolated profile) screenshots in `dev_project_tmp/wb-s5
 - Integration bug found on the post-merge screenshot (`merged-overview.png`): the layout header's `.bar` rule hit S7's inline `svg.bar` and rendered every bar as a flex block. The header class is `.topbar` now; no other S5 selector matches an S7 class.
 - Codex: completed, no findings. Artemis SHIP, one note: `CATEGORY_LABELS` must stay in step with the gate's categories. Fixed with `test_every_finding_category_has_a_label` (negative control: dropping `drift` from the dict fails it). Apollo ACCEPT_WITH_NOTES: its notes say the gate counts and screenshots can't be checked from a static diff, which is true. Evidence is in this block and the PR report.
 - Not changed: S7's `overview.html` keeps its own inline palette (`prefers-color-scheme`) and so does not follow the workbench theme toggle. Aligning it with `workbench.css` tokens is a follow-up for S7/S10.
+
+### Review round 2 (PR #91 @ e2638a7)
+
+- Codex P2 (`_layout.html`: the help `<dialog>` had no clickable close, so mouse and touch users could not dismiss it): fixed in 48bdcb0. Added a `<form method="dialog">` Close button (`aria-label="Close help"`), which closes natively with no JS. `workbench.js` also closes on a click outside the dialog box; a click on the dialog's own padding still targets the dialog, so the bounding box decides. New test `test_help_dialog_has_a_close_button_that_works_without_javascript`. Headless Chrome: the Close button closes it; a click on the padding keeps it open; a backdrop click closes it; on a page loaded with JS off, Close still closes it. pytest 637 passed, 1 skipped; ruff, format, mypy and JS syntax are clean; the sink scan is still clean.
 
