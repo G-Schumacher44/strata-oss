@@ -32,6 +32,9 @@ def enrich_graph(
         "period": period,
         "explore_usage": {item.key: item.to_dict() for item in usage},
         "content_references": [item.to_dict() for item in (content_references or [])],
+        # None means content facts were never supplied; [] means they were and held no rows.
+        # The list above cannot tell the two apart, so the distinction is recorded here.
+        "content_checked": content_references is not None,
         "pdt_builds": {item.view: item.to_dict() for item in builds},
     }
     dead_code_records = _dead_code(graph, usage, content_references)
@@ -241,9 +244,15 @@ def analysis_coverage(graph: IRGraph) -> dict[str, bool]:
     writes: enrich_graph() writes `dead_code` (the usage checks: dead code + PDT ledger), and
     enrich_schema_drift() writes `schema_drift` (its own run-once guard keys on that field).
     An empty finding list means "checked, nothing found" only when its check ran; without
-    this, a consumer reads a skipped check's default [] as a clean result."""
+    this, a consumer reads a skipped check's default [] as a clean result. `content` is true
+    only when content-reference facts were supplied (even as an empty list); usage facts alone
+    do not say which dashboards/Looks view an explore."""
     l1 = graph.metadata.get("l1", {})
-    return {"usage": "dead_code" in l1, "schema": "schema_drift" in l1}
+    return {
+        "usage": "dead_code" in l1,
+        "schema": "schema_drift" in l1,
+        "content": bool(l1.get("content_checked", False)),
+    }
 
 
 def evidence_facts(graph: IRGraph) -> dict[str, dict]:
