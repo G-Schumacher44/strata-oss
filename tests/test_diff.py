@@ -266,3 +266,12 @@ def test_diff_findings_api(lookml_repo):
     assert {r["id"] for r in result.fixed} == FIXED_IDS
     assert result.to_dict()["unchanged_count"] == result.unchanged_count
     assert result.head["commit"] == git(lookml_repo, "rev-parse", "feature").strip()
+
+
+def test_dirty_sees_untracked_files_despite_user_git_config(lookml_repo):
+    """`status.showUntrackedFiles=no` must not hide an untracked view the parser will analyse."""
+    from strata_lookml.provenance import git_source
+
+    git(lookml_repo, "config", "status.showUntrackedFiles", "no")
+    (lookml_repo / "views" / "untracked.view.lkml").write_text("view: untracked_v {}\n")
+    assert git_source(lookml_repo)["dirty"] is True

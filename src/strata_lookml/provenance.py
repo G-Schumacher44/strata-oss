@@ -52,7 +52,7 @@ def git_source(repo: str | Path) -> dict[str, Any] | None:
     if commit is None:
         return None
     branch = _git(root, "symbolic-ref", "--short", "-q", "HEAD")
-    status = _git(root, "status", "--porcelain", "--", ".")
+    status = _git(root, "status", "--porcelain", "--untracked-files=normal", "--", ".")
     return {
         "commit": commit.strip(),
         "branch": branch.strip() if branch and branch.strip() else "detached",
