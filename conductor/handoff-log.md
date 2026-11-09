@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s4-server (local server, route table, security headers; workbench S4)
 
-Commit: 047f0da
-  (Latest implementation commit: merge of origin/main 7fe8bb5 (S11 #86) + the switch to `config.load_workbench_url`; earlier 7b21e95, ceb7abd. The PR squash-merges.)
+Commit: d0e98d2
+  (Latest implementation commit: merge of origin/main 46b3214 (S4c #87); earlier 047f0da (merge of S11 #86 + the switch to `config.load_workbench_url`), 7b21e95, ceb7abd. The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S4 of `workbench-spec-2026-11-08.md` (D1, D3, D6, D8, §4 URL map, §6a Q1).
 Context Budget: medium
@@ -33,4 +33,4 @@ Exact Next Steps: twin gate, operator merges. Then S5 (findings landing: `triage
 
 ### Gates
 
-pytest 582 passed, 1 skipped after merging origin/main 7fe8bb5 (this slice adds 72, all in `tests/test_workbench_server.py`; before the merge 568 vs base 4895c78's 498); ruff check + format --check clean on src/ tests/ scripts/; mypy `src/strata_lookml --ignore-missing-imports` clean; `check_dashboard_js_syntax.py` passes (5 blocks); `gen_reference.py --check` clean. Fail-before: the new test file against origin/main (detached worktree, PYTHONPATH pinned to it) errors at collection (no `strata_lookml.workbench.app`). Negative controls, each a mutation in a throwaway detached worktree of 7b21e95, run over `test_workbench_server.py` + `test_strata_object.py`: Host check removed (8 fail), security headers dropped (23), POST/PUT/... allowed (10), static served from the package directory by name (3), segment not unquoted (3), token in the 403 body (6), candidates page removed (3), error hint dropped (9), every start rebuilds instead of `load_or_build` (1), staleness checked every request (1), staleness not sticky (1), `|safe` in `placeholder.html` (1, the hostile-fixture test), 501 not routed through the app (8), table drift dropped from `findings_by_node` (1).
+pytest 596 passed, 1 skipped after merging origin/main 46b3214 (this slice adds 72, all in `tests/test_workbench_server.py`; before the merge 568 vs base 4895c78's 498); ruff check + format --check clean on src/ tests/ scripts/; mypy `src/strata_lookml --ignore-missing-imports` clean; `check_dashboard_js_syntax.py` passes (5 blocks); `gen_reference.py --check` clean. Fail-before: the new test file against origin/main (detached worktree, PYTHONPATH pinned to it) errors at collection (no `strata_lookml.workbench.app`). Negative controls, each a mutation in a throwaway detached worktree of 7b21e95, run over `test_workbench_server.py` + `test_strata_object.py`: Host check removed (8 fail), security headers dropped (23), POST/PUT/... allowed (10), static served from the package directory by name (3), segment not unquoted (3), token in the 403 body (6), candidates page removed (3), error hint dropped (9), every start rebuilds instead of `load_or_build` (1), staleness checked every request (1), staleness not sticky (1), `|safe` in `placeholder.html` (1, the hostile-fixture test), 501 not routed through the app (8), table drift dropped from `findings_by_node` (1).
