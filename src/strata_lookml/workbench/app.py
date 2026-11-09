@@ -24,6 +24,7 @@ from strata_lookml.links import finding_path, object_path
 from strata_lookml.mcp.tools import strata_object
 from strata_lookml.outputs.artifacts import cleanup_roadmap
 from strata_lookml.outputs.dashboard import _embed_json
+from strata_lookml.triage import TriageRow, TriageStore, triage_rows
 from strata_lookml.workbench.detail import Detail
 from strata_lookml.workbench.index import Staleness, Workbench
 from strata_lookml.workbench.pr_text import pr_comment
@@ -102,6 +103,7 @@ class App:
         self.hosts = hosts
         self.token = token
         self.staleness = staleness
+        self._store = TriageStore.open(workbench.repo, workbench.graph)
         self._detail = Detail(workbench, cleanup_roadmap(workbench.graph.metadata.get("l1", {})))
         self._pages: dict[str, Callable[[Mapping[str, list[str]]], Response]] = {
             "/findings": self._findings,
@@ -269,7 +271,7 @@ class App:
             if not candidates:
                 raise
             return self._candidates_page(kind, name, exc.message, candidates)
-        page = self._detail.object_page(obj)
+        page = self._detail.object_page(obj, self._triage_rows())
         records = page.pop("records")
         pr_text = pr_comment(
             records,
@@ -278,6 +280,12 @@ class App:
             verdict=(page["verdict"]["label"], page["verdict"]["why"]),
         )
         return self._page("detail.html", f"{kind} {obj['name']}", pr_text=pr_text, **page)
+
+    def _triage_rows(self) -> dict[str, TriageRow]:
+        """Each current finding id's triage row, read fresh (an ack made by the CLI shows)."""
+        wb = self.workbench
+        baseline = None if wb.baseline is None else {k: set(v) for k, v in wb.baseline.items()}
+        return {r.id: r for r in triage_rows(wb.graph, baseline, self._store)}
 
     def _candidates_page(
         self, kind: str, name: str, message: str, links: list[tuple[str, str]]
@@ -316,7 +324,7 @@ class App:
                 hint="It may be fixed, or its category was not run. The findings list shows "
                 "every current id.",
             )
-        page = self._detail.finding_page(finding_id, records)
+        page = self._detail.finding_page(finding_id, records, self._triage_rows())
         subject = {"kind": "finding", "id": finding_id, "name": finding_id}
         pr_text = pr_comment(records, subject, self.workbench.base_url)
         return self._page("finding.html", f"finding {finding_id}", pr_text=pr_text, **page)

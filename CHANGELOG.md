@@ -29,7 +29,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
   `/field/<view>.<field>` and `/finding/<id>` share one frame: kind, name, `file:line` with a copy button, a verdict
   line (an explore's is `deterministic_verdict` with its rationale; any other object shows its cleanup-roadmap
   action), evidence chips, upstream and downstream grouped by relation as links (dead and zombie markers from the
-  findings), findings on the object (status pills; Acknowledge is disabled until the triage adapter lands) and, for
+  findings), findings on the object (status pills from `triage_rows`, acknowledged with its note; the Acknowledge button is disabled until the triage adapter lands) and, for
   explores, content usage ("viewed in 30d", or "not loaded", never a zero that was not measured). A duplicated
   finding id renders every record and links its subject. "Copy PR comment" embeds `workbench.pr_text.pr_comment`,
   a pure function that links to the workbench only when a base URL is configured. `outputs.artifacts.cleanup_roadmap`

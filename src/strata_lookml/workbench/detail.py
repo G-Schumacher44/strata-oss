@@ -16,6 +16,7 @@ from strata_lookml.ir.types import explore_id
 from strata_lookml.links import finding_path, object_path
 from strata_lookml.synthesis.slices import build_explore_slice
 from strata_lookml.synthesis.verdicts import deterministic_verdict
+from strata_lookml.triage import TriageRow
 from strata_lookml.workbench.index import Workbench
 from strata_lookml.workbench.pr_text import ACTION_LABELS, CATEGORY_ACTIONS, CATEGORY_LABELS, usd
 
@@ -75,13 +76,6 @@ class Detail:
 
     # --- shared pieces -----------------------------------------------------------------
 
-    def status(self, record: Mapping[str, Any]) -> str:
-        """new | baselined (acknowledged arrives with the triage adapter)."""
-        baseline = self.wb.baseline
-        if baseline is not None and record["id"] in baseline.get(record["category"], ()):
-            return "baselined"
-        return "new"
-
     def mark(self, node_id: str) -> str | None:
         """`dead` / `zombie` when a finding of that category sits on the node.
 
@@ -118,20 +112,17 @@ class Detail:
             chips.append({"text": evidence_id, "href": href})
         return chips
 
-    def finding_cards(self, finding_ids: Sequence[str]) -> list[dict[str, Any]]:
-        cards = []
-        for finding_id in finding_ids:
-            for record in self.wb.findings_by_id.get(finding_id, ()):
-                cards.append(self.card(record))
-        return cards
-
-    def card(self, record: Mapping[str, Any]) -> dict[str, Any]:
+    def card(self, record: Mapping[str, Any], rows: Mapping[str, TriageRow]) -> dict[str, Any]:
+        """A finding as the pages show it; its status is `triage_rows`' (the one source)."""
+        row = rows.get(record["id"])
         return {
+            "status": row.status if row else "new",
+            "acked_at": row.acked_at if row else None,
+            "note": row.note if row else None,
             "id": record["id"],
             "href": finding_path(record["id"]),
             "category": record["category"],
             "category_label": CATEGORY_LABELS.get(record["category"], record["category"]),
-            "status": self.status(record),
             "message": record["message"],
         }
 
@@ -205,7 +196,7 @@ class Detail:
 
     # --- one object --------------------------------------------------------------------
 
-    def object_page(self, obj: Mapping[str, Any]) -> dict[str, Any]:
+    def object_page(self, obj: Mapping[str, Any], rows: Mapping[str, TriageRow]) -> dict[str, Any]:
         kind = obj["kind"]
         if kind == "explore":
             verdict, evidence_ids = self.explore_verdict(obj)
@@ -234,7 +225,7 @@ class Detail:
             "downstream": [
                 self.group(k, v) for k, v in obj["downstream"].items() if k != "content"
             ],
-            "findings": [self.card(r) for r in records],
+            "findings": [self.card(r, rows) for r in records],
             "records": records,
             "side_title": f"Findings on this object · {len(records)}",
         }
@@ -295,7 +286,9 @@ class Detail:
 
     # --- finding -----------------------------------------------------------------------
 
-    def finding_page(self, finding_id: str, records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    def finding_page(
+        self, finding_id: str, records: Sequence[Mapping[str, Any]], rows: Mapping[str, TriageRow]
+    ) -> dict[str, Any]:
         entries = []
         for record in records:
             subject = None
@@ -307,7 +300,7 @@ class Detail:
             action = CATEGORY_ACTIONS.get(record["category"], "")
             entries.append(
                 {
-                    **self.card(record),
+                    **self.card(record, rows),
                     "loc": loc,
                     "evidence": self.evidence(record["evidence_ids"]),
                     "subject": subject,
@@ -329,6 +322,6 @@ class Detail:
             "loc": first["loc"],
             "verdict": verdict,
             "entries": entries,
-            "cards": [self.card(r) for r in records],
+            "cards": [self.card(r, rows) for r in records],
             "side_title": f"Triage · {len(records)} record{'s' if len(records) != 1 else ''}",
         }

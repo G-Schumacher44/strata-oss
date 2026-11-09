@@ -4,6 +4,7 @@
 {% for e in entries %}<section>
 <div class="sec">Record {{ loop.index }} of {{ entries | length }} · {{ e.category_label }} · {{ e.status }}</div>
 <p>{{ e.message }}</p>
+{% if e.acked_at %}<p class="muted">Acknowledged {{ e.acked_at }}{% if e.note %} · {{ e.note }}{% endif %}</p>{% endif %}
 {% if e.loc %}<p class="mono">{{ e.loc }}</p>{% endif %}
 {% if e.cost is not none %}<p>Rebuild cost: {{ e.cost }}</p>{% endif %}
 {% if e.suggested %}<p>Suggested: {{ e.suggested }}</p>{% endif %}

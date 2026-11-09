@@ -272,3 +272,34 @@ def test_ambiguous_and_unknown_names_keep_their_status_codes() -> None:
     assert _get(app, "/explore/nope").status == 404
     assert _get(app, "/finding/nope").status == 404
     assert _get(app, "/static/detail.js").status == 200
+
+
+# --- triage status is triage_rows' ------------------------------------------------------------
+
+
+def test_status_pill_is_the_real_triage_status(app: App) -> None:
+    from strata_lookml.triage import TriageStore
+
+    fid = "dead:explore:em_legacy_v2.dead_finance_v2"
+    assert '<span class="pill">new</span>' in _page(app, "/explore/em_legacy_v2.dead_finance_v2")
+    TriageStore.open(ENTERPRISE, app.workbench.graph).acknowledge([fid], note="DATA-412 sunset")
+    for target in ("/explore/em_legacy_v2.dead_finance_v2", finding_path(fid)):
+        page = _page(app, target)  # read fresh: no restart after an ack from the CLI
+        assert '<span class="pill">acknowledged</span>' in page, target
+        assert "DATA-412 sunset" in page
+    assert '<span class="pill">new</span>' not in _page(app, finding_path(fid))
+
+
+def test_baselined_status_wins_over_new(tmp_path: Path) -> None:
+    wb = _wb()
+    ids = {"dead-code": {r["id"] for r in wb.records if r["category"] == "dead-code"}}
+    based = index_graph(
+        wb.graph,
+        repo=ENTERPRISE,
+        usage_fixture=wb.usage_fixture,
+        schema_fixture=wb.schema_fixture,
+        inputs=wb.inputs,
+        baseline=ids,
+    )
+    page = _page(_app(based), "/explore/em_legacy_v2.dead_finance_v2")
+    assert '<span class="pill">baselined</span>' in page

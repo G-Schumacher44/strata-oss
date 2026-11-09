@@ -19,12 +19,12 @@ Exact Next Steps: twin gate, operator merges. S5 (findings) and S7 (overview) sh
 - `outputs/artifacts.py`: `_cleanup_roadmap` -> public `cleanup_roadmap`, unchanged behaviour.
 - Templates: `_detail_frame.html` (scoped CSS from the mockup tokens, light/dark by `prefers-color-scheme`, crumbs, header, verdict, side cards, readonly PR-comment textarea), `_lineage.html` macros, `detail.html`, `finding.html`. No inline script or style attributes.
 - `assets/js/detail.js` (allow-listed as `/static/detail.js`): copy buttons via `data-copy` / `data-copy-from`, textContent only.
+- Status pills are `triage_rows`' (the one source), read fresh per request so a CLI `strata ack` shows without a restart; acknowledged shows `acked_at` and the note. `App` opens a `TriageStore` on the graph. Only the Acknowledge button waits for S9.
 - `app.py`: `_object` / `_finding` render the new pages; ambiguous/unknown behaviour unchanged (300/404/400).
 
 ### Deviations from the brief
 
 - No "Open in graph" link (the graph page is still a placeholder; S8).
-- Status pills are `new` / `baselined` only: `acknowledged` comes from the triage store, which the HTTP adapter (S9) wires in.
 - Rebuild cost in the PR comment has no "over N days" suffix (the finding record carries no window).
 - The hostile-fixture test now allows exactly one external script tag (`/static/detail.js`) and the frame's tags/attributes; any other script still fails it.
 

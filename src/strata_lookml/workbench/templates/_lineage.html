@@ -13,6 +13,8 @@
 <span class="pill {{ f.category }}">{{ f.category_label }}</span> <span class="pill">{{ f.status }}</span>
 <a class="id mono" href="{{ f.href }}">{{ f.id }}</a>
 <div class="msg">{{ f.message }}</div>
+{% if f.acked_at %}<div class="msg">acknowledged {{ f.acked_at }}{% if f.note %} · {{ f.note }}{% endif %}</div>
+{% endif %}
 <div class="acts"><button class="btn" type="button" disabled title="Acknowledge arrives with the triage adapter (S9)">Acknowledge</button></div>
 </div>
 {% else %}<div class="muted">No findings. Every check that ran passed for this object.</div>
