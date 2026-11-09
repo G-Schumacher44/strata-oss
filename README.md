@@ -387,8 +387,12 @@ With JavaScript the list is keyboard-driven (`j`/`k` move, `Enter` open, `x` sel
 `f` category, `1`–`6` tabs, `c` copy a PR comment, `y` copy `file:line`, `?` the full map).
 `a`/`u` (or the Acknowledge buttons, here and on detail pages) acknowledge or withdraw, with an
 optional note; without JavaScript the pages are read-only and `strata ack` / `strata unack` are
-the write path. Both write the same `~/.strata/triage/` store. The other workbench pages are being built out slice by
-slice; until they land, `strata dashboard --out DIR` keeps the static dashboard: all 8 output
+the write path. Both write the same `~/.strata/triage/` store. **Graph** (`/graph?focus=<node-id>`)
+draws one object's neighbourhood: what it reads and what reads it, one hop by default, two hops per
+direction and siblings on request, capped at 40 nodes; click a node to open its page. **⌘K /
+Ctrl-K** on any page jumps to any explore, view, PDT, table, field or finding by fuzzy name (on the
+graph it refocuses the graph); `/search?q=` is the same match without JavaScript. Until the static
+export lands, `strata dashboard --out DIR` keeps the static dashboard: all 8 output
 artifacts plus a self-contained HTML observability panel, served from DIR. No JavaScript
 framework, no CDN — all JS is bundled locally so it works in air-gapped or corp-network
 environments.

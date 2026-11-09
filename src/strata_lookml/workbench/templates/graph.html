@@ -1,0 +1,40 @@
+{% extends "_layout.html" %}
+{% block head %}{{ super() }}{% if hood %}<script src="/static/cytoscape.min.js" defer></script>
+<script src="/static/dagre.min.js" defer></script>
+<script src="/static/cytoscape-dagre.min.js" defer></script>
+<script src="/static/graph.js" defer></script>
+<style>{% for name, _ in node_legend + edge_legend %}.key-{{ name }} { background:var(--{{ name }}); }
+{% endfor %}</style>
+{% endif %}{% endblock %}
+{% block content %}
+{% if not hood %}<section class="graph-page" data-graph data-up="1" data-down="1">
+<h1>Graph</h1>
+<p class="hint">Pick a focus: the graph shows one object and what it reads and what reads it. Press <kbd>⌘K</kbd> from any page, or open an object's page and choose Open in graph.</p>
+<ul>
+{% for href, label in picker %}<li><a href="{{ href }}">{{ label }}</a></li>
+{% endfor %}{% if more %}<li class="hint">and {{ more }} more explores: use <a href="/search">Search</a></li>
+{% endif %}</ul>
+</section>
+{% else %}<section class="graph-page" data-graph data-focus="{{ focus.id }}" data-up="{{ hood.up }}" data-down="{{ hood.down }}"{% if hood.siblings %} data-siblings{% endif %}>
+<div class="gtool">
+<h1>Graph</h1>
+<span class="gfocus" title="{{ kind_label }} {{ focus.display_label }}">{{ focus.display_label }}</span>
+<span class="seg" aria-label="Hops"><a href="{{ controls.one }}"{% if hood.up == 1 and hood.down == 1 %} aria-current="true"{% endif %}>1 hop</a><a href="{{ controls.two }}"{% if hood.up == 2 and hood.down == 2 %} aria-current="true"{% endif %}>2 hops</a></span>
+<span class="seg" aria-label="Expand one direction"><a href="{{ controls.up }}"{% if hood.up == 2 %} aria-current="true"{% endif %}>upstream 2</a><a href="{{ controls.down }}"{% if hood.down == 2 %} aria-current="true"{% endif %}>downstream 2</a><a href="{{ controls.siblings }}"{% if hood.siblings %} aria-current="true"{% endif %}>siblings</a></span>
+{% if focus.path %}<a class="kbtn" href="{{ focus.path }}">Open detail page</a>{% endif %}
+<span class="ghint">Click a node to open it · <kbd>⌘K</kbd> to refocus</span>
+</div>
+{% if hood.shown < hood.total %}<p class="gnote" role="status">Showing {{ hood.shown }} of {{ hood.total }} nodes (capped at {{ cap }}). Use 1 hop or turn siblings off to see the rest.</p>
+{% endif %}<div class="gwrap" data-graph-canvas data-src="{{ api }}" hidden></div>
+<div class="glist" data-graph-list>
+<div class="gring"><div class="sec">focus</div><ul class="links"><li>{% if focus.path %}<a class="mono" href="{{ focus.path }}">{{ focus.display_label }}</a>{% else %}<span class="mono">{{ focus.display_label }}</span>{% endif %}<span class="rel">{{ kind_label }} · {{ focus.caption }}</span></li></ul></div>
+{% for ring, nodes in rings %}<div class="gring"><div class="sec">{{ ring }}</div><ul class="links">
+{% for n in nodes %}<li>{% if n.path %}<a class="mono" href="{{ n.path }}">{{ n.display_label }}</a>{% else %}<span class="mono">{{ n.display_label }}</span>{% endif %} <a class="rel" href="{{ n.graph }}">focus</a><span class="rel">{{ n.caption }}</span></li>
+{% endfor %}</ul></div>
+{% endfor %}</div>
+<div class="legend">{% for name, label in node_legend %}<span><i class="sw key-{{ name }}"></i>{{ label }}</span>
+{% endfor %}{% for name, label in edge_legend %}<span><i class="ln key-{{ name }}"></i>{{ label }}</span>
+{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}

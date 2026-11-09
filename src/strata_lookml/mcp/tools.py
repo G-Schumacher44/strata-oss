@@ -51,7 +51,7 @@ def l1_list_envelope(graph: IRGraph, items: Sequence[Any], check: str) -> dict[s
 
 
 def strata_query_field(graph: IRGraph, view: str, field: str | None = None) -> dict[str, Any]:
-    view, field = resolve_field(view, field)
+    view, field = resolve_field(view, field, graph)
     node = graph.get_node(f"field:{view}.{field}")
     if node is None:
         raise NotFound(
@@ -554,7 +554,7 @@ def strata_object(graph: IRGraph, kind: str, name: str, model: str | None = None
         impact = strata_impact(graph, table)
         downstream = {k: impact[k] for k in ("views", "explores", "fields")}
     elif kind == "field":
-        view, field = resolve_field(name)
+        view, field = resolve_field(name, graph=graph)
         found = graph.get_node(f"field:{view}.{field}")
         if found is None:
             raise NotFound(

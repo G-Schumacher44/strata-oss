@@ -4,9 +4,9 @@ No socket code here (`server.py` adapts `http.server` to `App.respond`), so ever
 and error page is testable without a port. Order per request: Host allow-list, then method
 (GET/HEAD everywhere except `POST /api/triage`, the one write: `_triage_post`), then routing.
 Every response, errors included, carries `SECURITY_HEADERS`. Findings is the triage list (S5,
-`pages/findings.py`); the other pages are placeholders until their own slices (S6-S8) replace
-them. The URL scheme, resolution
-and error contract here are final.
+`pages/findings.py`); the graph is a focus neighbourhood (S8, `graph.py`) drawn from
+`/api/graph`; ⌘K and `/search` read one index (`jump.py`). The URL scheme, resolution and
+error contract here are final.
 """
 
 from __future__ import annotations
@@ -25,13 +25,27 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from strata_lookml.errors import InvalidInput, NotFound, StrataError
 from strata_lookml.identifiers import explore_matches, explores_by_key, table_matches
 from strata_lookml.ir.types import explore_id, explore_key
-from strata_lookml.links import finding_path, object_path
+from strata_lookml.links import finding_path, graph_path, object_path
 from strata_lookml.mcp.tools import strata_object
 from strata_lookml.outputs.artifacts import cleanup_roadmap
-from strata_lookml.outputs.dashboard import _embed_json, _palette_css
+from strata_lookml.outputs.dashboard import _embed_json
 from strata_lookml.triage import TriageRow, TriageStore, triage_rows
-from strata_lookml.workbench.detail import Detail
+from strata_lookml.workbench.detail import KIND_LABELS, Detail
+from strata_lookml.workbench.graph import (
+    EDGE_LEGEND,
+    MAX_HOPS,
+    NODE_CAP,
+    NODE_LEGEND,
+    RINGS,
+    build_graph_data,
+    edge_var,
+    neighbourhood,
+    node_var,
+    palette_css,
+)
 from strata_lookml.workbench.index import Staleness, Workbench
+from strata_lookml.workbench.jump import KIND_LABELS as JUMP_KINDS
+from strata_lookml.workbench.jump import jump_index, search, segments
 from strata_lookml.workbench.overview import overview_context
 from strata_lookml.workbench.pages.findings import STATUS_LABELS, findings_context, parse_query
 from strata_lookml.workbench.pr_text import pr_comment
@@ -62,11 +76,14 @@ STATIC_ASSETS: Mapping[str, tuple[str, str]] = {
     "workbench.js": ("strata_lookml.assets.js", "workbench.js"),
     "workbench.css": ("strata_lookml.assets.css", "workbench.css"),
     "detail.js": ("strata_lookml.assets.js", "detail.js"),
+    "graph.js": ("strata_lookml.assets.js", "graph.js"),
 }
 _STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
 # URL kind -> strata_object kind (the same names, listed so the route table is explicit).
 _OBJECT_ROUTES = ("explore", "view", "pdt", "table", "field")
+# The graph page's focus list when no focus is given: this many explores, then a pointer to ⌘K.
+GRAPH_PICKER_LIMIT = 60
 
 
 @dataclass(frozen=True)
@@ -237,12 +254,17 @@ class App:
         self.staleness = staleness
         self._store = TriageStore.open(workbench.repo, workbench.graph)
         self._detail = Detail(workbench, cleanup_roadmap(workbench.graph.metadata.get("l1", {})))
+        # Built once (D8): the graph never changes under a running server.
+        self._graph_data = build_graph_data(workbench.graph)
+        self._graph_ids = frozenset(n["data"]["id"] for n in self._graph_data["nodes"])
+        self._jump = jump_index(workbench)
         self._pages: dict[str, Callable[[Mapping[str, list[str]]], Response]] = {
             "/findings": self._findings,
             "/overview": self._overview,
             "/graph": self._graph,
             "/search": self._search,
             "/api/index.json": self._api_index,
+            "/api/graph": self._api_graph,
             "/api/pr-comment": self._api_pr_comment,
         }
 
@@ -380,7 +402,7 @@ class App:
             "nav": nav,
             "repo_name": self.workbench.repo.name,
             # NODE_PALETTE/EDGE_PALETTE as --n-*/--e-* properties: never hand-copied into CSS.
-            "palette_css": _palette_css(),
+            "palette_css": palette_css(),
             "token": self.token,
             "stale": self.staleness.stale(),
             "coverage": self._coverage(),
@@ -409,24 +431,6 @@ class App:
             hint=error.hint,
         ).encode("utf-8")
         return _response(status, body, HTML, extra)
-
-    def _placeholder(
-        self,
-        title: str,
-        summary: str,
-        facts: list[tuple[str, str]] | None = None,
-        links: list[tuple[str, str]] | None = None,
-        nav: str = "",
-    ) -> Response:
-        return self._page(
-            "placeholder.html",
-            title,
-            nav=nav,
-            heading=title,
-            summary=summary,
-            facts=facts or [],
-            links=links or [],
-        )
 
     def _finding_links(self, ids: Any) -> list[tuple[str, str]]:
         return [(finding_path(i), i) for i in ids]
@@ -469,30 +473,125 @@ class App:
             "overview.html", "Overview", nav="overview", **overview_context(self.workbench)
         )
 
+    def _graph_query(self, query: Mapping[str, list[str]]) -> tuple[str, int, int, bool]:
+        """`focus`, `up`, `down`, `siblings` from `/graph` or `/api/graph`: `hops` sets both
+        directions, `up`/`down` override one; each 1..MAX_HOPS. Bad values are a 400."""
+
+        def number(name: str, default: int) -> int:
+            raw = query.get(name, [str(default)])[0]
+            if raw not in {str(n) for n in range(1, MAX_HOPS + 1)}:
+                raise InvalidInput(
+                    f"{name} must be 1 or {MAX_HOPS}. Got: {raw!r}",
+                    hint="Use hops=1 or hops=2; up= and down= set one direction.",
+                )
+            return int(raw)
+
+        hops = number("hops", 1)
+        siblings = query.get("siblings", ["0"])[0]
+        if siblings not in {"0", "1"}:
+            raise InvalidInput(
+                f"siblings must be 0 or 1. Got: {siblings!r}", hint="Use siblings=1 to show them."
+            )
+        return (
+            query.get("focus", [""])[0],
+            number("up", hops),
+            number("down", hops),
+            siblings == "1",
+        )
+
+    def _neighbourhood(self, focus: str, up: int, down: int, siblings: bool) -> dict[str, Any]:
+        found = neighbourhood(
+            self._graph_data, focus, up=up, down=down, siblings=siblings, cap=NODE_CAP
+        )
+        if found is None:
+            raise NotFound(
+                f"no graph node named {focus}",
+                hint="The graph holds explores, views, PDTs and warehouse tables, by IR id "
+                "(explore:<model>:<name>, view:<name>, ...). Press ⌘K or use Search to pick one.",
+            )
+        return found
+
     def _graph(self, query: Mapping[str, list[str]]) -> Response:
-        focus = query.get("focus", [""])[0]
-        return self._placeholder(
-            "Graph",
-            "The graph view arrives in a later release.",
-            facts=[("focus", focus)],
+        focus, up, down, siblings = self._graph_query(query)
+        if not focus:
+            explores = [
+                (graph_path(item["id"]), item["label"])
+                for item in self._jump
+                if item["kind"] == "explore"
+            ]
+            return self._page(
+                "graph.html",
+                "Graph",
+                nav="graph",
+                hood=None,
+                picker=explores[:GRAPH_PICKER_LIMIT],
+                more=max(0, len(explores) - GRAPH_PICKER_LIMIT),
+            )
+        hood = self._neighbourhood(focus, up, down, siblings)
+        nodes = [
+            {**n["data"], "graph": graph_path(n["data"]["id"], up, down, siblings)}
+            for n in hood["nodes"]
+        ]
+        rings = [
+            (ring, [n for n in nodes if n["ring"] == ring])
+            for ring in RINGS[1:]
+            if any(n["ring"] == ring for n in nodes)
+        ]
+        focus_node = nodes[0]
+
+        def href(**change: Any) -> str:
+            state = {"up": up, "down": down, "siblings": siblings, **change}
+            return graph_path(focus, **state)
+
+        return self._page(
+            "graph.html",
+            f"Graph {focus_node['display_label']}",
             nav="graph",
+            hood=hood,
+            focus=focus_node,
+            kind_label=KIND_LABELS.get(focus_node["kind"], focus_node["kind"]),
+            rings=rings,
+            controls={
+                "one": href(up=1, down=1),
+                "two": href(up=2, down=2),
+                "up": href(up=1 if up == 2 else 2),
+                "down": href(down=1 if down == 2 else 2),
+                "siblings": href(siblings=not siblings),
+            },
+            api=f"/api{href()}",
+            cap=NODE_CAP,
+            node_legend=[(node_var(k), label) for k, label in NODE_LEGEND.items()],
+            edge_legend=[(edge_var(r), label) for r, label in EDGE_LEGEND.items()],
+        )
+
+    def _api_graph(self, query: Mapping[str, list[str]]) -> Response:
+        """The focus neighbourhood as Cytoscape elements: graph.js fetches this, never inline JSON."""
+        focus, up, down, siblings = self._graph_query(query)
+        hood = self._neighbourhood(focus, up, down, siblings)
+        return _response(
+            HTTPStatus.OK, _embed_json({**hood, "cap": NODE_CAP}).encode("utf-8"), JSON
         )
 
     def _search(self, query: Mapping[str, list[str]]) -> Response:
+        """`/search?q=`: ⌘K without JavaScript, matched on the server over the same index."""
         q = query.get("q", [""])[0]
-        return self._placeholder(
-            "Search", "Search arrives in a later release.", facts=[("query", q)], nav="search"
+        results, total = search(self._jump, q)
+        return self._page(
+            "search.html",
+            f"Search {q}" if q else "Search",
+            nav="search",
+            q=q,
+            total=total,
+            results=[
+                {**r, "kind_label": JUMP_KINDS[r["kind"]], "runs": segments(r["label"], r["hits"])}
+                for r in results
+            ],
         )
 
     def _api_index(self, query: Mapping[str, list[str]]) -> Response:
-        objects = [
-            {"kind": node.kind, "name": node.name, "path": path}
-            for node in self.workbench.graph.nodes.values()
-            if (path := object_path(node.id)) is not None
-        ]
-        findings = [{"id": i, "path": finding_path(i)} for i in self.workbench.findings_by_id]
-        body = _embed_json({"objects": objects, "findings": findings}).encode("utf-8")
-        return _response(HTTPStatus.OK, body, "application/json; charset=utf-8")
+        """The ⌘K index: `items` ({id, kind, label, path}) plus the kind display names."""
+        body = _embed_json({"kinds": JUMP_KINDS, "items": self._jump}).encode("utf-8")
+        return _response(HTTPStatus.OK, body, JSON)
 
     def _object(self, kind: str, name: str) -> Response:
         graph = self.workbench.graph
@@ -521,7 +620,17 @@ class App:
             self.workbench.base_url,
             verdict=(page["verdict"]["label"], page["verdict"]["why"]),
         )
-        return self._page("detail.html", f"{kind} {obj['name']}", pr_text=pr_text, **page)
+        return self._page(
+            "detail.html",
+            f"{kind} {obj['name']}",
+            pr_text=pr_text,
+            graph_href=self._graph_href(obj["id"]),
+            **page,
+        )
+
+    def _graph_href(self, node_id: str | None) -> str | None:
+        """The graph focused on `node_id` when the graph draws that node (not fields), else None."""
+        return graph_path(node_id) if node_id and node_id in self._graph_ids else None
 
     def _triage_rows(self) -> dict[str, TriageRow]:
         """Each finding id's triage row in `triage_rows` order, read fresh per request (an ack
@@ -571,7 +680,13 @@ class App:
         page = self._detail.finding_page(finding_id, records, self._triage_rows())
         subject = {"kind": "finding", "id": finding_id, "name": finding_id}
         pr_text = pr_comment(records, subject, self.workbench.base_url)
-        return self._page("finding.html", f"finding {finding_id}", pr_text=pr_text, **page)
+        return self._page(
+            "finding.html",
+            f"finding {finding_id}",
+            pr_text=pr_text,
+            graph_href=self._graph_href(records[0].get("subject_id")),
+            **page,
+        )
 
     def _static(self, name: str) -> Response:
         if name not in STATIC_ASSETS:

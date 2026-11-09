@@ -1,33 +1,4 @@
 {% extends "_layout.html" %}
-{% block head %}{{ super() }}<style>
-:root { color-scheme: light dark; --bg: #fbfaf7; --fg: #1d1b18; --muted: #6b665e; --rule: #dedad2; --track: #e6e2d9; --fill: #2f8f6b; --warn: #c2453b; --zombie: #7b5cc4; --drift: #3b7bc2; }
-@media (prefers-color-scheme: dark) { :root { --bg: #10151c; --fg: #e8e6e1; --muted: #98a0ab; --rule: #27303b; --track: #232c38; --fill: #3fbf93; --warn: #f0685e; --zombie: #a58bf0; --drift: #6aa5ee; } }
-body { background: var(--bg); color: var(--fg); margin: 0; font: 15px/1.5 system-ui, sans-serif; }
-nav, .coverage { padding: .5rem 1.25rem; color: var(--muted); }
-nav a { color: inherit; }
-.report { max-width: 44rem; margin: 2rem auto 4rem; padding: 0 1.25rem; font: 1.125rem/1.65 Charter, "Iowan Old Style", Georgia, serif; }
-.report h1 { font-weight: 400; font-size: 2.1rem; line-height: 1.2; margin: 0 0 .25rem; }
-.report h2 { font: 600 .95rem system-ui, sans-serif; margin: 2.5rem 0 .5rem; }
-.dek, .notrun { color: var(--muted); font-size: .95rem; }
-.notrun { font-style: italic; }
-.report a { color: inherit; text-decoration-color: var(--muted); }
-code, .mono { font: .85rem ui-monospace, Menlo, monospace; }
-.rtable { width: 100%; border-collapse: collapse; font: .9rem system-ui, sans-serif; margin: 1rem 0; }
-.rtable th { text-align: left; font-weight: 400; color: var(--muted); }
-.rtable th, .rtable td { padding: .35rem .5rem .35rem 0; border-bottom: 1px solid var(--rule); }
-.rtable .num { text-align: right; font-variant-numeric: tabular-nums; }
-svg.bar { vertical-align: middle; }
-svg.bar .track { fill: var(--track); }
-svg.bar .fill { fill: var(--fill); }
-.dead svg.bar .fill { fill: var(--warn); }
-.pdt svg.bar .fill { fill: var(--zombie); }
-.drift svg.bar .fill { fill: var(--drift); }
-.actions { list-style: none; padding: 0; font: .95rem system-ui, sans-serif; }
-.actions > li { padding: .6rem 0; border-bottom: 1px solid var(--rule); }
-.actions .n { display: inline-block; min-width: 2rem; font-weight: 600; }
-.actions ul { margin: .4rem 0 0 2.25rem; padding: 0; list-style: none; }
-</style>
-{% endblock %}
 {% block content %}
 <article class="report">
 <h1>{{ headline.repo }}: {{ headline.objects }} objects{% if headline.findings == "0" and not (headline.usage_ran or headline.schema_ran) %}, findings not run{% else %}, {{ headline.findings }} findings{% endif %}</h1>

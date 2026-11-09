@@ -380,6 +380,205 @@
     };
   }
 
+  // --- jump palette (⌘K / Ctrl-K) ---------------------------------------------------------
+  //
+  // Fetches /api/index.json once, on first open, and fuzzy-matches as you type. /search?q= is
+  // the no-JS twin: the same index matched on the server (workbench/jump.py). On the graph
+  // page an object refocuses the graph instead of opening its page.
+
+  var PALETTE_ROWS = 12;
+  var palette = $("#palette");
+  var paletteButton = $('[data-action="palette"]');
+  var paletteIndex = null; // the fetch promise, made once
+
+  // <fuzzy> The same scorer as workbench/jump.py `fuzzy` (tests compare the two).
+  function fuzzyMatch(query, text) {
+    var q = query.toLowerCase();
+    var t = text.toLowerCase();
+    if (!q) return { score: 0, hits: [] };
+    var at = t.indexOf(q);
+    if (at >= 0) {
+      var run = [];
+      for (var r = 0; r < q.length; r++) run.push(at + r);
+      return { score: 1000 - at - text.length * 0.1, hits: run };
+    }
+    q = q.replace(/\s+/g, "");
+    var score = 0, last = -2, qi = 0, hits = [];
+    for (var i = 0; i < t.length && qi < q.length; i++) {
+      if (t[i] === q[qi]) {
+        score += (i === last + 1 ? 8 : 1) + (i === 0 || /[._:\s]/.test(t[i - 1]) ? 5 : 0);
+        hits.push(i);
+        last = i;
+        qi++;
+      }
+    }
+    return qi === q.length ? { score: score - text.length * 0.1, hits: hits } : null;
+  }
+  // </fuzzy>
+
+  // <target> Where a palette pick goes: on a graph page (any element marked data-graph, focused
+  // or not) an object the graph draws refocuses it with the page's hop state; anything else,
+  // and findings and fields everywhere, open their page (tests run this under node).
+  function paletteTarget(graph, item) {
+    if (graph && item.kind !== "finding" && item.kind !== "field") {
+      var params = new URLSearchParams();
+      params.set("focus", item.id);
+      var up = graph.getAttribute("data-up") || "1", down = graph.getAttribute("data-down") || "1";
+      if (up === down) params.set("hops", up);
+      else { params.set("up", up); params.set("down", down); }
+      if (graph.hasAttribute("data-siblings")) params.set("siblings", "1");
+      return "/graph?" + params.toString();
+    }
+    return item.path;
+  }
+  // </target>
+
+  function jumpPalette(dialog) {
+    if (!dialog) return null;
+    var input = $("[data-palette-input]", dialog);
+    var listbox = $("[data-palette-list]", dialog);
+    var count = $("[data-palette-count]", dialog);
+    var graph = $("[data-graph]");
+    var index = { kinds: {}, items: [] };
+    var results = [];
+    var cursor = 0;
+
+    function load() {
+      if (!paletteIndex) {
+        paletteIndex = fetch("/api/index.json", { credentials: "same-origin" }).then(function (r) {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json();
+        });
+      }
+      return paletteIndex;
+    }
+
+    function labelNode(text, hits) {
+      var span = doc.createElement("span");
+      span.className = "t";
+      var marked = {};
+      hits.forEach(function (h) { marked[h] = true; });
+      var run = "", inHit = false;
+      function flush() {
+        if (!run) return;
+        if (inHit) {
+          var mark = doc.createElement("mark");
+          mark.textContent = run;
+          span.appendChild(mark);
+        } else {
+          span.appendChild(doc.createTextNode(run));
+        }
+        run = "";
+      }
+      for (var i = 0; i < text.length; i++) {
+        var hit = !!marked[i];
+        if (hit !== inHit) { flush(); inHit = hit; }
+        run += text[i];
+      }
+      flush();
+      return span;
+    }
+
+    function paint() {
+      var rows = results.map(function (res, i) {
+        var li = doc.createElement("li");
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", i === cursor ? "true" : "false");
+        li.appendChild(labelNode(res.item.label, res.hits));
+        var kind = doc.createElement("span");
+        kind.className = "kd";
+        kind.textContent = index.kinds[res.item.kind] || res.item.kind;
+        li.appendChild(kind);
+        li.addEventListener("click", function () { go(i); });
+        li.addEventListener("mousemove", function () { if (cursor !== i) { cursor = i; paint(); } });
+        return li;
+      });
+      if (!rows.length) {
+        var none = doc.createElement("li");
+        none.className = "none";
+        none.textContent = input.value.trim() ? "Nothing matches “" + input.value.trim() + "”" : "Loading…";
+        rows.push(none);
+      }
+      listbox.replaceChildren.apply(listbox, rows);
+      var current = $('[aria-selected="true"]', listbox);
+      if (current) current.scrollIntoView({ block: "nearest" });
+    }
+
+    function match() {
+      var q = input.value.trim();
+      if (!q) {
+        // Nothing typed: the findings first (they are what a triage session jumps between).
+        var findings = index.items.filter(function (it) { return it.kind === "finding"; });
+        var start = (findings.length ? findings : index.items).slice(0, PALETTE_ROWS);
+        results = start.map(function (it) { return { item: it, hits: [] }; });
+      } else {
+        results = index.items
+          .map(function (it, n) { var m = fuzzyMatch(q, it.label); return m && { item: it, hits: m.hits, score: m.score, n: n }; })
+          .filter(Boolean)
+          .sort(function (a, b) { return b.score - a.score || a.n - b.n; })
+          .slice(0, PALETTE_ROWS);
+      }
+      cursor = Math.min(cursor, Math.max(results.length - 1, 0));
+      paint();
+    }
+
+    function go(i) {
+      var res = results[i];
+      if (!res) return;
+      dialog.close();
+      location.href = paletteTarget(graph, res.item);
+    }
+
+    input.addEventListener("input", function () { cursor = 0; match(); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) { cursor = Math.min(cursor + 1, results.length - 1); paint(); e.preventDefault(); }
+      else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) { cursor = Math.max(cursor - 1, 0); paint(); e.preventDefault(); }
+      else if (e.key === "Enter") { go(cursor); e.preventDefault(); }
+    });
+    dialog.addEventListener("click", function (e) {
+      if (e.target !== dialog) return;
+      var box = dialog.getBoundingClientRect();
+      var inside = e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+      if (!inside) dialog.close();
+    });
+
+    function open() {
+      if (dialog.open || typeof dialog.showModal !== "function") return;
+      if (help && help.open) help.close();
+      input.value = "";
+      cursor = 0;
+      results = [];
+      dialog.showModal();
+      input.focus();
+      paint();
+      load().then(
+        function (data) {
+          index = { kinds: data.kinds || {}, items: Array.isArray(data.items) ? data.items : [] };
+          if (count) count.textContent = index.items.length + " indexed";
+          match();
+        },
+        function () {
+          paletteIndex = null; // retry on the next open
+          listbox.replaceChildren();
+          toast("Could not load the index — use Search");
+        }
+      );
+    }
+
+    return { open: open, toggle: function () { if (dialog.open) dialog.close(); else open(); } };
+  }
+
+  var jump = jumpPalette(palette);
+  if (jump && paletteButton) {
+    paletteButton.hidden = false;
+    paletteButton.addEventListener("click", jump.open);
+  }
+  doc.addEventListener("keydown", function (e) {
+    if (!jump || !(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "k") return;
+    e.preventDefault();
+    jump.toggle();
+  });
+
   // --- global keyboard -----------------------------------------------------------------
 
   var gPressedAt = 0;

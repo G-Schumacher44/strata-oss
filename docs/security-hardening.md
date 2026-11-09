@@ -163,7 +163,10 @@ builds a filesystem path from a request:
   script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
 - **Static files** come from a fixed name -> packaged-asset map (the vendored Cytoscape/dagre
-  bundles); any other `/static/` name, `..` included, is 404.
+  bundles and the page scripts); any other `/static/` name, `..` included, is 404.
+- **JSON** (`/api/index.json`, `/api/graph`, `/api/pr-comment`) is read-only, behind the same Host
+  check and headers, serialised with `<` escaped. Pages never inline JSON or code in a `<script>`:
+  the graph and the ⌘K palette fetch their data.
 - **Paths** are exactly `/<kind>/<one percent-decoded segment>`; the segment is a lookup key into
   the in-memory graph, never a path. Unknown objects render the error contract (message + hint)
   as a 404; ambiguous names a 300 page linking each candidate.

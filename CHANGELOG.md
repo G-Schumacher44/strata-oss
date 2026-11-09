@@ -25,6 +25,15 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- Workbench **Graph** and **⌘K** (workbench S8). `/graph?focus=<node-id>&hops=1|2` draws one object's
+  neighbourhood with the bundled Cytoscape + dagre: what it reads and what reads it, one hop each way by
+  default, `up=2` / `down=2` to extend one direction, `siblings=1` for the other children of its parents,
+  capped at 40 nodes with a "showing N of M" note. Nodes open their page; the legend comes from the one node
+  and edge palette. The page fetches its data from the read-only `/api/graph` and lists the neighbourhood as
+  links without JavaScript. Detail pages link "Open in graph". ⌘K / Ctrl-K on every page jumps to any
+  explore, view, PDT, table, field or finding by fuzzy name (letters in order match: `lgcy ord` finds
+  `legacy_order_detail`), from a lazily fetched `/api/index.json` (`{id, kind, label, path}` per item); on the
+  graph it refocuses the graph. `/search?q=` is the same match without JavaScript.
 - Acknowledge from the web (workbench S9): `a`/`u` and the Acknowledge buttons on Findings (with an optional
   note) and on detail and finding pages call `POST /api/triage`, the workbench's only write, a thin adapter over
   the triage store, and repaint the status from its answer; errors show a toast with the hint. The request is
@@ -220,6 +229,11 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Fixed
 
+- Workbench: the detail pages and the Overview follow the light/dark theme toggle. They carried their own
+  colour palettes (switched by the OS setting only); they now read the shared theme tokens.
+- A field on a view whose name contains a dot (`view: "sales.orders"`) resolves as one argument
+  (`sales.orders.id`) in `strata_query_field`, `strata_object` and its workbench `/field/` page: the name splits
+  after the longest known view name instead of at the first dot.
 - L1 coverage now records `content` (true only when content-reference facts were supplied, even
   as an empty list) beside `usage`/`schema`. A usage fixture or provider with no content
   section used to store `[]`, so `strata_object` reported 0 dashboards/Looks for an explore;

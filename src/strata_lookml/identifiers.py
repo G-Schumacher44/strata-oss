@@ -107,10 +107,26 @@ def resolve_explore(graph: IRGraph, explore: str, model: str | None = None) -> t
     )
 
 
-def resolve_field(view: str, field: str | None = None) -> tuple[str, str]:
-    """Return (view, field). `field` may be omitted when `view` is `view.field`."""
+def resolve_field(
+    view: str, field: str | None = None, graph: IRGraph | None = None
+) -> tuple[str, str]:
+    """Return (view, field). `field` may be omitted when `view` is `view.field`.
+
+    With `graph`, a one-argument `view.field` splits after the longest known view name it
+    starts with, so a field of a view whose name holds a dot resolves (as `resolve_explore`
+    does for dotted explores); with no known view as a prefix, it splits at the first dot.
+    """
     if field:
         return view, field
+    if graph is not None:
+        known = [
+            node.name
+            for node in graph.nodes_by_kind("view")
+            if view.startswith(f"{node.name}.") and len(view) > len(node.name) + 1
+        ]
+        if known:
+            name = max(known, key=len)
+            return name, view[len(name) + 1 :]
     view_part, dot, field_part = view.partition(".")
     if not dot or not view_part or not field_part:
         raise InvalidInput(

@@ -9,6 +9,7 @@
 <a class="brand" href="/findings">strata <span class="repo">{{ repo_name }}</span></a>
 {% for key, label in [("findings", "Findings"), ("overview", "Overview"), ("graph", "Graph"), ("search", "Search")] %}<a class="navlink" href="/{{ key }}"{% if nav == key %} aria-current="page"{% endif %}>{{ label }}</a>
 {% endfor %}<span class="spacer"></span>
+<button class="kbtn" type="button" data-action="palette" aria-label="Jump to an object" hidden><span class="lbl">Jump to…</span> <kbd>⌘K</kbd></button>
 <button class="kbtn" type="button" data-action="theme" hidden>Light</button>
 <button class="kbtn" type="button" data-action="help" aria-label="Keyboard shortcuts" hidden><kbd>?</kbd></button>
 </div>
@@ -35,9 +36,15 @@
 <dt><kbd>g</kbd> <kbd>f</kbd></dt><dd>Go to findings</dd>
 <dt><kbd>g</kbd> <kbd>o</kbd></dt><dd>Go to overview</dd>
 <dt><kbd>g</kbd> <kbd>g</kbd></dt><dd>Go to graph</dd>
+<dt><kbd>⌘</kbd> <kbd>K</kbd></dt><dd>Jump to any object or finding (Ctrl-K; on the graph, refocus it)</dd>
 <dt><kbd>esc</kbd></dt><dd>Close / clear selection</dd>
 <dt><kbd>?</kbd></dt><dd>This help</dd>
 </dl>
 <form method="dialog" class="dialog-actions"><button class="btn" type="submit" aria-label="Close help">Close</button></form>
+</dialog>
+<dialog id="palette" class="dialog pal" aria-label="Jump to">
+<input type="text" placeholder="Jump to an explore, view, PDT, table, field or finding…" aria-label="Search objects and findings" autocomplete="off" spellcheck="false" data-palette-input>
+<ul role="listbox" aria-label="Matches" data-palette-list></ul>
+<div class="foot"><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="count" data-palette-count></span></div>
 </dialog>
 {% endblock %}
