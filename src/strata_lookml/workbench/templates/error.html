@@ -1,0 +1,8 @@
+{% extends "_layout.html" %}
+{% block content %}
+<h1>{{ status }} {{ reason }}</h1>
+<p>{{ message }}</p>
+{% if hint %}<p class="hint">{{ hint }}</p>
+{% endif %}
+<p><a href="/findings">Back to findings</a></p>
+{% endblock %}

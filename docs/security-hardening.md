@@ -10,7 +10,8 @@ or Jira. Its writes are local files. Every command that writes or deletes files,
 | MCP server (`strata-mcp`) | The IR cache: `~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db` (directory 0700, file 0600 on POSIX), or the path in `STRATA_CACHE_PATH`. Never inside the LookML repo by default. Rebuilt unless it was built from the same repo (path + `.lkml` file count, newest mtime, total size, paths) and fixtures (paths + mtimes) and is younger than the cache max age; a missing, unparseable, or future timestamp also forces a rebuild. |
 | `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
 | `strata build` | The IR cache: the same `~/.strata/cache/` entry as the MCP server, or `--cache` / `STRATA_CACHE_PATH` (refused if that path is a symlink, a `.lkml`/`.lookml` file, a directory, or an existing file that is not a Strata IR cache, such as an unrelated SQLite database). |
-| `strata outputs` / `strata dashboard` | JSON artifacts and `dashboard.html` under `--out` (dashboard default: `./output/<repo-name>`). |
+| `strata outputs` / `strata dashboard --out` | JSON artifacts and `dashboard.html` under `--out`. |
+| `strata workbench` (and `strata dashboard` without `--out`) | The IR cache, exactly as the MCP server writes it (reused on a second start when its inputs are unchanged). Nothing else: no artifacts, no files in the repo; a `--baseline` file is read, never written. |
 | `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default: a fresh `strata_chart_*.html` in the system temp dir, path printed); any path the user names, never written through a symlink at the final component. |
 | `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
 | `strata conductor init` / `new-slice` | `conductor/` files in the target repo. |
@@ -34,9 +35,11 @@ actual delivery yourself.
   carried to another host.
 - **Outbound, BigQuery:** `strata generate-schema` shells out to the `bq` CLI with your gcloud
   credentials; it does not use the Looker token.
-- **Listening:** `strata dashboard` serves its output directory on `127.0.0.1` (default port
+- **Listening:** `strata workbench` (alias `strata dashboard`) listens on `127.0.0.1` (default port
   8765, falling back to 8766-8785 if busy and `--port` was not passed) until you stop it, and answers 403 to any request whose `Host` header is not
-  `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` (DNS-rebinding guard). `strata auth login` listens on
+  `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` (DNS-rebinding guard); see
+  [Workbench Server](#workbench-server). `strata dashboard --out DIR` instead serves DIR (the
+  static export) with the same bind and Host check. `strata auth login` listens on
   `127.0.0.1` at the redirect port until a request with the matching `state` arrives on the
   redirect path, or `--timeout` passes (each connection gets at most 5 seconds to send its
   request); requests to other paths get 404 and requests with a wrong `state` get 400 and are
@@ -143,6 +146,31 @@ stderr; stdout carries only JSON-RPC.
 ---
 
 [← Strata README](../README.md) · [Docs index](./README.md)
+
+## Workbench Server
+
+`strata workbench` (`strata_lookml.workbench.server` + `app`) is a plain `BaseHTTPRequestHandler`
+over a route table. It never serves a directory, never changes the working directory and never
+builds a filesystem path from a request:
+
+- **Host first.** Every request's `Host` must be on the allow-list for the bound port before any
+  routing; otherwise 403 with a plain-text body (no page, so no token).
+- **Methods.** GET and HEAD only; any other method, including ones `http.server` does not know,
+  gets 405 with `Allow: GET, HEAD` (after the Host check). The request body is never read.
+- **Headers on every response**, errors included: `Content-Security-Policy: default-src 'self';
+  script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
+- **Static files** come from a fixed name -> packaged-asset map (the vendored Cytoscape/dagre
+  bundles); any other `/static/` name, `..` included, is 404.
+- **Paths** are exactly `/<kind>/<one percent-decoded segment>`; the segment is a lookup key into
+  the in-memory graph, never a path. Unknown objects render the error contract (message + hint)
+  as a 404; ambiguous names a 300 page linking each candidate.
+- **Token.** Each server process generates a random token (`secrets.token_urlsafe(32)`) and puts
+  it in a `<meta name="strata-token">` on its pages, for the state-changing request that will
+  check it. Only allow-listed Hosts receive a page.
+- **Data.** The graph is loaded once at startup from the IR cache (`load_or_build`); while it
+  runs the inputs are re-fingerprinted at most every 10 seconds and a change only shows a
+  "restart to reload" banner. There is no reload endpoint.
 
 ## Workbench Rendering And Escaping
 

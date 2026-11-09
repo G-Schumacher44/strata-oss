@@ -27,14 +27,19 @@ def _candidates(names: list[str]) -> str:
     return shown + (", ..." if len(names) > _MAX_CANDIDATES else "")
 
 
-def resolve_table(graph: IRGraph, name: str) -> str:
-    """Return the IR's physical table name for `name`: exact, else the one table ending in
-    `.name`. Ambiguous -> InvalidInput listing candidates; none -> NotFound."""
+def table_matches(graph: IRGraph, name: str) -> list[str]:
+    """The tables `name` can mean: the exact name alone, else every table ending in `.name`."""
     wanted = name.strip().strip("`")
     tables = [node.name for node in graph.nodes_by_kind("physical_table")]
     if wanted in tables:
-        return wanted
-    matches = [t for t in tables if t.endswith(f".{wanted}")] if wanted else []
+        return [wanted]
+    return [t for t in tables if t.endswith(f".{wanted}")] if wanted else []
+
+
+def resolve_table(graph: IRGraph, name: str) -> str:
+    """Return the IR's physical table name for `name`: exact, else the one table ending in
+    `.name`. Ambiguous -> InvalidInput listing candidates; none -> NotFound."""
+    matches = table_matches(graph, name)
     if len(matches) == 1:
         return matches[0]
     if matches:
@@ -47,6 +52,18 @@ def resolve_table(graph: IRGraph, name: str) -> str:
         hint="Pass the table as written in sql_table_name, or a unique dataset.table / table "
         "suffix; strata_view_sources lists every view's table.",
     )
+
+
+def explore_matches(graph: IRGraph, explore: str) -> list[tuple[str, str]]:
+    """The (model, explore) pairs a model-less `explore` can mean: every explore of that name,
+    else the one `model.explore` it spells."""
+    pairs = [(str(node.attrs.get("model")), node.name) for node in graph.nodes_by_kind("explore")]
+    matches = [p for p in pairs if p[1] == explore]
+    if not matches and "." in explore:
+        # A lone `model.explore` argument; an explore whose own name has a dot matched above.
+        model_part, _, explore_part = explore.partition(".")
+        matches = [p for p in pairs if p == (model_part, explore_part)]
+    return matches
 
 
 def resolve_explore(graph: IRGraph, explore: str, model: str | None = None) -> tuple[str, str]:
@@ -63,12 +80,7 @@ def resolve_explore(graph: IRGraph, explore: str, model: str | None = None) -> t
             )
         return model, explore
 
-    pairs = [(str(node.attrs.get("model")), node.name) for node in graph.nodes_by_kind("explore")]
-    matches = [p for p in pairs if p[1] == explore]
-    if not matches and "." in explore:
-        # A lone `model.explore` argument; an explore whose own name has a dot matched above.
-        model_part, _, explore_part = explore.partition(".")
-        matches = [p for p in pairs if p == (model_part, explore_part)]
+    matches = explore_matches(graph, explore)
     if len(matches) == 1:
         return matches[0]
     if matches:

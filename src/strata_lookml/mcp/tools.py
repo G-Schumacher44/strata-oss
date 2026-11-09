@@ -461,20 +461,11 @@ def _view_ancestors(chain: Sequence[str], own_name: str) -> list[str]:
 
 def _node_finding_ids(graph: IRGraph, node_id: str) -> list[str]:
     """Ids of the findings on one node: the `finding_records` (the same records `strata check`
-    gates on) whose `subject_id` is this node. A table also carries the column drift on it
-    (that record's subject is the field, but its evidence names the table)."""
+    gates on) grouped by `gate.findings_by_node`."""
     # Deferred: gate -> synthesis.slices imports this module.
-    from strata_lookml.gate import finding_records
+    from strata_lookml.gate import finding_records, findings_by_node
 
-    table_ref = f"schema_table:{node_id.removeprefix('physical_table:')}"
-    is_table = node_id.startswith("physical_table:")
-    return sorted(
-        {
-            r["id"]
-            for r in finding_records(graph)
-            if r["subject_id"] == node_id or (is_table and table_ref in r["evidence_ids"])
-        }
-    )
+    return findings_by_node(finding_records(graph)).get(node_id, [])
 
 
 def _explore_content(graph: IRGraph, key: str) -> dict[str, Any] | None:

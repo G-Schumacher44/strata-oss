@@ -21,6 +21,10 @@ from strata_lookml.l1.schema import (
 )
 from strata_lookml.provenance import git_source
 
+# How long a cached IR is reused (when its inputs still match) by the long-running readers:
+# the MCP server and the workbench.
+CACHE_MAX_AGE_SECONDS = 300
+
 _REPO_HINT = "Pass --repo or set STRATA_REPO_PATH to the LookML project root."
 
 

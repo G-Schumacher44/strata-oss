@@ -59,12 +59,16 @@ Writes 8 JSON files to `output/my-repo/` — see [CLI reference](./cli-guide.md#
 strata dashboard \
   --repo /path/to/your/lookml \
   --usage-fixture /path/to/usage_facts.json \
-  --schema-fixture /path/to/schema_facts.json
+  --schema-fixture /path/to/schema_facts.json \
+  --out output/my-repo
 ```
 
 Opens `http://127.0.0.1:8765` (if that port is busy and `--port` was not passed, it uses the next free port up to 8785 and prints the URL; an explicit busy `--port` fails). Self-contained HTML — also works by opening
-`output/<repo-name>/dashboard.html` directly. Four panels: Overview, Dead Code
+`output/my-repo/dashboard.html` directly. Four panels: Overview, Dead Code
 Register, PDT Ledger, Schema Drift.
+
+Without `--out`, `strata dashboard` is an alias of `strata workbench`: a local server with a page
+per finding and per object, read from the IR cache (no files written beyond it).
 
 ---
 
