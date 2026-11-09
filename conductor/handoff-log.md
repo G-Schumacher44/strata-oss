@@ -2,54 +2,36 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/wb-s4b-triage-core (triage core and link builder, workbench S4b)
 
-Commit: 3dc79ff
-  (Latest implementation commit, review round 3; earlier 8dba45c, f6d0d50, 629002d. The PR squash-merges.)
+## Date: 2026-11-08 — feat/wb-s4-server (local server, route table, security headers; workbench S4)
+
+Commit: 7b21e95
+  (Latest implementation commit; earlier ceb7abd. The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — slice S4b of `workbench-spec-2026-11-08.md` (D2, D3, D4; mockup items M6, M8).
-Context Budget: low
-Context Loaded: AGENTS.md, handoff-log, the workbench spec (D2-D4, S4b, §6b) and validation report (M6, M8), gate.py, config.py, safe_paths.py, errors.py, ir/store.py, ir/types.py, identifiers.py, l1/enrich.py, cli/check.py.
-Exact Next Steps: twin gate, operator merges. Then S4 (router + server) consumes `triage_rows` and `links`; S4c (`strata findings --format lines` + `strata ack`/`unack`) and S11 (links out) can follow S4b directly.
+Conductor Mode: feature — slice S4 of `workbench-spec-2026-11-08.md` (D1, D3, D6, D8, §4 URL map, §6a Q1).
+Context Budget: medium
+Context Loaded: AGENTS.md, handoff-log, the workbench spec (D1-D8, §4, §5 S4, §6a/§6b), cli/dashboard.py, loopback.py, workbench/render.py + templates, links.py, triage.py, gate.py, identifiers.py, pipeline.py, ir/store.py, config.py, errors.py, mcp/tools.py `strata_object`, the dashboard Host/port tests.
+Exact Next Steps: twin gate, operator merges. Then S5 (findings landing: `triage_rows` over `Workbench`, replaces `_findings`), S6 (detail pages: replace `_object` / `_finding` placeholders), S7 (overview), S8 (graph + `/api/index.json` Cmd-K shape), S11 (links out, reads `--workbench-url`). S9 adds `POST /api/triage` to `App.respond` (method gate + the token already exposed in the `<meta>`).
 
 ### What changed
 
-- `triage.py`: `TriageStore.open(repo, graph)` at `config.triage_path(repo)` = `~/.strata/triage/<repo_key>.json` (dir via `ensure_private_dir`, file 0600, write via `check_write_destination` + temp + `os.replace`). Document `{version, rev, ids: {id: {category, acked_at, note?, unacked_at?, first_absent_at?}}}`. `.acknowledge(ids, note=None)`, `.unacknowledge(ids)`, `.snapshot()`, `.observe()`.
-- Append-only (M8): unack sets `unacked_at`; re-ack clears it. `observe()` stamps `first_absent_at` the first time a stored id is absent from a category whose check ran, clears it when the id reappears, and prunes the entry once absent for 90 days (`ABSENT_TTL`). A category that did not run is never stamped.
-- Concurrency: writers are serialized by an OS advisory lock on a dedicated `<store>.lock` (`fcntl.flock` on POSIX, `msvcrt.locking` on Windows; 0600, write-guarded by `check_write_destination`, opened `O_NOFOLLOW`, never deleted, never written), held around the rev check and `os.replace`. The kernel releases it when the holder dies, so there is no stale-lock handling. The rev check stays as defence in depth: re-read, apply per id, write `rev+1`, replace only if the on-disk `rev` is still the one read; 3 tries (50/100 ms backoff) then `StrataError("triage state changed concurrently", hint="retry")`. On Windows `msvcrt` gives up after ~10 s -> `StrataError("triage store is locked by another writer", hint="retry")`.
-- Allowlist: `acknowledge` accepts an id only if a current finding carries it or the store already holds it; `unacknowledge` only stored ids. Any miss -> `InvalidInput`, nothing written. Notes cap at 2000 chars.
-- `triage_rows(graph, baseline, store)`: frozen `TriageRow`s, status derived once (D4): baselined (wins over acknowledged, ack record kept, M6) / acknowledged / new for current ids; then acked or baselined ids absent now: fixed when their category ran, not_checked when it did not. Checked categories come from each category's own facts (`FINDING_CATEGORIES` over `analysis_coverage`): usage for dead-code / unused-pdt / zombie-pdt, schema for drift; G16's `content` flag feeds dead code but gates nothing. Integrity counts as always checked.
-- `links.py`: `object_path` (explore/view/pdt/table/field; None for kinds with no page), `finding_path` (`quote(id, safe="")`), `link(base, path)` (no base -> None; `.html` or `#` base -> `<base>#/<path>` replacing any old fragment; else `<base>/<path>`).
-- Import-graph guard (`tests/test_triage.py`): AST walk of strata_lookml's own import closure from triage, links, gate and mcp/tools (function-level imports too) bans `http`, `textual`, `jinja2`, `strata_lookml.workbench`, `strata_lookml.tui`; a second assertion keeps `strata_lookml.triage` out of the gate's closure.
+- `workbench/app.py`: `App(workbench, hosts, token, staleness).respond(method, target, host) -> Response(status, headers, body)`. Order: Host allow-list (refused -> plain-text 403, never a page, so never the token) -> method (GET/HEAD; else 405 + `Allow`) -> route. Routes: `/` 302 `/findings`; `/findings`, `/overview`, `/graph`, `/search`, `/api/index.json`; `/<kind>/<one percent-decoded segment>` for explore/view/pdt/table/field (via `strata_object`), finding (1..n records from the index), static (fixed `STATIC_ASSETS` map: cytoscape, dagre, cytoscape-dagre). `NotFound` -> 404 error page, `InvalidInput` -> 400, ambiguous explore/table -> 300 candidates page with links built by `links.object_path`. `SECURITY_HEADERS` (CSP exactly per D6, nosniff, no-referrer, plus `Cache-Control: no-store`) are added by the one `_response` builder every response goes through. JSON goes through `_embed_json` (`<` escaped).
+- `workbench/server.py`: `make_handler(app)` -> a `BaseHTTPRequestHandler` (no SimpleHTTPRequestHandler, no chdir, no directory serving). Unknown methods reach `send_error(501)` before any `do_*`; that is routed through the app so they get the Host check and a 405. Malformed requests get a bare error with the security headers. Unexpected exceptions -> traceback on stderr + bare 500. `new_token()` = `secrets.token_urlsafe(32)`, once per process.
+- `workbench/index.py`: `load_graph` = `describe_inputs` (read first) + `load_or_build(repo, usage, schema, load_cache_path(repo), CACHE_MAX_AGE_SECONDS)`; `index_graph` builds the frozen `Workbench` (records, findings_by_id 1..n, findings_by_node, coverage, source provenance, baseline, base_url, inputs). `Staleness` re-fingerprints at most every 10 s, sticky; the layout shows a restart banner.
+- Templates: `_base.html` gains a `head` block; `_layout.html` (token `<meta>`, nav, coverage strip, stale banner), `placeholder.html`, `candidates.html`, `error.html`.
+- CLI: `cli/workbench.py` defines `strata workbench` (dashboard's options + `--baseline` read-only + `--workbench-url`/`STRATA_WORKBENCH_URL`) and `strata dashboard` as an alias `click.Command` sharing its params/callback. `--out` runs `cli.dashboard.export_and_serve` (the old command body, unchanged apart from taking `explicit` as a parameter). `bind_server` gained `handler_factory` (default: the legacy static handler), so port fallback and the per-port Host allow-list are shared.
+- One source per rule: `gate.findings_by_node(records)` (subject node + table drift via `schema_table:` evidence) is now the only node->findings rule; `strata_object._node_finding_ids` routes through it. `identifiers.explore_matches` / `table_matches` are the candidate lists `resolve_explore` / `resolve_table` already used inside. `pipeline.CACHE_MAX_AGE_SECONDS` (300) moved from `mcp/server.py` (re-imported there).
+- Docs: reference regenerated; README CLI table + dashboard section; runbook; enterprise-deployment; security-hardening (writes table, Listening bullet, new "Workbench Server" section). CHANGELOG Security/Added/Changed.
 
 ### Deviations from the brief
 
-- `TriageStore.open(repo, graph)`, not `open(repo)`: the allowlist (D4: "enforced in the store") needs the current finding ids, and `observe()` needs which categories ran. `triage_rows` refuses (ValueError) a store opened on a different graph.
-- Each entry also stores its `category` (taken from the current finding at ack time): "fixed" vs "not checked" for an absent acked id depends on whether its category ran, which the id alone does not say.
-- `first_absent_at` is stamped on every stored entry, unacked ones included, so the 90-day TTL also prunes unacked records (otherwise they would never leave the append-only store).
-- `triage_rows` calls `store.observe()`, so reading rows can write the store (only when an absence stamp or prune changed something). No file is created when nothing is stored.
-- One row per id: a duplicated id (G14) is one row with its first record's label, subject and line; `/finding/<id>` (S6) shows all records.
-- HOME is redirected per test module (`_home` fixture in `tests/test_triage.py`), not globally in conftest, so other suites' HOME handling is unchanged.
-
-### Review round 1 (PR #85)
-
-- Codex P2 (rev check and replace not mutually exclusive: two writers that both read rev 0 could both succeed, the last silently dropping the other's ids): fixed with the O_EXCL lock above. New test races a second writer between the first's check and its replace; it now raises instead of landing and being overwritten. Stale-lock and fresh-lock behaviour tested.
-- Artemis should_fix (note validation untested): `test_acknowledge_refuses_a_bad_note` (non-string, over 2000 chars; exactly 2000 accepted).
-- Apollo ACCEPT (note: could not re-run gates read-only).
-
-### Review round 2 (PR #85 @ ae6b416)
-
-- Codex P2 + Artemis should_fix (stale-lock recovery races: A stats a stale lock, B breaks it and takes a fresh one, A unlinks B's live lock): fixed by never breaking the lock. Conservative choice over an fcntl/msvcrt lock, which D4 rules out; the cost is a manual delete after a SIGKILL in a one-read-one-rename window.
-- Artemis note (lock contention reported as "changed concurrently"): contention now raises its own "locked by another writer" error.
-- Codex P2 (an old `first_absent_at` survived re-acknowledging a present id, so the TTL could prune a fresh ack a day later): `acknowledge` clears it when the graph shows the id present.
-- Apollo ACCEPT_WITH_NOTES (could not re-run gates read-only).
-
-### Review round 3 (head direction, superseding round 2's lock)
-
-- Shape fix for the stale-lock race: the O_EXCL lock file and its no-break / staleness handling are gone; an OS advisory lock (above) replaces them. The spec's "no fcntl" (D4) assumed no Windows path; `msvcrt.locking` covers Windows.
-- Tests: the cross-writer race test now runs the second writer in a thread blocked on the lock while the first sits between its check and its replace (both land, rev 2); a child process that takes the lock and is SIGKILLed never blocks the next writer (and a live holder really blocks a non-blocking probe); the lock file is never deleted and a symlink at its path is refused.
-- Per-category coverage (head FYI after G16): a usage fixture without `content_references` still lets an absent dead-code id be fixed; drift without schema is not_checked.
+- `--out` with `--baseline` / `--workbench-url` is a usage error (exit 2): those flags only mean something to the live server.
+- `strata dashboard` without `--out` no longer writes `./output/<repo>` (it is the workbench now). The legacy `make_handler` + `export_and_serve` stay in `cli/dashboard.py` for `--out` until S10; the existing Host tests exercise that legacy handler and pass unchanged.
+- `--workbench-url` warning: rather than "warn when fallen back", it warns whenever the URL names an explicit port other than the one bound (covers fallback precisely; silent for export-form or portless bases).
+- Ambiguous names answer 300 Multiple Choices (body = candidates page), not 200.
+- `/api/index.json` is a minimal `{objects: [{kind, name, path}], findings: [{id, path}]}`; S8 owns its final shape.
+- Known gap, predates this slice (not filed — the brief forbids creating issues): `identifiers.resolve_field` splits `view.field` at the first dot, so a field of a view whose quoted name makes a side empty (e.g. view `..`) has no page (clean 400), and a dotted view name resolves the field node but reports the wrong `view` upstream. The round-trip test pins the 400.
 
 ### Gates
 
-pytest 498 passed, 1 skipped after merging origin/main `7abc0ba` (S13 #84 on top of G16 #83; main alone 444 passed, 1 skipped; this slice adds 54); ruff check + format --check clean on src/ tests/ scripts/; mypy `src/strata_lookml --ignore-missing-imports` clean; `check_dashboard_js_syntax.py` and `gen_reference.py --check` pass (no CLI/MCP surface change). Fail-before: `tests/test_triage.py` against origin/main (detached worktree) errors at collection (no `strata_lookml.triage`). Negative controls, each mutation in a throwaway detached worktree failing at least one test: ack-wins-over-baseline, not_checked->fixed, rev check removed (2 fail), allowlist removed, TTL prune removed, re-ack keeps `unacked_at`, symlink read refusal removed, file mode 0644, hash-form link for `#` bases; the import guard fails on each of six planted imports (http, from-http, textual, jinja2, workbench, tui) placed one module down inside a function. Round 1 controls: lock never taken -> the race test fails (plus the three lock-seam tests); note validation removed -> both bad-note cases fail. Round 2 control: ack keeping the old absence stamp -> the retention test fails. Round 3 controls: the new tests against 629002d fail 6 (race, killed holder, dedicated lock, interrupted write, both interleave seams); `flock` not taken -> race + killed-holder tests fail; every category counted as run -> both not_checked tests fail.
+pytest 568 passed, 1 skipped (base origin/main 4895c78: 498 passed, 1 skipped; +70, all in `tests/test_workbench_server.py`); ruff check + format --check clean on src/ tests/ scripts/; mypy `src/strata_lookml --ignore-missing-imports` clean; `check_dashboard_js_syntax.py` passes (5 blocks); `gen_reference.py --check` clean. Fail-before: the new test file against origin/main (detached worktree, PYTHONPATH pinned to it) errors at collection (no `strata_lookml.workbench.app`). Negative controls, each a mutation in a throwaway detached worktree of 7b21e95, run over `test_workbench_server.py` + `test_strata_object.py`: Host check removed (8 fail), security headers dropped (23), POST/PUT/... allowed (10), static served from the package directory by name (3), segment not unquoted (3), token in the 403 body (6), candidates page removed (3), error hint dropped (9), every start rebuilds instead of `load_or_build` (1), staleness checked every request (1), staleness not sticky (1), `|safe` in `placeholder.html` (1, the hostile-fixture test), 501 not routed through the app (8), table drift dropped from `findings_by_node` (1).

@@ -172,6 +172,10 @@ builds a filesystem path from a request:
   runs the inputs are re-fingerprinted at most every 10 seconds and a change only shows a
   "restart to reload" banner. There is no reload endpoint.
 
+`tests/test_workbench_server.py` enforces each point, and renders a fixture whose names, file
+names and table names carry markup, quotes, `%2F` and `..` through every route, asserting no
+response contains a tag, event attribute or link outside the page shell.
+
 ## Workbench Rendering And Escaping
 
 Workbench pages render through one Jinja2 environment (`strata_lookml.workbench.render`) with autoescape on for every template regardless of extension and `StrictUndefined`; templates may not use `|safe` or `{% autoescape false %}`, and `markupsafe.Markup` is constructed only inside `safe_svg()` — all enforced by `tests/test_workbench_render.py`.
