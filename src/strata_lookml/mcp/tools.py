@@ -133,6 +133,9 @@ def strata_usage_summary(graph: IRGraph) -> dict[str, Any]:
         # schema-only build reports true with dead_code_count 0. Kept for compatibility.
         "usage_checked": usage_checked,
         "schema_checked": coverage["schema"],
+        # False when usage ran but no content-reference facts were supplied: per-explore
+        # dashboard/Look counts are then "not loaded", not 0.
+        "content_checked": coverage["content"],
         "has_l1": bool(l1),
         "hint": _unchecked_hint(not_run) if not_run else None,
         "period": l1.get("period"),
@@ -475,10 +478,11 @@ def _node_finding_ids(graph: IRGraph, node_id: str) -> list[str]:
 
 
 def _explore_content(graph: IRGraph, key: str) -> dict[str, Any] | None:
-    """Content that references this explore, from the L1 usage facts; None when usage was not
-    checked (never 0). The window is the usage period the facts were pulled for, not all time."""
+    """Content that references this explore, from the L1 usage facts; None when usage or content
+    facts were not loaded (never 0). The window is the usage period the facts were pulled for, not all time."""
     l1 = graph.metadata.get("l1", {})
-    if not analysis_coverage(graph)["usage"]:
+    coverage = analysis_coverage(graph)
+    if not (coverage["usage"] and coverage["content"]):
         return None
     items = sorted(
         (
@@ -510,7 +514,7 @@ def strata_object(graph: IRGraph, kind: str, name: str) -> dict[str, Any]:
     kind is explore | view | pdt | table | field. Upstream/downstream reuse
     strata_explore_deps / strata_impact / the consumer maps, grouped by relation.
     `content` (explores only) counts content viewed in the usage window; it is None, never 0,
-    when usage was not checked or the kind has no content.
+    when usage or content-reference facts were not loaded, or the kind has no content.
     """
     if kind not in OBJECT_KINDS:
         raise InvalidInput(f"kind must be one of: {', '.join(OBJECT_KINDS)}. Got: {kind!r}")
@@ -593,7 +597,11 @@ def strata_object(graph: IRGraph, kind: str, name: str) -> dict[str, Any]:
         "upstream": upstream,
         "downstream": downstream,
         "findings": _node_finding_ids(graph, node.id),
-        "coverage": {"usage_checked": coverage["usage"], "schema_checked": coverage["schema"]},
+        "coverage": {
+            "usage_checked": coverage["usage"],
+            "schema_checked": coverage["schema"],
+            "content_checked": coverage["content"],
+        },
         "content": content,
         "details": details,
     }
