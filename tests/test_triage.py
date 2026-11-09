@@ -174,6 +174,14 @@ def test_acknowledge_refuses_ids_outside_the_allowlist(graph, ids, bad):
     assert not triage_path(REPO).exists()
 
 
+@pytest.mark.parametrize("note", [7, "x" * (triage.MAX_NOTE_CHARS + 1)])
+def test_acknowledge_refuses_a_bad_note(graph, ids, note):
+    with pytest.raises(InvalidInput, match="note must be"):
+        _store(graph).acknowledge([ids["d1"]], note=note)
+    assert not triage_path(REPO).exists()
+    _store(graph).acknowledge([ids["d1"]], note="x" * triage.MAX_NOTE_CHARS)
+
+
 def test_a_stored_id_stays_acknowledgeable_after_it_is_gone(graph, ids):
     _store(graph).acknowledge([ids["d1"]])
     before = _store(graph).snapshot()["rev"]
@@ -186,19 +194,19 @@ def test_a_stored_id_stays_acknowledgeable_after_it_is_gone(graph, ids):
 
 
 def _interleave(monkeypatch, other, other_id, times):
-    """Make `other` acknowledge just before each of the next `times` pre-replace rev checks."""
-    real = triage._current_rev
+    """Make `other` acknowledge just before each of the next `times` lock acquisitions."""
+    real = triage._acquire
     left = [times]
 
-    def current_rev(path):
+    def acquire(lock):
         if left[0]:
             left[0] -= 1
-            monkeypatch.setattr(triage, "_current_rev", real)
+            monkeypatch.setattr(triage, "_acquire", real)
             other.acknowledge([other_id])
-            monkeypatch.setattr(triage, "_current_rev", current_rev)
-        return real(path)
+            monkeypatch.setattr(triage, "_acquire", acquire)
+        return real(lock)
 
-    monkeypatch.setattr(triage, "_current_rev", current_rev)
+    monkeypatch.setattr(triage, "_acquire", acquire)
 
 
 def test_interleaved_writers_both_land(graph, ids, monkeypatch):
@@ -220,6 +228,41 @@ def test_a_store_that_keeps_changing_fails_after_three_tries(graph, ids, monkeyp
     assert caught.value.hint == "retry"
     stored = first.snapshot()
     assert set(stored["ids"]) == {ids["d2"]} and stored["rev"] == 3
+
+
+def test_no_write_lands_between_another_writers_check_and_replace(graph, ids, monkeypatch):
+    """Two writers that both read rev 0: the second may not slip in after the first's rev
+    check and before its replace (it would be silently overwritten). It must fail loudly."""
+    first, second = _store(graph), _store(graph)
+    real_replace = os.replace
+    raced = []
+
+    def replace(src, dst):
+        if not raced:
+            raced.append(True)
+            with pytest.raises(StrataError, match="changed concurrently"):
+                second.acknowledge([ids["d2"]])
+        real_replace(src, dst)
+
+    monkeypatch.setattr(triage.os, "replace", replace)
+    first.acknowledge([ids["d1"]])
+    stored = first.snapshot()
+    assert set(stored["ids"]) == {ids["d1"]} and stored["rev"] == 1
+
+
+def test_a_stale_lock_is_broken_and_a_fresh_one_is_not(graph, ids):
+    path = triage_path(REPO)
+    path.parent.mkdir(parents=True)
+    lock = path.parent / f".{path.name}.lock"
+    lock.touch()
+    with pytest.raises(StrataError, match="changed concurrently"):
+        _store(graph).acknowledge([ids["d1"]])
+    assert not path.exists()
+
+    old = lock.stat().st_mtime - 60
+    os.utime(lock, (old, old))
+    _store(graph).acknowledge([ids["d1"]])
+    assert ids["d1"] in _store(graph).snapshot()["ids"] and not lock.exists()
 
 
 # --- the file on disk -----------------------------------------------------------------------

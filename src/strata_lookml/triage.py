@@ -11,8 +11,9 @@ the committed baseline, so CI never depends on one engineer's local state.
 The document is `{version, rev, ids: {id: {category, acked_at, note?, unacked_at?,
 first_absent_at?}}}` and is append-only: unacknowledging sets `unacked_at` and keeps the entry;
 an entry is removed only once its id has been absent, from a category whose check ran, for
-`ABSENT_TTL`. Writes use optimistic concurrency on `rev` (no file locks): re-read, apply per id,
-and replace the file only if `rev` is still the one read, retrying `_RETRIES` times.
+`ABSENT_TTL`. Writes use optimistic concurrency on `rev`: re-read, apply per id, and replace the
+file only if `rev` is still the one read, retrying `_RETRIES` times. The rev check and the replace
+run under an O_EXCL lock file (portable, no fcntl), so two writers can never both pass the check.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ import copy
 import json
 import os
 import tempfile
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -37,6 +39,9 @@ TRIAGE_VERSION = 1
 ABSENT_TTL = timedelta(days=90)
 MAX_NOTE_CHARS = 2000
 _RETRIES = 3
+_BACKOFF_S = 0.05
+# The lock covers one read and one rename; one this old was left by a crashed writer.
+_STALE_LOCK_S = 10.0
 
 Status = Literal["new", "acknowledged", "baselined", "fixed", "not_checked"]
 
@@ -134,6 +139,21 @@ def _is_stamp(value: Any) -> bool:
 def _current_rev(path: Path) -> int:
     """The store's `rev` as it is on disk now (the pre-replace concurrency check)."""
     return int(_read_document(path)["rev"])
+
+
+def _acquire(lock: Path) -> bool:
+    """Take the store's write lock (create `lock` exclusively); False if another writer holds
+    it. A lock older than `_STALE_LOCK_S` is broken, so the next try can take it."""
+    try:
+        os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+    except FileExistsError:
+        try:
+            if time.time() - lock.stat().st_mtime > _STALE_LOCK_S:
+                lock.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
+        return False
+    return True
 
 
 def _is_triage_store(path: Path) -> bool:
@@ -266,7 +286,9 @@ class TriageStore:
         return self.snapshot()
 
     def _mutate(self, apply: Callable[[dict[str, Any]], bool]) -> None:
-        for _ in range(_RETRIES):
+        for attempt in range(_RETRIES):
+            if attempt:
+                time.sleep(_BACKOFF_S * attempt)
             document = _read_document(self._path)
             base_rev = document["rev"]
             if not apply(document["ids"]):
@@ -277,9 +299,10 @@ class TriageStore:
         raise StrataError("triage state changed concurrently", hint="retry")
 
     def _replace(self, document: dict[str, Any], base_rev: int) -> bool:
-        """Write `document` beside the store and swap it in, unless the store's `rev` moved
-        past `base_rev` meanwhile (False). The file is 0600; an interrupted write leaves the
-        previous store untouched."""
+        """Write `document` beside the store and swap it in, unless another writer holds the
+        lock or the store's `rev` moved past `base_rev` meanwhile (False). The check and the
+        swap run under the lock. The file is 0600; an interrupted write leaves the previous
+        store untouched."""
         ensure_private_dir(self._path.parent, tighten=self._path.parent == strata_home() / "triage")
         target = check_write_destination(self._path, what="triage store", is_ours=_is_triage_store)
         fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".strata-triage-")
@@ -288,10 +311,17 @@ class TriageStore:
                 os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
-            if _current_rev(target) != base_rev:
+            lock = target.parent / f".{target.name}.lock"
+            if not _acquire(lock):
                 Path(tmp).unlink(missing_ok=True)
                 return False
-            os.replace(tmp, target)
+            try:
+                if _current_rev(target) != base_rev:
+                    Path(tmp).unlink(missing_ok=True)
+                    return False
+                os.replace(tmp, target)
+            finally:
+                lock.unlink(missing_ok=True)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise
