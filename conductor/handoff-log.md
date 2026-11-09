@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s5-findings (Findings triage page + keyboard map; workbench S5)
 
-Commit: 5f12f51
-  (Latest implementation commit: review round 3; earlier 81b946f (merge of origin/main a0b5e1a (S6 #90) + the G19 single PR-comment builder; earlier 48bdcb0 (review round 2), earlier 363b5be (review round 1 + post-merge fix), 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
+Commit: 1a3557e
+  (Latest implementation commit: review round 4; earlier 5f12f51 (review round 3), 81b946f (merge of origin/main a0b5e1a (S6 #90) + the G19 single PR-comment builder; earlier 48bdcb0 (review round 2), earlier 363b5be (review round 1 + post-merge fix), 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S5 of `workbench-spec-2026-11-08.md` (D1, D4, §4 Findings wireframe + keyboard map, §6b M2/M3/M6).
 Context Budget: medium
@@ -61,4 +61,11 @@ Visual: headless Chrome (isolated profile) screenshots in `dev_project_tmp/wb-s5
 
 - Artemis should_fix (only `_findings` passed `nav=`, so Overview/Graph/Search never marked their nav link current): fixed in 5f12f51. `_placeholder` takes `nav`, and `_overview`, `_graph` and `_search` pass theirs; detail and error pages intentionally mark none. New parametrized test `test_each_top_level_page_marks_its_own_nav_link_current`; negative control: dropping `nav="overview"` fails its case.
 - Apollo note on "+27": that count was right when written. 624 − 597 = 27 at 0c52ad7. Round 1 added the label test and round 2 the dialog test, hence 29 items at dad6880. Count now: pytest 670 passed, 1 skipped (after the S6 merge and this round).
+
+### Review round 4 (Codex P2 on #91)
+
+- Codex P2 (`workbench.js`: ids were space-joined in `data-ids` and split on spaces, so an id with a space, e.g. `schema:missing_table:p.d.Order Details` from a quoted table name, became bogus ids and was 404'd or dropped from the PR comment): fixed in 1a3557e. `data-ids` and `data-locations` are now JSON arrays built with `json.dumps` in `pages/findings.py`; Jinja autoescapes them into the attribute, with `"` written as `&#34;`. Jinja's `|tojson` is not used because it leaves `"` raw, which would break a double-quoted attribute. `workbench.js` reads them with `jsonList` (JSON.parse, strings only) and never splits text.
+- Tests: `test_an_id_with_a_space_reaches_the_comment_endpoint_intact` uses a real fixture (view on `` `p.d.Order Details` `` with schema facts lacking it). It checks the row carries the exact id, the endpoint returns 200 and quotes it, and the space-split halves would 404. The grouped PDT row still sends both ids (`test_the_list_copies_the_one_pr_comment_builder`). `test_workbench_js_never_splits_ids_on_whitespace` pins the parse.
+- Negative controls: putting the JS `split(" ")` back fails the split test; emitting a non-JSON `data-ids` fails 10 tests. Headless Chrome on the spaced fixture: `c` copied "**Strata** found 1 LookML finding: ... `schema:missing_table:p.d.Order Details`".
+- Gates: pytest 672 passed, 1 skipped; ruff, ruff format, mypy, JS syntax (2 static scripts) clean; reference regenerated (no change).
 
