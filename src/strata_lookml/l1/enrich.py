@@ -182,6 +182,26 @@ def _pdt_ledger(
                 evidence_ids=evidence_ids,
             )
         )
+
+    # Ghost PDTs: build facts exist for a view that is no longer in the resolved
+    # LookML graph. The view may have been deleted from the LookML repo while the
+    # warehouse job keeps rebuilding on schedule, silently accumulating cost.
+    pdt_names = {pdt.name for pdt in graph.nodes_by_kind("pdt")}
+    for view_name, build in builds_by_view.items():
+        if view_name in pdt_names:
+            continue
+        records.append(
+            PDTLedgerRecord(
+                view=view_name,
+                source_file="",
+                build_count=build.build_count,
+                bytes_processed=build.bytes_processed,
+                estimated_cost_usd=build.estimated_cost_usd,
+                used_by_explores=[],
+                status="ghost",
+                evidence_ids=[f"pdt_build:{view_name}"],
+            )
+        )
     return records
 
 
