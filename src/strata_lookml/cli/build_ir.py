@@ -63,13 +63,16 @@ def build_ir(
     cache_path = load_cache_path(repo_path, cache)
     graph = build_and_cache(repo_path, usage_fixture, schema_fixture, cache_path)
 
-    status = {
+    status: dict[str, object] = {
         "repo_path": graph.repo_path,
         "built_at": graph.built_at,
         "node_counts": graph.node_counts(),
         "edge_count": len(graph.edges),
         "cache_path": str(cache_path),
     }
+
+    if "source" in graph.metadata:
+        status["source"] = graph.metadata["source"]
 
     if as_json:
         click.echo(json.dumps(status, sort_keys=True))
@@ -79,3 +82,7 @@ def build_ir(
             f"Built IR: {nc} nodes, {status['edge_count']} edges → {cache_path}",
             fg="green",
         )
+        if "source" in graph.metadata:
+            src = graph.metadata["source"]
+            dirty = " (dirty)" if src["dirty"] else ""
+            click.echo(f"Source: {src['branch']} @ {src['commit'][:7]}{dirty}")

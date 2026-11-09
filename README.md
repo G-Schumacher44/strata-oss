@@ -341,6 +341,23 @@ you can regenerate and shrink the file. Integrity failures are never baselined. 
 unparseable baseline is a usage error (exit `2`). With `--baseline`, `--json` also reports
 `baselined`, the number of findings it suppressed.
 
+**What does my branch change?** In Looker dev mode your work is a git branch, and Strata
+analyses whatever is checked out; usage evidence always comes from production. `strata diff`
+compares two refs against the same fixtures and classifies every finding id as new, fixed or
+unchanged:
+
+```bash
+strata diff main --usage-fixture usage_facts.json                  # main vs your working tree
+strata diff origin/main my-branch --usage-fixture usage_facts.json --fail-on-new --json
+```
+
+`--fail-on-new` exits `1` if the head introduces any finding (a CI check for "does this PR add
+dead code?"). `--json` prints `{"base": {"ref", "commit"}, "head": {...}, "new": [records],
+"fixed": [records], "unchanged_count"}`. Refs are exported read-only with `git archive` into a
+temp directory, so nothing is created in your repo; `git archive` leaves out submodule
+contents. Every `strata check --json` and `strata build` also records the analysed
+`source: {commit, branch, dirty}` when the repo is a git checkout.
+
 <details>
 <summary>How does Strata fit with existing tools?</summary>
 
@@ -666,6 +683,7 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 | `strata check` | Offline governance gates — dead code, drift, PDT, verdict validation |
 | `strata clean` | Remove `output/`, the repo's IR cache entry, legacy in-repo `strata_ir.db`, `__pycache__` |
 | `strata conductor` | Manage slice-based agent workflow and handoffs |
+| `strata diff` | Findings a branch introduces or fixes, against production usage |
 | `strata dashboard` | Build artifacts and serve the local HTML dashboard |
 | `strata generate-schema` | Pull BigQuery INFORMATION_SCHEMA facts for drift checks |
 | `strata mcp` | Run, validate, and inspect MCP server configuration |

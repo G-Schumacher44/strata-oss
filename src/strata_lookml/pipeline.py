@@ -19,6 +19,7 @@ from strata_lookml.l1.schema import (
     enrich_schema_drift,
     load_schema_facts,
 )
+from strata_lookml.provenance import git_source
 
 _REPO_HINT = "Pass --repo or set STRATA_REPO_PATH to the LookML project root."
 
@@ -36,7 +37,18 @@ def _repo_graph(repo_path: str | Path) -> IRGraph:
         from strata_lookml.errors import InvalidInput
 
         raise InvalidInput(f"no .lkml files under {root}", hint=_REPO_HINT)
-    return build_resolved_graph(root)
+    graph = build_resolved_graph(root)
+    _stamp_source(graph, root)
+    return graph
+
+
+def _stamp_source(graph: IRGraph, root: Path) -> None:
+    """Record the analysed git ref in `graph.metadata["source"]`; omitted outside a git checkout."""
+    source = git_source(root)
+    if source is None:
+        graph.metadata.pop("source", None)
+    else:
+        graph.metadata["source"] = source
 
 
 def build_graph(
@@ -79,7 +91,9 @@ def load_or_build(
     inputs = describe_inputs(repo_path, usage_fixture, schema_fixture)
     if cache_is_fresh(cache_path, inputs, max_age_seconds):
         try:
-            return load_ir(cache_path)
+            graph = load_ir(cache_path)
+            _stamp_source(graph, Path(repo_path))  # the ref now, not the one it was cached at
+            return graph
         except (OSError, sqlite3.DatabaseError, ValueError):
             pass  # removed or replaced since the freshness check: a miss, rebuild below
     return build_and_cache(repo_path, usage_fixture, schema_fixture, cache_path)
