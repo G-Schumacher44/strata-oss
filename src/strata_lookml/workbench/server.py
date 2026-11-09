@@ -3,7 +3,8 @@
 A plain `BaseHTTPRequestHandler`: no `SimpleHTTPRequestHandler`, no working-directory change,
 no filesystem path ever built from a request. Binding (loopback IP, port fallback, exclusive
 bind, the Host allow-list for the bound port) is `cli.dashboard.bind_server`, shared with the
-legacy export server.
+legacy export server. The one request with a body is `POST /api/triage`: `App.respond` checks it
+first and only then calls `_read_body` (bounded by Content-Length and a read timeout).
 """
 
 from __future__ import annotations
@@ -17,10 +18,14 @@ from typing import Any
 
 from strata_lookml.workbench.app import App, Response, bare_error
 
+# Seconds a POST body may take to arrive: the server is single-threaded, so a client that
+# declares more bytes than it sends must not hold it.
+BODY_TIMEOUT_S = 5.0
+
 
 def new_token() -> str:
     """The per-process token pages expose in `<meta name="strata-token">` (checked by the
-    triage POST once it lands)."""
+    triage POST)."""
     return secrets.token_urlsafe(32)
 
 
@@ -40,6 +45,9 @@ def make_handler(app: App) -> type[http.server.BaseHTTPRequestHandler]:
         def do_HEAD(self) -> None:
             self._dispatch()
 
+        def do_POST(self) -> None:
+            self._dispatch()
+
         def send_error(
             self, code: int, message: str | None = None, explain: str | None = None
         ) -> None:
@@ -54,14 +62,24 @@ def make_handler(app: App) -> type[http.server.BaseHTTPRequestHandler]:
 
         def _dispatch(self) -> None:
             if self.command not in ("GET", "HEAD"):
-                # The body (if any) is never read; do not let it parse as a next request.
+                # A body the app refuses is never read; do not let it parse as a next request.
                 self.close_connection = True
             try:
-                response = app.respond(self.command, self.path, self.headers.get("Host"))
+                response = app.respond(
+                    self.command,
+                    self.path,
+                    self.headers.get("Host"),
+                    headers=self.headers.items(),
+                    read=self._read_body,
+                )
             except Exception:  # an unanticipated bug: report it, never leak it to the page
                 traceback.print_exc(file=sys.stderr)
                 response = bare_error(HTTPStatus.INTERNAL_SERVER_ERROR)
             self._send(response)
+
+        def _read_body(self, length: int) -> bytes:
+            self.connection.settimeout(BODY_TIMEOUT_S)
+            return self.rfile.read(length)
 
         def _send(self, response: Response) -> None:
             self.send_response(response.status)
