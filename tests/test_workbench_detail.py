@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from html import unescape
 from pathlib import Path
@@ -303,3 +304,22 @@ def test_baselined_status_wins_over_new(tmp_path: Path) -> None:
     )
     page = _page(_app(based), "/explore/em_legacy_v2.dead_finance_v2")
     assert '<span class="pill">baselined</span>' in page
+
+
+def test_pdt_without_build_facts_says_not_loaded_never_zero(tmp_path: Path) -> None:
+    facts = json.loads(USAGE.read_text())
+    facts["pdt_builds"] = [p for p in facts["pdt_builds"] if p["view"] != "pdt_regional_kpi"]
+    usage = tmp_path / "usage.json"
+    usage.write_text(json.dumps(facts))
+    graph, inputs = load_graph(ENTERPRISE, str(usage), str(SCHEMA))
+    wb = index_graph(
+        graph,
+        repo=ENTERPRISE,
+        usage_fixture=str(usage),
+        schema_fixture=str(SCHEMA),
+        inputs=inputs,
+    )
+    page = _page(_app(wb), "/pdt/pdt_regional_kpi")
+    assert "not loaded for this PDT" in page
+    assert "$0" not in page
+    assert "Builds" not in page.split("Details")[1].split("Upstream")[0]

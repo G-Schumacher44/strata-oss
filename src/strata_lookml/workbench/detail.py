@@ -251,6 +251,11 @@ class Detail:
             ledger = details.get("ledger")
             if not ledger:
                 return [("Build ledger", "not loaded")]
+            if ledger["status"] == "missing_build_facts":  # zeros here are placeholders
+                return [
+                    ("Status", "missing_build_facts"),
+                    ("Build facts", "not loaded for this PDT"),
+                ]
             builds = ledger["build_count"]
             cost = ledger["estimated_cost_usd"]
             return [
