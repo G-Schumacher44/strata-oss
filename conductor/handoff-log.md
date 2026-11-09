@@ -4,13 +4,13 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s5-findings (Findings triage page + keyboard map; workbench S5)
 
-Commit: 48bdcb0
-  (Latest implementation commit: review round 2; earlier 363b5be (review round 1 + post-merge fix), 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
+Commit: 81b946f
+  (Latest implementation commit: merge of origin/main a0b5e1a (S6 #90) + the G19 single PR-comment builder; earlier 48bdcb0 (review round 2), earlier 363b5be (review round 1 + post-merge fix), 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S5 of `workbench-spec-2026-11-08.md` (D1, D4, §4 Findings wireframe + keyboard map, §6b M2/M3/M6).
 Context Budget: medium
 Context Loaded: AGENTS.md, handoff-log, the workbench spec (D1, D4, §4, §5 S5, §6b), the operator-approved mockup (`mockups/workbench-mockup.html` + shot-findings*.png, shot-help.png), workbench/{app,index,render,server}.py + templates, triage.py, gate.py `finding_records`, links.py, outputs/dashboard.py palette, cli/findings.py, scripts/check_dashboard_js_syntax.py, tests/test_workbench_{server,render}.py.
-Exact Next Steps: twin gate, operator merges. S6/S7 extend `_layout.html` (header bar, coverage strip, help dialog) and `assets/css/workbench.css`; S9 wires the disabled `a`/`u` buttons (`data-action="ack"|"unack"`, row ids in `data-ids`) to `POST /api/triage` with the `<meta name="strata-token">`; S6's golden PR-comment text should reuse `pages/findings._comment_lines` (one format) rather than add a second; S8 adds Cmd-K (no button yet) and owns `/api/index.json`; S10 must render findings without `store.observe()` (the live page calls `triage_rows`, which observes).
+Exact Next Steps: twin gate, operator merges. S6/S7 extend `_layout.html` (header bar, coverage strip, help dialog) and `assets/css/workbench.css`; S9 wires the disabled `a`/`u` buttons (`data-action="ack"|"unack"`, row ids in `data-ids`) to `POST /api/triage` with the `<meta name="strata-token">`; S8 adds Cmd-K (no button yet) and owns `/api/index.json`; S10 must render findings without `store.observe()` (the live page calls `triage_rows`, which observes).
 
 ### What changed
 
@@ -45,4 +45,15 @@ Visual: headless Chrome (isolated profile) screenshots in `dev_project_tmp/wb-s5
 ### Review round 2 (PR #91 @ e2638a7)
 
 - Codex P2 (`_layout.html`: the help `<dialog>` had no clickable close, so mouse and touch users could not dismiss it): fixed in 48bdcb0. Added a `<form method="dialog">` Close button (`aria-label="Close help"`), which closes natively with no JS. `workbench.js` also closes on a click outside the dialog box; a click on the dialog's own padding still targets the dialog, so the bounding box decides. New test `test_help_dialog_has_a_close_button_that_works_without_javascript`. Headless Chrome: the Close button closes it; a click on the padding keeps it open; a backdrop click closes it; on a page loaded with JS off, Close still closes it. pytest 637 passed, 1 skipped; ruff, format, mypy and JS syntax are clean; the sink scan is still clean.
+
+### Merge of origin/main a0b5e1a (S6 #90) and G19: one PR-comment builder
+
+- Conflicts hand-resolved: `app.py` imports and `STATIC_ASSETS` carry both slices' entries (workbench.js, workbench.css, detail.js). The `_assert_inert` tag and attribute sets are the union (adds S6's aside/textarea/pre and `readonly`). Scripts stay strict: a page may load only `/static/workbench.js` and `/static/detail.js`, each at most once, and no other `<script` may appear. S6's handoff block moved to the top of `handoff-archive.md`.
+- G19: there is one PR-comment builder, `workbench/pr_text.pr_comment`. Findings' `c` fetches `GET /api/pr-comment?id=...` (read-only, text/plain, nosniff, behind the Host check). It returns `pr_comment` over the current records of the selected ids. Fixed and not-checked ids have no record and are skipped; if none remain the response is 404 and the page shows a toast. The copy uses a `ClipboardItem` holding the fetch promise, so the keypress's user activation survives the fetch, with a fallback of `writeText` once the text arrives.
+- Deleted: `pages/findings._comment_lines`, the row `data-comment` attribute and the section's `data-comment-head`. The page's own `CATEGORY_LABELS` and `_usd` are gone too; the chips and cost column use `pr_text.CATEGORY_LABELS` / `pr_text.usd`, so drift chips now read "schema drift".
+- Findings now reads rows through S6's `App._triage_rows` (one per-request read); my duplicate `_store` cached_property is removed (S6 opens the store in `__init__`).
+- `check_dashboard_js_syntax.py` now checks every hand-written `assets/js/*.js` (workbench.js and detail.js), skipping the vendored `*.min.js`.
+- Tests: `test_the_list_copies_the_one_pr_comment_builder` checks the endpoint text equals `pr_comment(...)` byte for byte for the grouped PDT row. The no-base vs base link test now goes through the endpoint. `test_pr_comment_skips_ids_without_a_current_record` checks fixed-only and empty requests get 404 and a mixed request skips the fixed id. The label test checks `pr_text.CATEGORY_LABELS` covers every category.
+- Headless Chrome: `c` on the grouped PDT row copied exactly the pr_comment text ("**Strata** found 2 LookML findings: ..."). `c` on a fixed row shows the no-record toast. Detail pages load workbench.js then detail.js with no console errors, and `?` opens help there (screenshots merged2-findings.png, merged2-detail.png).
+- Gates: pytest 666 passed, 1 skipped; ruff, ruff format, mypy clean; JS syntax 5 generated blocks + 2 static scripts; reference regenerated (no change).
 
