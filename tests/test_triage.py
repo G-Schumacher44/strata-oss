@@ -7,6 +7,11 @@ import hashlib
 import json
 import os
 import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -16,6 +21,7 @@ from click.testing import CliRunner
 from strata_lookml import triage
 from strata_lookml.config import triage_path
 from strata_lookml.errors import InvalidInput, StrataError
+from strata_lookml.l1.enrich import analysis_coverage
 from strata_lookml.links import finding_path, link, object_path
 from strata_lookml.pipeline import build_graph
 from strata_lookml.triage import ABSENT_TTL, TriageStore, triage_rows
@@ -50,7 +56,7 @@ def _without(graph, *finding_ids):
     """The graph after those findings were fixed (their L1 rows gone, checks still run)."""
     fixed = copy.deepcopy(graph)
     l1 = fixed.metadata["l1"]
-    for key in ("dead_code", "schema_drift"):
+    for key in {"dead_code", "schema_drift"} & set(l1):
         l1[key] = [r for r in l1[key] if r["id"] not in finding_ids]
     return fixed
 
@@ -108,6 +114,26 @@ def test_unchecked_category_is_not_checked_never_fixed(graph, ids):
     assert "fixed" not in {r.status for r in rows.values()}
     # Unknown is never absent: no first_absent_at for the unchecked category.
     assert "first_absent_at" not in _store(no_schema).snapshot()["ids"][ids["s1"]]
+
+
+def test_dead_code_is_fixed_on_usage_alone(graph, ids, tmp_path):
+    """Per-category coverage: dead-code (and the PDT categories) need usage, drift needs schema;
+    content references (G16) feed dead code but never gate "fixed" on their own."""
+    usage = json.loads((FIXTURES / "enterprise_usage_facts.json").read_text(encoding="utf-8"))
+    del usage["content_references"]
+    no_content = tmp_path / "usage_no_content.json"
+    no_content.write_text(json.dumps(usage), encoding="utf-8")
+    _store(graph).acknowledge([ids["d1"], ids["s1"]])
+
+    without_content = build_graph(REPO, no_content, None)
+    assert analysis_coverage(without_content) == {
+        "usage": True,
+        "schema": False,
+        "content": False,
+    }
+    rows = _statuses(_without(without_content, ids["d1"]))
+    assert rows[ids["d1"]].status == "fixed"
+    assert rows[ids["s1"]].status == "not_checked"
 
 
 def test_rows_need_the_graph_the_store_was_opened_on(graph, ids):
@@ -210,18 +236,18 @@ def test_a_stored_id_stays_acknowledgeable_after_it_is_gone(graph, ids):
 
 def _interleave(monkeypatch, other, other_id, times):
     """Make `other` acknowledge just before each of the next `times` lock acquisitions."""
-    real = triage._acquire
+    real = triage._exclusive
     left = [times]
 
-    def acquire(lock):
+    def exclusive(lock):
         if left[0]:
             left[0] -= 1
-            monkeypatch.setattr(triage, "_acquire", real)
+            monkeypatch.setattr(triage, "_exclusive", real)
             other.acknowledge([other_id])
-            monkeypatch.setattr(triage, "_acquire", acquire)
+            monkeypatch.setattr(triage, "_exclusive", exclusive)
         return real(lock)
 
-    monkeypatch.setattr(triage, "_acquire", acquire)
+    monkeypatch.setattr(triage, "_exclusive", exclusive)
 
 
 def test_interleaved_writers_both_land(graph, ids, monkeypatch):
@@ -247,42 +273,79 @@ def test_a_store_that_keeps_changing_fails_after_three_tries(graph, ids, monkeyp
 
 def test_no_write_lands_between_another_writers_check_and_replace(graph, ids, monkeypatch):
     """Two writers that both read rev 0: the second may not slip in after the first's rev
-    check and before its replace (it would be silently overwritten). It must fail loudly."""
+    check and before its replace (it would be silently overwritten). It waits on the lock,
+    sees the new rev, retries, and both land."""
     first, second = _store(graph), _store(graph)
     real_replace = os.replace
-    raced = []
+    racer = []
 
     def replace(src, dst):
-        if not raced:
-            raced.append(True)
-            with pytest.raises(StrataError, match="locked by another writer"):
-                second.acknowledge([ids["d2"]])
+        if not racer:
+            racer.append(threading.Thread(target=second.acknowledge, args=([ids["d2"]],)))
+            racer[0].start()
+            time.sleep(0.3)  # without the lock, the racer replaces here and is then overwritten
         real_replace(src, dst)
 
     monkeypatch.setattr(triage.os, "replace", replace)
     first.acknowledge([ids["d1"]])
+    racer[0].join(timeout=10)
     stored = first.snapshot()
-    assert set(stored["ids"]) == {ids["d1"]} and stored["rev"] == 1
+    assert set(stored["ids"]) == {ids["d1"], ids["d2"]} and stored["rev"] == 2
 
 
-def test_a_held_lock_is_never_broken(graph, ids):
-    """Only the holder removes the lock: a lock however old blocks writes (loudly, naming the
-    lock) and is left in place, so no writer can ever delete another's live lock."""
-    path = triage_path(REPO)
-    path.parent.mkdir(parents=True)
-    lock = path.parent / f".{path.name}.lock"
-    lock.touch()
-    old = lock.stat().st_mtime - 3600
-    os.utime(lock, (old, old))
+_HOLD_LOCK = """
+import sys, time
+from pathlib import Path
+from strata_lookml import triage
+with triage._exclusive(Path(sys.argv[1])):
+    print("locked", flush=True)
+    time.sleep(60)
+"""
 
-    with pytest.raises(StrataError, match="locked by another writer") as caught:
-        _store(graph).acknowledge([ids["d1"]])
-    assert "delete the lock file" in caught.value.hint
-    assert lock.exists() and not path.exists()
+
+@pytest.mark.skipif(os.name != "posix", reason="fcntl + SIGKILL")
+def test_a_killed_holder_never_blocks_the_next_writer(graph, ids):
+    import fcntl
+
+    _store(graph).acknowledge([ids["d1"]])
+    lock = triage_path(REPO).with_name(f"{triage_path(REPO).name}.lock")
+    child = subprocess.Popen(
+        [sys.executable, "-c", _HOLD_LOCK, str(lock)], stdout=subprocess.PIPE, text=True
+    )
+    try:
+        assert child.stdout.readline().strip() == "locked"
+        probe = os.open(lock, os.O_RDWR)
+        try:
+            with pytest.raises(BlockingIOError):  # the child really holds it
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(probe)
+    finally:
+        child.send_signal(signal.SIGKILL)
+        child.wait(timeout=10)
+        child.stdout.close()
+
+    _store(graph).acknowledge([ids["d2"]])  # would block forever if the lock survived
+    assert {ids["d1"], ids["d2"]} <= set(_store(graph).snapshot()["ids"])
+    assert lock.exists() and lock.stat().st_size == 0  # never deleted, never written
+
+
+def test_the_lock_is_a_dedicated_file_never_deleted(graph, ids, tmp_path):
+    store = _store(graph)
+    store.acknowledge([ids["d1"]])
+    store.unacknowledge([ids["d1"]])
+    lock = store.path.with_name(f"{store.path.name}.lock")
+    assert lock.exists()
+    if os.name == "posix":
+        assert lock.stat().st_mode & 0o777 == 0o600
 
     lock.unlink()
-    _store(graph).acknowledge([ids["d1"]])
-    assert ids["d1"] in _store(graph).snapshot()["ids"] and not lock.exists()
+    victim = tmp_path / "victim"
+    victim.write_text("keep", encoding="utf-8")
+    lock.symlink_to(victim)
+    with pytest.raises(InvalidInput, match="through a symlink"):
+        store.acknowledge([ids["d1"]])
+    assert victim.read_text(encoding="utf-8") == "keep"
 
 
 # --- the file on disk -----------------------------------------------------------------------
@@ -333,7 +396,7 @@ def test_interrupted_write_keeps_the_previous_store(graph, ids, monkeypatch):
     with pytest.raises(OSError, match="disk full"):
         _store(graph).acknowledge([ids["d2"]])
     assert path.read_bytes() == before
-    assert sorted(p.name for p in path.parent.iterdir()) == [path.name]
+    assert sorted(p.name for p in path.parent.iterdir()) == [path.name, f"{path.name}.lock"]
 
 
 def _tree_digest(root):

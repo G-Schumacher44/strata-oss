@@ -11,11 +11,11 @@ the committed baseline, so CI never depends on one engineer's local state.
 The document is `{version, rev, ids: {id: {category, acked_at, note?, unacked_at?,
 first_absent_at?}}}` and is append-only: unacknowledging sets `unacked_at` and keeps the entry;
 an entry is removed only once its id has been absent, from a category whose check ran, for
-`ABSENT_TTL`. Writes use optimistic concurrency on `rev`: re-read, apply per id, and replace the
-file only if `rev` is still the one read, retrying `_RETRIES` times. The rev check and the replace
-run under an O_EXCL lock file (portable, no fcntl), so two writers can never both pass the check.
-The lock is never broken automatically (breaking a "stale" lock races a live writer): one left by
-a writer killed inside that one-read-one-rename window makes writes fail with a hint to delete it.
+`ABSENT_TTL`. Writes are serialized by an OS advisory lock on `<store>.lock` (`fcntl.flock` on
+POSIX, `msvcrt.locking` on Windows) held around the rev check and the replace; the kernel releases
+it when its holder dies, so there is no stale-lock handling and the lock file is never deleted.
+Optimistic concurrency on `rev` stays as defence in depth: re-read, apply per id, and replace only
+if `rev` is still the one read, retrying `_RETRIES` times.
 """
 
 from __future__ import annotations
@@ -23,9 +23,11 @@ from __future__ import annotations
 import copy
 import json
 import os
+import sys
 import tempfile
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -33,8 +35,9 @@ from typing import Any, Literal
 
 from strata_lookml.config import ensure_private_dir, strata_home, triage_path
 from strata_lookml.errors import InvalidInput, StrataError
-from strata_lookml.gate import INTEGRITY, finding_records, findings_by_category
+from strata_lookml.gate import FINDING_CATEGORIES, INTEGRITY, finding_records
 from strata_lookml.ir.types import IRGraph
+from strata_lookml.l1.enrich import analysis_coverage
 from strata_lookml.safe_paths import check_write_destination
 
 TRIAGE_VERSION = 1
@@ -79,8 +82,11 @@ class _Findings:
         current: dict[str, str] = {}
         for record in finding_records(graph):
             current.setdefault(record["id"], record["category"])
-        loaded = {c for c, rows in findings_by_category(graph).items() if rows is not None}
-        return cls(current, frozenset(loaded | {INTEGRITY}))
+        # Each category's own facts decide (FINDING_CATEGORIES): usage for dead-code and the
+        # PDT categories, schema for drift. Content references feed dead code but gate nothing.
+        coverage = analysis_coverage(graph)
+        ran = {c for c, facts in FINDING_CATEGORIES.items() if coverage[facts]}
+        return cls(current, frozenset(ran | {INTEGRITY}))
 
 
 def _empty_document() -> dict[str, Any]:
@@ -141,14 +147,44 @@ def _current_rev(path: Path) -> int:
     return int(_read_document(path)["rev"])
 
 
-def _acquire(lock: Path) -> bool:
-    """Take the store's write lock (create `lock` exclusively); False if another writer holds
-    it. Only its holder ever removes it, so a held lock is always the holder's own."""
+def _is_lock_file(path: Path) -> bool:
+    """A triage lock file: empty, since nothing is ever written to it."""
+    return path.is_file() and path.stat().st_size == 0
+
+
+@contextmanager
+def _exclusive(lock: Path) -> Iterator[None]:
+    """Hold the store's write lock: an OS advisory lock on `lock`, created 0600 if missing and
+    never deleted. Blocks while another writer holds it (Windows: `msvcrt` retries for ~10 s,
+    then `StrataError`); released by the kernel if the holder dies."""
+    target = check_write_destination(lock, what="triage lock", is_ours=_is_lock_file)
+    fd = os.open(target, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
-        os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
-    except FileExistsError:
-        return False
-    return True
+        if sys.platform == "win32":
+            import msvcrt
+
+            try:
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+            except OSError as exc:
+                raise StrataError(
+                    f"triage store is locked by another writer: {lock}", hint="retry"
+                ) from exc
+            try:
+                yield
+            finally:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            os.fchmod(fd, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def _is_triage_store(path: Path) -> bool:
@@ -284,7 +320,6 @@ class TriageStore:
         return self.snapshot()
 
     def _mutate(self, apply: Callable[[dict[str, Any]], bool]) -> None:
-        outcome = "changed"
         for attempt in range(_RETRIES):
             if attempt:
                 time.sleep(_BACKOFF_S * attempt)
@@ -293,26 +328,18 @@ class TriageStore:
             if not apply(document["ids"]):
                 return
             document["rev"] = base_rev + 1
-            outcome = self._replace(document, base_rev)
-            if outcome == "replaced":
+            if self._replace(document, base_rev):
                 return
-        if outcome == "locked":
-            raise StrataError(
-                f"triage store is locked by another writer: {self._lock}",
-                hint="Retry. If no Strata process is running, a writer was killed mid-write: "
-                "delete the lock file.",
-            )
         raise StrataError("triage state changed concurrently", hint="retry")
 
     @property
     def _lock(self) -> Path:
-        return self._path.parent / f".{self._path.name}.lock"
+        return self._path.with_name(f"{self._path.name}.lock")
 
-    def _replace(self, document: dict[str, Any], base_rev: int) -> str:
-        """Write `document` beside the store and swap it in: "replaced", or "locked" (another
-        writer holds the lock) / "changed" (the store's `rev` moved past `base_rev`) with the
-        store untouched. The check and the swap run under the lock. The file is 0600; an
-        interrupted write leaves the previous store untouched."""
+    def _replace(self, document: dict[str, Any], base_rev: int) -> bool:
+        """Write `document` beside the store and swap it in, unless the store's `rev` moved past
+        `base_rev` meanwhile (False, store untouched). The check and the swap run under the
+        write lock. The file is 0600; an interrupted write leaves the previous store untouched."""
         ensure_private_dir(self._path.parent, tighten=self._path.parent == strata_home() / "triage")
         target = check_write_destination(self._path, what="triage store", is_ours=_is_triage_store)
         fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".strata-triage-")
@@ -321,20 +348,15 @@ class TriageStore:
                 os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
-            if not _acquire(self._lock):
-                Path(tmp).unlink(missing_ok=True)
-                return "locked"
-            try:
+            with _exclusive(self._lock):
                 if _current_rev(target) != base_rev:
                     Path(tmp).unlink(missing_ok=True)
-                    return "changed"
+                    return False
                 os.replace(tmp, target)
-            finally:
-                self._lock.unlink(missing_ok=True)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise
-        return "replaced"
+        return True
 
 
 def triage_rows(
