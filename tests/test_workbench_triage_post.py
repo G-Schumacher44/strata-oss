@@ -422,3 +422,31 @@ def test_cli_and_web_acks_made_at_once_both_land(live: int, wb: Workbench) -> No
     stored = TriageStore.open(REPO, wb.graph).snapshot()["ids"]
     for fid in (cli_id, *web_ids):
         assert fid in stored and "unacked_at" not in stored[fid], fid
+
+
+# --- GET /api/pr-comment: the other API route stays read-only and same-origin -----------------
+
+
+def test_pr_comment_route_is_read_only_host_checked_and_never_cors_readable(wb: Workbench) -> None:
+    """A cross-origin page may fire the GET but cannot read the answer: no CORS header is ever
+    sent. Unknown ids are 404 without echoing the request."""
+    app = _app(wb)
+    fid = _ids(wb, 1)[0]
+    hostile = "<script>alert(1)</script>"
+    cross = [("Origin", "http://evil.example"), ("Sec-Fetch-Site", "cross-site")]
+    ok = app.respond("GET", f"/api/pr-comment?id={fid}", HOST, cross)
+    assert ok.status == 200
+    headers = dict(ok.headers)
+    assert headers["Content-Type"] == "text/plain; charset=utf-8"
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    for method in ("GET", "HEAD", "POST", "OPTIONS", "PUT"):
+        for target in (f"/api/pr-comment?id={fid}", "/api/pr-comment?id=" + hostile):
+            r = app.respond(method, target, HOST, cross)
+            assert not [k for k, _ in r.headers if k.lower().startswith("access-control")]
+            if method not in ("GET", "HEAD"):
+                assert r.status == 405 and ("Allow", "GET, HEAD") in r.headers
+    missing = app.respond("GET", "/api/pr-comment?id=" + hostile, HOST)
+    assert missing.status == 404
+    assert b"<script>alert" not in missing.body and b"alert(1)" not in missing.body
+    foreign = app.respond("GET", f"/api/pr-comment?id={fid}", f"evil.example:{PORT}")
+    assert foreign.status == 403 and foreign.body == b"403 Forbidden\n"
