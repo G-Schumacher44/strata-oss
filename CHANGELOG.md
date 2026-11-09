@@ -23,6 +23,11 @@ All notable changes to `strata-lookml` are documented here. The format follows
   file and line, evidence ids, a short display label and (PDTs) cost. `strata check` output and the
   baseline file are unchanged: both are projections of it. PDT nodes now carry their view's
   `source_line`.
+- Workbench rendering foundation (`strata_lookml.workbench`): one Jinja2 environment (autoescape on for every
+  template extension, `StrictUndefined`, no extensions) over packaged `workbench/templates/`, a `render()` helper,
+  and `safe_svg()` as the only place `markupsafe.Markup` may be built. Guard tests ban `|safe`,
+  `{% autoescape false %}` and stray `Markup(`. **New runtime dependency: `jinja2>=3.1.3,<4`** (the range
+  dbt-core uses; brings MarkupSafe). The existing dashboard is unchanged and jinja2 stays out of the L0 import graph.
 - `strata_object` MCP tool and `strata query object KIND NAME`: one read for an explore, view, PDT, table or field — source line, upstream/downstream by relation, the ids of findings on it, usage coverage, and for explores the dashboards/looks viewed in the usage window (null, never 0, when usage was not checked).
 
 - `strata chart bar|line|scatter|heatmap` take `--x`, `--y` and `--color` to map the template's

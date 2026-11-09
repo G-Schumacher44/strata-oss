@@ -30,4 +30,4 @@ Exact Next Steps: twin gate, operator merges. S2 and S3 land serially; on a main
 
 ### Gates
 
-pytest 406 passed, ruff check + format --check clean, mypy `src/strata_lookml` clean. Golden: `strata check --fail-on all --json` and `--write-baseline` outputs byte-identical to origin/main for enterprise_mono, gcs_analytics and thelook (fixtures). Negative control: `tests/test_finding_records.py` on origin/main code (detached worktree) fails to import `finding_records`, and its PDT nodes have `source_line` None on all 5.
+pytest 422 passed, 1 skipped, ruff check + format --check clean, mypy `src/strata_lookml` clean. Golden: `strata check --fail-on all --json` and `--write-baseline` outputs byte-identical to origin/main for enterprise_mono, gcs_analytics and thelook (fixtures). Negative control: `tests/test_finding_records.py` on origin/main code (detached worktree) fails to import `finding_records`, and its PDT nodes have `source_line` None on all 5.
