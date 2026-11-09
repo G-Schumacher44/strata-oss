@@ -384,3 +384,10 @@ def test_help_dialog_has_a_close_button_that_works_without_javascript() -> None:
     assert re.search(
         r'<form method="dialog"[^>]*><button [^>]*type="submit" aria-label="Close help">', dialog
     )
+
+
+@pytest.mark.parametrize("page_key", ["findings", "overview", "graph", "search"])
+def test_each_top_level_page_marks_its_own_nav_link_current(page_key: str) -> None:
+    body = _get(_app(_workbench()), f"/{page_key}").body.decode()
+    current = re.findall(r'<a class="navlink" href="/(\w+)" aria-current="page">', body)
+    assert current == [page_key]

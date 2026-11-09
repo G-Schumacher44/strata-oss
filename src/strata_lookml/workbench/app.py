@@ -232,10 +232,12 @@ class App:
         summary: str,
         facts: list[tuple[str, str]] | None = None,
         links: list[tuple[str, str]] | None = None,
+        nav: str = "",
     ) -> Response:
         return self._page(
             "placeholder.html",
             title,
+            nav=nav,
             heading=title,
             summary=summary,
             facts=facts or [],
@@ -279,18 +281,23 @@ class App:
         return _response(HTTPStatus.OK, text.encode("utf-8"), "text/plain; charset=utf-8")
 
     def _overview(self, query: Mapping[str, list[str]]) -> Response:
-        return self._page("overview.html", "Overview", **overview_context(self.workbench))
+        return self._page(
+            "overview.html", "Overview", nav="overview", **overview_context(self.workbench)
+        )
 
     def _graph(self, query: Mapping[str, list[str]]) -> Response:
         focus = query.get("focus", [""])[0]
         return self._placeholder(
-            "Graph", "The graph view arrives in a later release.", facts=[("focus", focus)]
+            "Graph",
+            "The graph view arrives in a later release.",
+            facts=[("focus", focus)],
+            nav="graph",
         )
 
     def _search(self, query: Mapping[str, list[str]]) -> Response:
         q = query.get("q", [""])[0]
         return self._placeholder(
-            "Search", "Search arrives in a later release.", facts=[("query", q)]
+            "Search", "Search arrives in a later release.", facts=[("query", q)], nav="search"
         )
 
     def _api_index(self, query: Mapping[str, list[str]]) -> Response:
