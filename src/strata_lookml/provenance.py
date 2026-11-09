@@ -20,16 +20,16 @@ _GIT_TIMEOUT = 30
 def _git(repo: Path, *args: str) -> str | None:
     """stdout of a read-only git call, or None when git is absent, fails, or `repo` is no checkout."""
     try:
-        with subprocess.Popen(
+        proc = subprocess.run(
             ["git", "-C", str(repo), *args],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
             text=True,
-        ) as proc:
-            stdout, _ = proc.communicate(timeout=_GIT_TIMEOUT)
+            timeout=_GIT_TIMEOUT,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError):
         return None
-    return stdout if proc.returncode == 0 else None
+    return proc.stdout if proc.returncode == 0 else None
 
 
 def git_source(repo: str | Path) -> dict[str, Any] | None:

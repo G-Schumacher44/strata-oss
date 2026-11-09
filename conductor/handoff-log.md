@@ -20,7 +20,7 @@ Exact Next Steps: twin gate, operator merges. On a main move, merge `origin/main
 
 ### Deviations from the brief
 
-- `_git` uses `subprocess.Popen`, not `subprocess.run`: `test_security` monkeypatches the global `subprocess.run` for the BigQuery call and the provenance git calls ran into that fake.
+- `test_security`'s BigQuery test now fakes `subprocess` inside the `generate_schema` module only (a proxy namespace) instead of the global `subprocess.run`, so provenance's git calls are not intercepted; production code is not shaped around the fake.
 - `test_check_json_is_stable` now drops the additive `source` key before its exact comparison (the fixture repo sits in a git checkout).
 - Run from a project subdirectory, `git archive` exports that subtree only, so the temp copy is rooted at the project (no prefix handling needed).
 - Working-tree head also reports `dirty`; the spec listed only `ref`/`commit`.
