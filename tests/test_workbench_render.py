@@ -193,7 +193,7 @@ def test_templates_ship_in_the_built_wheel(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     wheel = next(tmp_path.glob("strata_lookml-*.whl"))
     names = zipfile.ZipFile(wheel).namelist()
-    assert "strata_lookml/workbench/templates/_base.html" in names
-    assert "strata_lookml/workbench/templates/_smoke.html" in names
+    for f in sorted(TEMPLATES.iterdir()):
+        assert f"strata_lookml/workbench/templates/{f.name}" in names
     meta = next(n for n in names if n.endswith("METADATA"))
     assert "Requires-Dist: jinja2" in zipfile.ZipFile(wheel).read(meta).decode()

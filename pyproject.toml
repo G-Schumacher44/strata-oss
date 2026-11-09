@@ -76,7 +76,7 @@ warn_return_any = false
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/strata_lookml"]
-include = ["src/strata_lookml/skills/**", "src/strata_lookml/viz/charts/**", "src/strata_lookml/bootstrap/templates/**", "src/strata_lookml/assets/**"]
+include = ["src/strata_lookml/skills/**", "src/strata_lookml/viz/charts/**", "src/strata_lookml/bootstrap/templates/**", "src/strata_lookml/assets/**", "src/strata_lookml/workbench/templates/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
