@@ -499,7 +499,7 @@ def _explore_content(graph: IRGraph, key: str) -> dict[str, Any] | None:
     }
 
 
-def strata_object(graph: IRGraph, kind: str, name: str) -> dict[str, Any]:
+def strata_object(graph: IRGraph, kind: str, name: str, model: str | None = None) -> dict[str, Any]:
     """One read for an object's definition site, lineage, findings, coverage and usage.
 
     kind is explore | view | pdt | table | field. Upstream/downstream reuse
@@ -516,7 +516,7 @@ def strata_object(graph: IRGraph, kind: str, name: str) -> dict[str, Any]:
     details: dict[str, Any] = {}
 
     if kind == "explore":
-        model, explore = resolve_explore(graph, name)
+        model, explore = resolve_explore(graph, name, model)
         node = graph.nodes[explore_id(model, explore)]
         label = explore_key(model, explore)
         deps = strata_explore_deps(graph, explore, model)

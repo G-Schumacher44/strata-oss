@@ -54,10 +54,22 @@ def resolve_table(graph: IRGraph, name: str) -> str:
     )
 
 
+def _explore_pairs(graph: IRGraph) -> list[tuple[str, str]]:
+    return [(str(node.attrs.get("model")), node.name) for node in graph.nodes_by_kind("explore")]
+
+
+def explores_by_key(graph: IRGraph, key: str) -> list[tuple[str, str]]:
+    """The (model, explore) pairs whose canonical `model.explore` key is exactly `key` (the form
+    `links.object_path` publishes). Unlike `explore_matches` it never splits at a guessed dot,
+    so a dotted model name resolves; more than one pair only when dots in the model and explore
+    names make two keys spell the same string."""
+    return [p for p in _explore_pairs(graph) if explore_key(*p) == key]
+
+
 def explore_matches(graph: IRGraph, explore: str) -> list[tuple[str, str]]:
     """The (model, explore) pairs a model-less `explore` can mean: every explore of that name,
     else the one `model.explore` it spells."""
-    pairs = [(str(node.attrs.get("model")), node.name) for node in graph.nodes_by_kind("explore")]
+    pairs = _explore_pairs(graph)
     matches = [p for p in pairs if p[1] == explore]
     if not matches and "." in explore:
         # A lone `model.explore` argument; an explore whose own name has a dot matched above.

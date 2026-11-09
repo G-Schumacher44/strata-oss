@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from strata_lookml.errors import InvalidInput, NotFound, StrataError
-from strata_lookml.identifiers import explore_matches, table_matches
+from strata_lookml.identifiers import explore_matches, explores_by_key, table_matches
 from strata_lookml.ir.types import explore_id, explore_key
 from strata_lookml.links import finding_path, object_path
 from strata_lookml.mcp.tools import strata_object
@@ -247,20 +247,23 @@ class App:
 
     def _object(self, kind: str, name: str) -> Response:
         graph = self.workbench.graph
+        keyed = explores_by_key(graph, name) if kind == "explore" else []
+        if len(keyed) > 1:
+            return self._candidates_page(
+                kind, name, f"{name} names {len(keyed)} explores.", self._links(keyed)
+            )
         try:
-            obj = strata_object(graph, kind, name)
+            if keyed:
+                # The canonical `model.explore` key links.py publishes: exact, never re-split.
+                ((model, explore),) = keyed
+                obj = strata_object(graph, kind, explore, model=model)
+            else:  # a hand-typed name: the shorthand rules every surface shares
+                obj = strata_object(graph, kind, name)
         except InvalidInput as exc:
             candidates = self._candidates(kind, name)
             if not candidates:
                 raise
-            return self._page(
-                "candidates.html",
-                f"{kind} {name}",
-                HTTPStatus.MULTIPLE_CHOICES,
-                heading=f"Which {kind}?",
-                message=exc.message,
-                links=candidates,
-            )
+            return self._candidates_page(kind, name, exc.message, candidates)
         facts = [("kind", obj["kind"]), ("id", obj["id"])]
         if obj["source_file"]:
             line = obj["source_line"]
@@ -274,18 +277,33 @@ class App:
             links=self._finding_links(self.workbench.findings_by_node.get(obj["id"], ())),
         )
 
+    def _candidates_page(
+        self, kind: str, name: str, message: str, links: list[tuple[str, str]]
+    ) -> Response:
+        return self._page(
+            "candidates.html",
+            f"{kind} {name}",
+            HTTPStatus.MULTIPLE_CHOICES,
+            heading=f"Which {kind}?",
+            message=message,
+            links=links,
+        )
+
+    @staticmethod
+    def _links(explores: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        named = sorted((explore_id(m, e), explore_key(m, e)) for m, e in explores)
+        return [(path, label) for node_id, label in named if (path := object_path(node_id))]
+
     def _candidates(self, kind: str, name: str) -> list[tuple[str, str]]:
         """Links to each object an ambiguous name can mean (explores and tables only)."""
         graph = self.workbench.graph
         if kind == "explore":
-            named = [(explore_id(m, e), explore_key(m, e)) for m, e in explore_matches(graph, name)]
+            links = self._links(explore_matches(graph, name))
         elif kind == "table":
-            named = [(f"physical_table:{t}", t) for t in table_matches(graph, name)]
+            tables = sorted(table_matches(graph, name))
+            links = [(p, t) for t in tables if (p := object_path(f"physical_table:{t}"))]
         else:
             return []
-        links = [
-            (path, label) for node_id, label in sorted(named) if (path := object_path(node_id))
-        ]
         return links if len(links) > 1 else []
 
     def _finding(self, finding_id: str) -> Response:

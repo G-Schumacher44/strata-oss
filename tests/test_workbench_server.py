@@ -15,6 +15,7 @@ from urllib.parse import quote
 
 import pytest
 from click.testing import CliRunner
+from markupsafe import escape
 
 from strata_lookml import pipeline
 from strata_lookml.cli import dashboard as dash
@@ -179,6 +180,35 @@ def test_ambiguous_explore_is_a_candidates_page(twin: App) -> None:
     assert '<a href="/explore/wholesale.orders">wholesale.orders</a>' in body
 
 
+def test_canonical_explore_keys_resolve_exactly(tmp_path: Path) -> None:
+    """The `model.explore` key links.py publishes is matched whole: a dotted model name
+    resolves, and an explore literally named `retail.orders` elsewhere never captures it."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    (repo / "v.view.lkml").write_text("view: v { dimension: a {} }\n", encoding="utf-8")
+    for model, explore in (
+        ("retail", "orders"),
+        ("retail.v2", "orders"),
+        ("other", '"retail.orders"'),
+    ):
+        (repo / f"{model}.model.lkml").write_text(
+            f'connection: "c"\ninclude: "*.view.lkml"\nexplore: {explore} {{ from: v }}\n',
+            encoding="utf-8",
+        )
+    app = _app(_workbench(repo))
+    for node_id in (
+        "explore:retail:orders",
+        "explore:retail.v2:orders",
+        "explore:other:retail.orders",
+    ):
+        r = _get(app, object_path(node_id) or "")
+        assert r.status == 200, (node_id, _text(r))
+        assert f"<dd>{node_id}</dd>" in _text(r)
+    r = _get(app, "/explore/orders")  # hand-typed shorthand still offers both models
+    assert r.status == 300
+    assert '<a href="/explore/retail.v2.orders">retail.v2.orders</a>' in _text(r)
+
+
 @pytest.mark.parametrize(
     ("target", "status", "message"),
     [
@@ -227,6 +257,8 @@ def test_every_object_and_finding_link_round_trips(hostile: App) -> None:
             assert r.status == 400 and "view.field" in _text(r), path
             continue
         assert r.status in (200, 300), (path, _text(r))
+        if r.status == 200:
+            assert f"<dd>{escape(node.id)}</dd>" in _text(r), "the link reached another object"
         seen += 1
     assert seen > 8
     for finding_id in hostile.workbench.findings_by_id:
