@@ -28,7 +28,7 @@ def build_artifacts(graph: IRGraph) -> dict[str, Any]:
         "dead_code_register": l1.get("dead_code", []),
         "pdt_ledger": l1.get("pdt_ledger", []),
         "schema_drift": l1.get("schema_drift", []),
-        "cleanup_roadmap": _cleanup_roadmap(l1),
+        "cleanup_roadmap": cleanup_roadmap(l1),
         "migration_impact": _migration_impact(graph),
         "validation_scope": _validation_scope(graph),
         "usage_summary": strata_usage_summary(graph),
@@ -47,7 +47,8 @@ def write_artifacts(graph: IRGraph, output_dir: str | Path) -> dict[str, str]:
     return written
 
 
-def _cleanup_roadmap(l1: dict[str, Any]) -> list[dict[str, Any]]:
+def cleanup_roadmap(l1: dict[str, Any]) -> list[dict[str, Any]]:
+    """The ordered cleanup actions the L1 facts imply (dead code, PDT cost, schema drift)."""
     items: list[dict[str, Any]] = []
     for record in l1.get("dead_code", []):
         items.append(
