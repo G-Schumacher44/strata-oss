@@ -48,6 +48,9 @@ from strata_lookml.mcp.tools import (
     strata_list_skills as query_list_skills,
 )
 from strata_lookml.mcp.tools import (
+    strata_object as query_object,
+)
+from strata_lookml.mcp.tools import (
     strata_pdt_costs as query_pdt_costs,
 )
 from strata_lookml.mcp.tools import (
@@ -174,6 +177,24 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
     ) -> dict[str, Any]:
         """Get an explore's model, base view, joins (name, view, type), resolution_chain, and total field_count. model is optional: omit it when the explore name is unique, or pass 'model.explore'. An ambiguous name fails with invalid_input listing the candidates; an unknown one with not_found (strata_navigate finds an explore by name)."""
         return query_explore_deps(ir_graph, explore, model)
+
+    @server.tool(title="Object", annotations=_READ_ONLY)
+    def strata_object(
+        kind: Annotated[
+            Literal["explore", "view", "pdt", "table", "field"],
+            Field(description="What kind of object to read."),
+        ],
+        name: Annotated[
+            str,
+            Field(
+                description="Object name: 'model.explore' (or a unique explore name), a view or "
+                "PDT name, a table as dataset.table (or a unique suffix), or 'view.field'.",
+                examples=["enterprise.orders", "orders", "analytics.orders", "orders.id"],
+            ),
+        ],
+    ) -> dict[str, Any]:
+        """Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage was not checked (coverage.usage_checked false) and for other kinds. An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found."""
+        return query_object(ir_graph, kind, name)
 
     @server.tool(title="IR Status", annotations=_READ_ONLY)
     def strata_ir_status() -> dict[str, Any]:
