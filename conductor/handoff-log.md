@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s5-findings (Findings triage page + keyboard map; workbench S5)
 
-Commit: 81b946f
-  (Latest implementation commit: merge of origin/main a0b5e1a (S6 #90) + the G19 single PR-comment builder; earlier 48bdcb0 (review round 2), earlier 363b5be (review round 1 + post-merge fix), 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
+Commit: 5f12f51
+  (Latest implementation commit: review round 3; earlier 81b946f (merge of origin/main a0b5e1a (S6 #90) + the G19 single PR-comment builder; earlier 48bdcb0 (review round 2), earlier 363b5be (review round 1 + post-merge fix), 11f4739 (merge of origin/main 1cf80cb, S7 #89), 0c52ad7. The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S5 of `workbench-spec-2026-11-08.md` (D1, D4, §4 Findings wireframe + keyboard map, §6b M2/M3/M6).
 Context Budget: medium
@@ -56,4 +56,9 @@ Visual: headless Chrome (isolated profile) screenshots in `dev_project_tmp/wb-s5
 - Tests: `test_the_list_copies_the_one_pr_comment_builder` checks the endpoint text equals `pr_comment(...)` byte for byte for the grouped PDT row. The no-base vs base link test now goes through the endpoint. `test_pr_comment_skips_ids_without_a_current_record` checks fixed-only and empty requests get 404 and a mixed request skips the fixed id. The label test checks `pr_text.CATEGORY_LABELS` covers every category.
 - Headless Chrome: `c` on the grouped PDT row copied exactly the pr_comment text ("**Strata** found 2 LookML findings: ..."). `c` on a fixed row shows the no-record toast. Detail pages load workbench.js then detail.js with no console errors, and `?` opens help there (screenshots merged2-findings.png, merged2-detail.png).
 - Gates: pytest 666 passed, 1 skipped; ruff, ruff format, mypy clean; JS syntax 5 generated blocks + 2 static scripts; reference regenerated (no change).
+
+### Review round 3 (twins @ dad6880)
+
+- Artemis should_fix (only `_findings` passed `nav=`, so Overview/Graph/Search never marked their nav link current): fixed in 5f12f51. `_placeholder` takes `nav`, and `_overview`, `_graph` and `_search` pass theirs; detail and error pages intentionally mark none. New parametrized test `test_each_top_level_page_marks_its_own_nav_link_current`; negative control: dropping `nav="overview"` fails its case.
+- Apollo note on "+27": that count was right when written. 624 − 597 = 27 at 0c52ad7. Round 1 added the label test and round 2 the dialog test, hence 29 items at dad6880. Count now: pytest 670 passed, 1 skipped (after the S6 merge and this round).
 
