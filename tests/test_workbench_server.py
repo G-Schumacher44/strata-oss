@@ -462,18 +462,60 @@ _SHELL_TAGS = {
     "head",
     "meta",
     "title",
+    "link",
+    "style",
+    "script",
     "body",
     "nav",
     "a",
     "main",
     "p",
     "h1",
+    "h2",
     "dl",
     "dt",
     "dd",
     "ul",
     "li",
+    "div",
+    "span",
+    "section",
+    "form",
+    "input",
+    "button",
+    "kbd",
+    "code",
+    "i",
+    "b",
+    "bdi",
+    "dialog",
 }
+_SHELL_ATTRS = {
+    "lang",
+    "charset",
+    "name",
+    "content",
+    "href",
+    "rel",
+    "src",
+    "defer",
+    "id",
+    "role",
+    "class",
+    "title",
+    "type",
+    "value",
+    "placeholder",
+    "method",
+    "action",
+    "hidden",
+    "disabled",
+    "aria-label",
+    "aria-current",
+    "aria-disabled",
+}
+# The one script a page may load: the static file behind the CSP's script-src 'self'.
+_SANCTIONED_SCRIPT = '<script src="/static/workbench.js" defer></script>'
 
 
 def _assert_inert(target: str, response: Response) -> None:
@@ -483,27 +525,18 @@ def _assert_inert(target: str, response: Response) -> None:
         assert "<" not in body, target  # `>` alone cannot open markup
         json.loads(body)
         return
+    assert body.count(_SANCTIONED_SCRIPT) <= 1, target
+    stripped = body.replace(_SANCTIONED_SCRIPT, "")
     for raw in ("<img", "<script", "</script>", "onerror=alert(1)>"):
-        assert raw not in body, (target, raw)
+        assert raw not in stripped, (target, raw)
     parser = _Markup()
     parser.feed(body)
     assert set(parser.tags) <= _SHELL_TAGS, (target, set(parser.tags) - _SHELL_TAGS)
     for name, value in parser.attrs:
         assert not name.startswith("on"), (target, name)
-        assert name in {
-            "lang",
-            "charset",
-            "name",
-            "content",
-            "href",
-            "role",
-            "class",
-            "aria-label",
-        }, (
-            target,
-            name,
-        )
-        if name == "href":
+        # data-* attributes are inert text the page script reads with getAttribute.
+        assert name in _SHELL_ATTRS or name.startswith("data-"), (target, name)
+        if name in ("href", "src", "action", "data-href"):
             assert value is not None and value.startswith("/") and not value.startswith("//"), (
                 target,
                 value,
@@ -519,6 +552,7 @@ def test_hostile_names_never_reach_a_response_as_markup(hostile: App) -> None:
         "/",
         "/findings",
         f"/findings?q={q}&category={q}&status={q}&page={q}",
+        f"/findings?status=all&q={q}",
         "/overview",
         f"/graph?focus={q}&hops={q}",
         f"/search?q={q}",
@@ -553,6 +587,15 @@ def test_the_inertness_check_catches_raw_markup() -> None:
     attr = b'<html><body><a href="javascript:alert(1)">x</a></body></html>'
     with pytest.raises(AssertionError):
         _assert_inert("/x", Response(200, (("Content-Type", "text/html"),), attr))
+    # Only the exact sanctioned script tag passes: another src, or an inline script, fails.
+    for script in (
+        b'<script src="/static/other.js" defer></script>',
+        b"<script>alert(1)</script>",
+        b'<script src="/static/workbench.js"></script>',
+    ):
+        page = b"<html><head>" + script + b"</head><body></body></html>"
+        with pytest.raises(AssertionError):
+            _assert_inert("/x", Response(200, (("Content-Type", "text/html"),), page))
 
 
 # --- cache and staleness ---------------------------------------------------------------------

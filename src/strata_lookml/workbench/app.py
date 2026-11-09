@@ -3,15 +3,16 @@
 No socket code here (`server.py` adapts `http.server` to `App.respond`), so every route, header
 and error page is testable without a port. Order per request: Host allow-list, then method
 (GET/HEAD only until the triage POST lands), then routing. Every response, errors included,
-carries `SECURITY_HEADERS`. Pages are placeholders until their own slices (S5-S8) replace them;
-the URL scheme, resolution and error contract here are final.
+carries `SECURITY_HEADERS`. Findings is the triage list (S5, `pages/findings.py`); the other
+pages are placeholders until their own slices (S6-S8) replace them. The URL scheme, resolution
+and error contract here are final.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, cached_property
 from http import HTTPStatus
 from importlib import resources
 from typing import Any
@@ -22,8 +23,10 @@ from strata_lookml.identifiers import explore_matches, explores_by_key, table_ma
 from strata_lookml.ir.types import explore_id, explore_key
 from strata_lookml.links import finding_path, object_path
 from strata_lookml.mcp.tools import strata_object
-from strata_lookml.outputs.dashboard import _embed_json
+from strata_lookml.outputs.dashboard import _embed_json, _palette_css
+from strata_lookml.triage import TriageStore, triage_rows
 from strata_lookml.workbench.index import Staleness, Workbench
+from strata_lookml.workbench.pages.findings import findings_context, parse_query
 from strata_lookml.workbench.render import render
 
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
@@ -45,12 +48,13 @@ STATIC_ASSETS: Mapping[str, tuple[str, str]] = {
     "cytoscape.min.js": ("strata_lookml.assets.js", "cytoscape.min.js"),
     "dagre.min.js": ("strata_lookml.assets.js", "dagre.min.js"),
     "cytoscape-dagre.min.js": ("strata_lookml.assets.js", "cytoscape-dagre.min.js"),
+    "workbench.js": ("strata_lookml.assets.js", "workbench.js"),
+    "workbench.css": ("strata_lookml.assets.css", "workbench.css"),
 }
-_STATIC_TYPES = {".js": "text/javascript; charset=utf-8"}
+_STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
 # URL kind -> strata_object kind (the same names, listed so the route table is explicit).
 _OBJECT_ROUTES = ("explore", "view", "pdt", "table", "field")
-_FINDINGS_SHOWN = 200
 
 
 @dataclass(frozen=True)
@@ -148,26 +152,57 @@ class App:
 
     # --- rendering ---------------------------------------------------------------------
 
-    def _context(self, title: str) -> dict[str, Any]:
-        cov = self.workbench.coverage
-        coverage = [
-            "usage ✓" if cov.get("usage") else "usage not run",
-            "schema ✓" if cov.get("schema") else "schema not run",
-            f"baseline: {self.workbench.baseline_path}"
-            if self.workbench.baseline_path
-            else "no baseline",
+    def _period(self) -> Mapping[str, Any]:
+        """The usage window (`{start, end, days}`) the usage facts cover, or {}."""
+        return self.workbench.graph.metadata.get("l1", {}).get("period") or {}
+
+    def _coverage(self) -> list[tuple[bool, str]]:
+        """The coverage strip: (ran, text) per check, the baseline, and the analysed git ref."""
+        wb = self.workbench
+        cov = wb.coverage
+        period = self._period()
+        usage = "usage ✓"
+        if period.get("days"):
+            usage += f" {period['days']}d"
+            if period.get("start") and period.get("end"):
+                usage += f" ({period['start']} → {period['end']})"
+        strip = [
+            (bool(cov.get("usage")), usage if cov.get("usage") else "usage not run"),
+            (bool(cov.get("schema")), "schema ✓" if cov.get("schema") else "schema not run"),
+            (bool(cov.get("content")), "content ✓" if cov.get("content") else "content not loaded"),
+            (
+                bool(wb.baseline_path),
+                f"baseline {wb.baseline_path}" if wb.baseline_path else "no baseline",
+            ),
         ]
+        if wb.source:
+            ref = f"{str(wb.source.get('commit', ''))[:7]} on {wb.source.get('branch')}"
+            strip.append(
+                (not wb.source.get("dirty"), ref + (" (dirty)" if wb.source.get("dirty") else ""))
+            )
+        return strip
+
+    def _context(self, title: str, nav: str = "") -> dict[str, Any]:
         return {
             "title": title,
+            "nav": nav,
+            "repo_name": self.workbench.repo.name,
+            # NODE_PALETTE/EDGE_PALETTE as --n-*/--e-* properties: never hand-copied into CSS.
+            "palette_css": _palette_css(),
             "token": self.token,
             "stale": self.staleness.stale(),
-            "coverage": coverage,
+            "coverage": self._coverage(),
         }
 
     def _page(
-        self, template: str, title: str, status: int = HTTPStatus.OK, **context: Any
+        self,
+        template: str,
+        title: str,
+        status: int = HTTPStatus.OK,
+        nav: str = "",
+        **context: Any,
     ) -> Response:
-        body = render(template, **self._context(title), **context).encode("utf-8")
+        body = render(template, **self._context(title, nav), **context).encode("utf-8")
         return _response(status, body, HTML)
 
     def _error(
@@ -202,15 +237,29 @@ class App:
     def _finding_links(self, ids: Any) -> list[tuple[str, str]]:
         return [(finding_path(i), i) for i in ids]
 
-    # --- pages (placeholders until S5-S8) ----------------------------------------------
+    # --- pages ----------------------------------------------------------------------------
+
+    @cached_property
+    def _store(self) -> TriageStore:
+        return TriageStore.open(self.workbench.repo, self.workbench.graph)
 
     def _findings(self, query: Mapping[str, list[str]]) -> Response:
-        ids = list(self.workbench.findings_by_id)
-        return self._placeholder(
-            "Findings",
-            f"{len(ids)} finding ids. The triage list arrives in a later release.",
-            links=self._finding_links(ids[:_FINDINGS_SHOWN]),
+        wb = self.workbench
+        parsed = parse_query(query)
+        baseline = None if wb.baseline is None else {k: set(v) for k, v in wb.baseline.items()}
+        # Read per request: an ack from `strata ack` shows on the next reload.
+        rows = triage_rows(wb.graph, baseline, self._store)
+        costs = {r["id"]: float(r["cost_usd"]) for r in wb.records if r.get("cost_usd") is not None}
+        period = self._period()
+        context = findings_context(
+            rows,
+            parsed,
+            costs=costs,
+            days=period.get("days"),
+            base_url=wb.base_url,
+            repo_name=wb.repo.name,
         )
+        return self._page("findings.html", "Findings", nav="findings", **context)
 
     def _overview(self, query: Mapping[str, list[str]]) -> Response:
         wb = self.workbench

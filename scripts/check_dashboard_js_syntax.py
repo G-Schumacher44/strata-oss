@@ -1,5 +1,5 @@
 """Build a dashboard from fixture data and syntax-check every generated <script> block with
-`node --check`. Catches page-fatal JS syntax errors the Python test suite can't see — the
+`node --check`, then the workbench's static script (`assets/js/workbench.js`) the same way. Catches page-fatal JS syntax errors the Python test suite can't see — the
 guardrail test asserts strings inside the generated HTML, it never executes the JS (issue #29,
 round-1 precedent: a regex bug in the fixed generator killed every script on the page and was
 only caught by a live browser pass).
@@ -27,6 +27,10 @@ FIXTURE_REPO = ROOT / "tests" / "lookml" / "enterprise_mono"
 FIXTURE_USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
 FIXTURE_SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
 
+# Hand-written scripts served from the workbench /static/ allow-list (not generated, but
+# never executed by the Python suite either).
+STATIC_SCRIPTS = (ROOT / "src" / "strata_lookml" / "assets" / "js" / "workbench.js",)
+
 SCRIPT_BLOCK_RE = re.compile(r"<script>(.*?)</script>", re.DOTALL)
 
 
@@ -45,6 +49,12 @@ def main() -> int:
         return 1
 
     failures = 0
+    for script in STATIC_SCRIPTS:
+        result = subprocess.run([node, "--check", str(script)], capture_output=True, text=True)
+        if result.returncode != 0:
+            failures += 1
+            print(f"--- syntax error in {script.name} ---", file=sys.stderr)
+            print(result.stderr, file=sys.stderr)
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, block in enumerate(blocks):
             # Skip blocks that are just external script tags with no inline body, or that are
@@ -65,10 +75,13 @@ def main() -> int:
                 print(result.stderr, file=sys.stderr)
 
     if failures:
-        print(f"{failures} generated <script> block(s) failed node --check", file=sys.stderr)
+        print(f"{failures} script(s) failed node --check", file=sys.stderr)
         return 1
 
-    print(f"{len(blocks)} generated <script> block(s) passed node --check")
+    print(
+        f"{len(blocks)} generated <script> block(s) and {len(STATIC_SCRIPTS)} static script(s) "
+        "passed node --check"
+    )
     return 0
 
 
