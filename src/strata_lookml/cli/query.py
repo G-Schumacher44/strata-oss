@@ -120,6 +120,37 @@ def query_explore(
     click.echo(json.dumps(result, indent=2, default=str))
 
 
+@query.command("object", cls=JsonCommand)
+@click.argument("kind", type=click.Choice(["explore", "view", "pdt", "table", "field"]))
+@click.argument("name")
+@_repo_opt
+@_usage_opt
+@_schema_opt
+def query_object(
+    kind: str,
+    name: str,
+    repo: str | None,
+    usage_fixture: str | None,
+    schema_fixture: str | None,
+) -> None:
+    """Show one object's lineage, findings, coverage and usage in one read.
+
+    NAME is model.explore, a view or PDT name, dataset.table, or view.field. For explores,
+    content counts dashboards and looks viewed in the usage window; null means usage was
+    not checked.
+
+    \b
+    Example:
+      strata query object explore enterprise.orders --usage-fixture usage.json
+      strata query object field orders.id
+    """
+    graph = _build(repo, usage_fixture, schema_fixture)
+    from strata_lookml.mcp.tools import strata_object
+
+    result = strata_object(graph, kind, name)
+    click.echo(json.dumps(result, indent=2, default=str))
+
+
 @query.command("orphans", cls=JsonCommand)
 @click.option(
     "--kind",
