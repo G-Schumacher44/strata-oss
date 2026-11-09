@@ -113,7 +113,11 @@ def test_without_usage_content_is_null_and_flagged():
     unenriched = build_resolved_graph(MONO)
     result = strata_object(unenriched, "explore", "em_executive_base.executive_summary")
     assert result["content"] is None
-    assert result["coverage"] == {"usage_checked": False, "schema_checked": False}
+    assert result["coverage"] == {
+        "usage_checked": False,
+        "schema_checked": False,
+        "content_checked": False,
+    }
     assert result["findings"] == []
 
 
@@ -176,3 +180,48 @@ def test_findings_land_on_their_subject_node(graph):
         assert r["id"] in strata_object(graph, kind, name)["findings"], r["id"]
         landed += 1
     assert landed
+
+
+def _object_with_usage_doc(tmp_path, doc):
+    fixture = tmp_path / "usage.json"
+    fixture.write_text(json.dumps(doc), encoding="utf-8")
+    g = build_graph(MONO, fixture)
+    return strata_object(g, "explore", "em_executive_base.executive_summary")
+
+
+_ROW = {"explore_usage": [], "pdt_builds": []}
+
+
+def test_content_checked_true_when_content_section_present(graph):
+    result = strata_object(graph, "explore", "em_executive_base.executive_summary")
+    assert result["coverage"]["content_checked"] is True
+    assert result["content"]["reference_count"] == 1
+
+
+def test_usage_without_content_section_reports_not_loaded_not_zero(tmp_path):
+    result = _object_with_usage_doc(tmp_path, _ROW)
+    assert result["coverage"]["usage_checked"] is True
+    assert result["coverage"]["content_checked"] is False
+    assert result["content"] is None
+
+
+def test_empty_content_section_is_checked_and_zero(tmp_path):
+    result = _object_with_usage_doc(tmp_path, {**_ROW, "content_references": []})
+    assert result["coverage"]["content_checked"] is True
+    assert result["content"]["reference_count"] == 0
+
+
+def test_missing_content_facts_never_make_an_explore_dead(tmp_path):
+    from strata_lookml.l1.enrich import analysis_coverage
+
+    fixture = tmp_path / "usage.json"
+    fixture.write_text(json.dumps(_ROW), encoding="utf-8")
+    g = build_graph(MONO, fixture)
+    assert analysis_coverage(g)["content"] is False
+    dead = [d for d in g.metadata["l1"]["dead_code"] if d["kind"] == "explore"]
+    # with content=[] the same zero-usage explores ARE dead; with content not provided the
+    # content leg is skipped, so none may be declared dead on missing facts
+    fixture.write_text(json.dumps({**_ROW, "content_references": []}), encoding="utf-8")
+    g2 = build_graph(MONO, fixture)
+    dead_checked = [d for d in g2.metadata["l1"]["dead_code"] if d["kind"] == "explore"]
+    assert dead == [] and dead_checked != []

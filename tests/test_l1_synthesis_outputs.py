@@ -1624,10 +1624,26 @@ def test_analysis_coverage_reads_each_enrichment_marker():
     gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
     usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
     schema = ROOT / "tests" / "fixtures" / "gcs_schema_facts.json"
-    assert analysis_coverage(build_graph(gcs)) == {"usage": False, "schema": False}
-    assert analysis_coverage(build_graph(gcs, usage)) == {"usage": True, "schema": False}
-    assert analysis_coverage(build_graph(gcs, None, schema)) == {"usage": False, "schema": True}
-    assert analysis_coverage(build_graph(gcs, usage, schema)) == {"usage": True, "schema": True}
+    assert analysis_coverage(build_graph(gcs)) == {
+        "usage": False,
+        "schema": False,
+        "content": False,
+    }
+    assert analysis_coverage(build_graph(gcs, usage)) == {
+        "usage": True,
+        "schema": False,
+        "content": True,
+    }
+    assert analysis_coverage(build_graph(gcs, None, schema)) == {
+        "usage": False,
+        "schema": True,
+        "content": False,
+    }
+    assert analysis_coverage(build_graph(gcs, usage, schema)) == {
+        "usage": True,
+        "schema": True,
+        "content": True,
+    }
 
 
 def _js_function(html: str, name: str) -> str:
