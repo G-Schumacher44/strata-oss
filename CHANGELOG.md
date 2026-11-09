@@ -25,6 +25,16 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- Workbench **Findings** page (workbench S5), the landing page at `/findings?status=&category=&q=&page=`:
+  rows come from the triage core (statuses are never derived in the browser), with status tabs and counts
+  (New, Acknowledged, Baselined, Fixed, Not checked, All), category chips, a filter over label, id and file,
+  200 rows per page, cost where present, and a coverage strip (usage window, schema, content, baseline, analysed
+  commit and branch). A PDT reported both as dead code and as a zombie/unused PDT is one row with both
+  category chips; the ids are unchanged. Works without JavaScript; `workbench.js` (served from the static
+  allow-list, DOM built with `textContent` only) adds the keyboard map (`j`/`k`, `Enter`/`o`, `x`, `/`, `f`,
+  `1`–`6`, `?`, `g f`/`g o`/`g g`, `Esc`) and client-side copy of a PR comment (`c`, links only with a
+  workbench base URL) and `file:line` (`y`). Acknowledge/unacknowledge show in the UI but point to
+  `strata ack` until the triage POST lands. Dark by default, with a light theme.
 - `strata workbench` (workbench S4): a local server on `127.0.0.1` with stable URLs for every finding and
   object (`/findings`, `/overview`, `/explore/<model>.<explore>`, `/view/<v>`, `/pdt/<v>`, `/table/<t>`,
   `/field/<view>.<field>`, `/finding/<id>`, `/graph`, `/search`, `/api/index.json`); `/` redirects to
