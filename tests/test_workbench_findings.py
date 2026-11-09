@@ -348,3 +348,11 @@ def test_workbench_js_passes_node_check() -> None:
 def test_every_finding_category_has_a_label() -> None:
     """A category added to the gate without a label would KeyError every /findings request."""
     assert set(page.CATEGORY_LABELS) == set(page.CATEGORIES)
+
+
+def test_help_dialog_has_a_close_button_that_works_without_javascript() -> None:
+    body = _get(_app(_workbench()), "/findings").body.decode()
+    dialog = body[body.index('<dialog id="help"') : body.index("</dialog>")]
+    assert re.search(
+        r'<form method="dialog"[^>]*><button [^>]*type="submit" aria-label="Close help">', dialog
+    )

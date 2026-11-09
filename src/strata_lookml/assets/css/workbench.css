@@ -126,6 +126,9 @@ main ul { padding-left:18px; } main li a { font-family:var(--mono); font-size:12
 .help dl { display:grid; grid-template-columns:110px 1fr; gap:7px 14px; margin:0; }
 .help dt { text-align:right; }
 .help dd { margin:0; color:var(--text-2); font:inherit; }
+.dialog-actions { display:flex; justify-content:flex-end; margin-top:14px; }
+.btn { height:28px; padding:0 12px; border-radius:var(--r); border:1px solid var(--border); color:var(--text-2); }
+.btn:hover { color:var(--text); border-color:var(--muted); }
 .help .grp { grid-column:1 / -1; color:var(--muted); font-size:11.5px; margin-top:8px; }
 .toast { position:fixed; left:50%; bottom:64px; transform:translateX(-50%); z-index:60; background:var(--text); color:var(--bg); padding:7px 12px; border-radius:var(--r); font-size:12.5px; max-width:calc(100% - 32px); }
 

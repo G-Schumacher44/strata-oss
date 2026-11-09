@@ -75,6 +75,16 @@
     helpButton.hidden = false;
     helpButton.addEventListener("click", openHelp);
   }
+  if (help) {
+    // A backdrop click targets the <dialog> itself but lands outside its box (a click on its
+    // padding targets it too, so the box decides).
+    help.addEventListener("click", function (e) {
+      if (e.target !== help) return;
+      var box = help.getBoundingClientRect();
+      var inside = e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+      if (!inside) help.close();
+    });
+  }
 
   // --- findings list -------------------------------------------------------------------
 
