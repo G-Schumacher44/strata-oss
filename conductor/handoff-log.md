@@ -4,7 +4,7 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s6-detail (detail pages; workbench S6)
 
-Commit: 0d92a18
+Commit: 86f4baa
   (Latest implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S6 of `workbench-spec-2026-11-08.md` (D2 page-to-reads table, §4 Detail wireframe, §6b M5/M7).
