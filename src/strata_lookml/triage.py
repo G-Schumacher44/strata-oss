@@ -360,7 +360,7 @@ class TriageStore:
 
 
 def triage_rows(
-    graph: IRGraph, baseline: Mapping[str, set[str]] | None, store: TriageStore
+    graph: IRGraph, baseline: Mapping[str, set[str]] | None, store: TriageStore | None
 ) -> list[TriageRow]:
     """One row per finding id, its status derived here and nowhere else.
 
@@ -369,12 +369,14 @@ def triage_rows(
     acknowledgement (the ack record is kept and shown); else acknowledged; else new. Then the
     acknowledged or baselined ids no longer found, by (category, id): fixed when their
     category's check ran, not_checked when it did not; never fixed for a category that was not
-    checked. Calls `store.observe()`, so absence is stamped as a side effect.
+    checked. Calls `store.observe()`, so absence is stamped as a side effect. With no `store`
+    (the static export, which is read-only) nothing is read or written and no id is
+    acknowledged: statuses come from the baseline alone.
     """
     findings = _Findings.of(graph)
-    if findings != store._findings:
+    if store is not None and findings != store._findings:
         raise ValueError("triage_rows: the store was opened on a different graph")
-    stored = store.observe()["ids"]
+    stored = store.observe()["ids"] if store is not None else {}
     acked = {i: e for i, e in stored.items() if "unacked_at" not in e}
     known = baseline or {}
 

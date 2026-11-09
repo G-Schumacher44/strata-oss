@@ -7,6 +7,11 @@
 {% if facts %}<div class="sec">{{ "Usage" if kind == "explore" else "Details" }}</div>
 <div class="facts">{% for label, value in facts %}<div><div class="l">{{ label }}</div><div class="v">{{ value }}</div></div>{% endfor %}</div>
 {% endif %}
+{% if fields %}<div class="sec">Fields · {{ fields | length }}</div>
+<ul class="links">
+{% for f in fields %}<li data-field="{{ f.text }}">{% if f.href %}<a class="mono" href="{{ f.href }}">{{ f.text }}</a>{% else %}<span class="mono">{{ f.text }}</span>{% endif %}{% if f.mark %} <span class="pill {{ f.mark }}">{{ f.mark }}</span>{% endif %}<span class="rel">{{ f.kind }}{% if f.type %} · {{ f.type }}{% endif %}</span></li>
+{% endfor %}</ul>
+{% endif %}
 {% if sql %}<div class="sec">Field SQL</div><pre class="sql">{{ sql }}</pre>
 {% endif %}
 {% if upstream %}{{ lineage("Upstream · reads from", upstream) }}{% endif %}

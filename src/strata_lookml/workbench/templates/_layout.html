@@ -19,7 +19,9 @@
 {% if stale %}<p role="status" class="stale">The repo or its fixtures changed since the workbench started. Restart it to reload.</p>
 {% endif %}
 {% block content %}{% endblock %}
-<dialog id="help" class="dialog help" aria-label="Keyboard shortcuts">
+{% endblock %}
+{# Outside <main>: the static export swaps <main> per route and keeps these once. #}
+{% block after %}<dialog id="help" class="dialog help" aria-label="Keyboard shortcuts">
 <h2>Keyboard</h2>
 <dl>
 <div class="grp">Findings list</div>

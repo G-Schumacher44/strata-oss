@@ -12,8 +12,8 @@ from strata_lookml.ir.store import describe_inputs, save_ir
 from strata_lookml.l1.enrich import enrich_graph
 from strata_lookml.l1.types import ContentReference, ExploreUsage
 from strata_lookml.mcp.tools import strata_explore_deps
-from strata_lookml.outputs.dashboard import _build_graph_data
 from strata_lookml.pipeline import load_or_build
+from strata_lookml.workbench.graph import build_graph_data as _build_graph_data
 
 TWIN = Path(__file__).resolve().parent / "lookml" / "twin_models"
 

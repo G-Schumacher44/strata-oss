@@ -237,7 +237,7 @@ Alias of `strata workbench` (same options).
 - `--days INTEGER` — default `30` — Looker usage window in days
 - `--baseline FILE` — Baseline file (from `strata check --write-baseline`): its ids show as baselined. Read only.
 - `--workbench-url TEXT` — Workbench base URL that check, PR reports and MCP results link to (else STRATA_WORKBENCH_URL / config workbench_url); warned about when it names another port
-- `--out TEXT` — Instead of the workbench: write the JSON artifacts and the static dashboard.html to this directory and serve it
+- `--out TEXT` — Instead of serving: write the workbench as one read-only, self-contained dashboard.html in this directory (statuses from --baseline; no acknowledgements)
 - `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
 - `--no-browser` — flag — Skip opening the browser
 
@@ -494,7 +494,7 @@ Serve the triage workbench on 127.0.0.1: findings, overview and a page per objec
 - `--days INTEGER` — default `30` — Looker usage window in days
 - `--baseline FILE` — Baseline file (from `strata check --write-baseline`): its ids show as baselined. Read only.
 - `--workbench-url TEXT` — Workbench base URL that check, PR reports and MCP results link to (else STRATA_WORKBENCH_URL / config workbench_url); warned about when it names another port
-- `--out TEXT` — Instead of the workbench: write the JSON artifacts and the static dashboard.html to this directory and serve it
+- `--out TEXT` — Instead of serving: write the workbench as one read-only, self-contained dashboard.html in this directory (statuses from --baseline; no acknowledgements)
 - `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
 - `--no-browser` — flag — Skip opening the browser
 

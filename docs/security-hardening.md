@@ -10,7 +10,8 @@ or Jira. Its writes are local files. Every command that writes or deletes files,
 | MCP server (`strata-mcp`) | The IR cache: `~/.strata/cache/<repo-name>-<sha256(abs repo path)[:12]>.db` (directory 0700, file 0600 on POSIX), or the path in `STRATA_CACHE_PATH`. Never inside the LookML repo by default. Rebuilt unless it was built from the same repo (path + `.lkml` file count, newest mtime, total size, paths) and fixtures (paths + mtimes) and is younger than the cache max age; a missing, unparseable, or future timestamp also forces a rebuild. |
 | `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
 | `strata build` | The IR cache: the same `~/.strata/cache/` entry as the MCP server, or `--cache` / `STRATA_CACHE_PATH` (refused if that path is a symlink, a `.lkml`/`.lookml` file, a directory, or an existing file that is not a Strata IR cache, such as an unrelated SQLite database). |
-| `strata outputs` / `strata dashboard --out` | JSON artifacts and `dashboard.html` under `--out`. |
+| `strata outputs` | JSON artifacts under `--out`. |
+| `strata workbench --out` / `strata dashboard --out` | One file, `dashboard.html`, under `--out` (plus the IR cache, as for the workbench). Never the triage store: the export opens none. |
 | `strata workbench` (and `strata dashboard` without `--out`) | The IR cache, exactly as the MCP server writes it (reused on a second start when its inputs are unchanged), and the triage acknowledgements store (next row) when a page acknowledges a finding (`POST /api/triage`). Nothing else: no artifacts, no files in the repo; a `--baseline` file is read, never written. |
 | `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default: a fresh `strata_chart_*.html` in the system temp dir, path printed); any path the user names, never written through a symlink at the final component. |
 | `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
@@ -38,8 +39,8 @@ actual delivery yourself.
 - **Listening:** `strata workbench` (alias `strata dashboard`) listens on `127.0.0.1` (default port
   8765, falling back to 8766-8785 if busy and `--port` was not passed) until you stop it, and answers 403 to any request whose `Host` header is not
   `127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>` (DNS-rebinding guard); see
-  [Workbench Server](#workbench-server). `strata dashboard --out DIR` instead serves DIR (the
-  static export) with the same bind and Host check. `strata auth login` listens on
+  [Workbench Server](#workbench-server). With `--out` it writes a file and listens on nothing
+  ([Static Export](#static-export)). `strata auth login` listens on
   `127.0.0.1` at the redirect port until a request with the matching `state` arrives on the
   redirect path, or `--timeout` passes (each connection gets at most 5 seconds to send its
   request); requests to other paths get 404 and requests with a wrong `state` get 400 and are
@@ -165,8 +166,9 @@ builds a filesystem path from a request:
 - **Static files** come from a fixed name -> packaged-asset map (the vendored Cytoscape/dagre
   bundles and the page scripts); any other `/static/` name, `..` included, is 404.
 - **JSON** (`/api/index.json`, `/api/graph`, `/api/pr-comment`) is read-only, behind the same Host
-  check and headers, serialised with `<` escaped. Pages never inline JSON or code in a `<script>`:
-  the graph and the ⌘K palette fetch their data.
+  check and headers, serialised with `<` escaped. Served pages never inline JSON or code in a
+  `<script>`: the graph and the ⌘K palette fetch their data (only the static export inlines, under
+  its own hash CSP).
 - **Paths** are exactly `/<kind>/<one percent-decoded segment>`; the segment is a lookup key into
   the in-memory graph, never a path. Unknown objects render the error contract (message + hint)
   as a 404; ambiguous names a 300 page linking each candidate.
@@ -205,6 +207,33 @@ response contains a tag, event attribute or link outside the page shell.
 `tests/test_workbench_triage_post.py` covers the triage POST: every refusal asserts that no
 `TriageStore` method ran and that the store file is byte-identical afterwards.
 
+## Static Export
+
+`strata workbench --out DIR` (`strata_lookml.workbench.export`) writes `DIR/dashboard.html` and
+binds no port:
+
+- **Same renderer, read-only.** Each page is what the live server returns for its route, from an
+  `App` built with no triage store: nothing under `~/.strata` is read or written by the export
+  (the IR cache is loaded as for the workbench), `triage_rows` never calls `observe`, the page
+  carries no token and the acknowledge controls are hidden. Statuses come from `--baseline`.
+- **Inert pages.** Each page body sits in a `<template>` (parsed, never rendered or run) and is
+  cloned into `<main>` by `assets/js/router.js`; the router builds nothing from strings
+  (`textContent` and cloning only, no HTML parsing sink).
+- **CSP by hash.** The file carries `<meta http-equiv="Content-Security-Policy">`:
+  `default-src 'none'`, `script-src` the SHA-256 of each inline script and nothing else,
+  `style-src 'unsafe-inline'`, `img-src data:`, `base-uri 'none'`, `form-action 'none'`. With no
+  `connect-src` the page cannot fetch anything; the data the live pages fetch (the ⌘K index, the
+  graph, PR-comment text) is embedded once as `<script type="application/json">`, serialized with
+  `<` escaped.
+- **Raw insertion is checked.** Scripts, the stylesheet, the JSON payload and page bodies enter the
+  file through `render.inline_script` / `inline_style` / `json_script` / `page_fragment`, which
+  refuse text that could close their element (`</script`, `<!--`, `</style`, `</template`).
+
+`tests/test_workbench_export.py` checks every template against the live server's page byte for
+byte, renders the hostile-name fixture and asserts nothing leaves a `<template>` or `<script>`,
+checks the CSP hashes, and asserts an export leaves `~/.strata` (including a store an `observe`
+would have changed) and the repo byte-identical.
+
 ## Workbench Rendering And Escaping
 
-Workbench pages render through one Jinja2 environment (`strata_lookml.workbench.render`) with autoescape on for every template regardless of extension and `StrictUndefined`; templates may not use `|safe` or `{% autoescape false %}`, and `markupsafe.Markup` is constructed only inside `safe_svg()` — all enforced by `tests/test_workbench_render.py`.
+Workbench pages render through one Jinja2 environment (`strata_lookml.workbench.render`) with autoescape on for every template regardless of extension and `StrictUndefined`; templates may not use `|safe` or `{% autoescape false %}`, and `markupsafe.Markup` is constructed only inside `render._raw()`, reached through `safe_svg()` and the export's checked helpers above — all enforced by `tests/test_workbench_render.py`.

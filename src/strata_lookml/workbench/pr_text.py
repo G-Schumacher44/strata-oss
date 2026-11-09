@@ -45,6 +45,30 @@ def usd(amount: float) -> str:
     return f"${amount:,.0f}" if amount >= 100 else f"${amount:,.2f}"
 
 
+def comment_header(count: int) -> str:
+    """The first line of a comment about `count` finding records (a finding page's own)."""
+    return f"**Strata** found {count} LookML {'finding' if count == 1 else 'findings'}:"
+
+
+def finding_lines(record: Mapping[str, Any], workbench_base: str | None = None) -> list[str]:
+    """One finding record's bullet in a PR comment (`pr_comment` joins these)."""
+    label = CATEGORY_LABELS.get(record["category"], record["category"])
+    lines = [f"- **{label}** `{record['id']}`"]
+    where = _location(record)
+    lines.append(f"  - `{where}` — {record['message']}" if where else f"  - {record['message']}")
+    if record.get("cost_usd") is not None:
+        lines.append(f"  - Rebuild cost: {usd(record['cost_usd'])}")
+    action = CATEGORY_ACTIONS.get(record["category"])
+    if action:
+        lines.append(f"  - Suggested: {ACTION_LABELS[action]}")
+    if record.get("evidence_ids"):
+        lines.append("  - Evidence: " + ", ".join(f"`{e}`" for e in record["evidence_ids"]))
+    url = link(workbench_base, finding_path(record["id"]))
+    if url:
+        lines.append(f"  - Workbench: {url}")
+    return lines
+
+
 def pr_comment(
     records: Sequence[Mapping[str, Any]],
     obj: Mapping[str, Any],
@@ -59,28 +83,14 @@ def pr_comment(
     subject = f"{obj['kind']} `{obj['name']}`"
     lines: list[str] = []
     if records:
-        noun = "finding" if len(records) == 1 else "findings"
+        header = comment_header(len(records))
         # A finding page is about the finding itself: no object to name.
-        on = "" if obj["kind"] == "finding" else f" on {subject}"
-        lines.append(f"**Strata** found {len(records)} LookML {noun}{on}:")
+        if obj["kind"] != "finding":
+            header = header.removesuffix(":") + f" on {subject}:"
+        lines.append(header)
         lines.append("")
         for record in records:
-            label = CATEGORY_LABELS.get(record["category"], record["category"])
-            lines.append(f"- **{label}** `{record['id']}`")
-            where = _location(record)
-            lines.append(
-                f"  - `{where}` — {record['message']}" if where else f"  - {record['message']}"
-            )
-            if record.get("cost_usd") is not None:
-                lines.append(f"  - Rebuild cost: {usd(record['cost_usd'])}")
-            action = CATEGORY_ACTIONS.get(record["category"])
-            if action:
-                lines.append(f"  - Suggested: {ACTION_LABELS[action]}")
-            if record.get("evidence_ids"):
-                lines.append("  - Evidence: " + ", ".join(f"`{e}`" for e in record["evidence_ids"]))
-            url = link(workbench_base, finding_path(record["id"]))
-            if url:
-                lines.append(f"  - Workbench: {url}")
+            lines += finding_lines(record, workbench_base)
         return "\n".join(lines)
     lines.append(f"**Strata** on {subject}:")
     lines.append("")

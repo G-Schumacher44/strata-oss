@@ -38,12 +38,11 @@ interactive HTML dashboard. No analysis happens here — it serializes what L0/L
 | File | Responsibility |
 |---|---|
 | `artifacts.py` | `build_artifacts()`, `write_artifacts()` — the 8 JSON outputs |
-| `dashboard.py` | `build_dashboard_html()` — inlines artifact JSON + bundled JS into self-contained HTML |
 | `notifications.py` | `build_slack_payload()`, `build_jira_tickets()` — notification payloads |
 | `pr_report.py` | `build_pr_comment()` — markdown PR impact comment (used by StrataBot) |
 
 ## Dashboard
 
-`build_dashboard_html()` inlines all 8 artifacts and 4 bundled JS libraries
-(Cytoscape, Dagre, Chart.js) into a single self-contained HTML file. No CDN — renders
-fully offline. JS lives in `src/strata_lookml/assets/js/`.
+The HTML views are the workbench (`strata_lookml/workbench/`): the live server and its static
+export (`workbench/export.py`, `strata workbench --out`) render the same pages. Nothing in this
+package builds HTML.

@@ -1,5 +1,4 @@
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +11,6 @@ from strata_lookml.l1.fixtures import load_usage_facts
 from strata_lookml.l1.types import ExploreUsage
 from strata_lookml.mcp.tools import strata_impact
 from strata_lookml.outputs import build_artifacts, write_artifacts
-from strata_lookml.outputs.dashboard import NODE_PALETTE, _build_graph_data, build_dashboard_html
 from strata_lookml.pipeline import build_graph
 from strata_lookml.synthesis.slices import build_explore_slice
 from strata_lookml.synthesis.verdicts import (
@@ -20,6 +18,8 @@ from strata_lookml.synthesis.verdicts import (
     deterministic_verdict,
     validate_verdict,
 )
+from strata_lookml.workbench.graph import NODE_PALETTE
+from strata_lookml.workbench.graph import build_graph_data as _build_graph_data
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parents[1]
@@ -163,8 +163,6 @@ def test_graph_marks_dead_explores_dead():
     """Dead-code register names explores MODEL-QUALIFIED; graph labels are bare. A bare-name
     lookup silently missed every dead explore (rendered green/KEEP — caught regenerating the
     README screenshots, PR #21). Pin the qualified lookup, plus a live-explore negative control."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
     SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
@@ -189,8 +187,6 @@ def test_view_status_credits_inherited_consumers():
     own _mark_orphans ancestry walk. In the fixtures, test_model.customer targets
     customer_extended, which extends base_customer: base_customer must show the inherited
     consumer and must NOT read as orphaned."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
     graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
     data = _build_graph_data(graph)
     by_id = {n["data"]["id"]: n["data"] for n in data["nodes"]}
@@ -209,8 +205,6 @@ def test_physical_table_panel_counts_pdt_upstream_references():
     """Codex r5 (PR #25): derived-table SQL references (pdt→upstream) must appear in the
     physical-table panel's referencing list, mirroring strata_impact()'s mapping — the
     panel must never undercount the references a deletion would break."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
     graph = build_graph(FIXTURES, FIXTURES / "usage_facts.json")
     # ground truth: which tables have pdt→upstream edges in the fixture graph
     upstream = {}
@@ -253,8 +247,7 @@ def test_pdt_consumers_are_direct_not_inherited():
 def test_evidence_facts_aggregates_content_refs_and_schema_columns():
     """L1 owns aggregation (per outputs/AGENTS.md: outputs serialize, they do not derive).
     `evidence_facts()` computes content-reference counts per explore and per-table column
-    facts; `dashboard._build_l1_facts()` only reshapes what this function returns into the
-    evidence-id-keyed shape the JS looks up (Codex PR #28)."""
+    facts; renderers only reshape what this function returns (Codex PR #28)."""
     from strata_lookml.l1.enrich import evidence_facts
 
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
@@ -308,11 +301,6 @@ def test_zombie_pdt_detection_enterprise_mono():
             f"{r['view']}: 'used' PDT should not cite dead-explore evidence"
         )
 
-    artifacts = build_artifacts(graph)
-    html = build_dashboard_html(artifacts, graph)
-    assert "zombie-badge" in html
-    assert '"status": "zombie"' in html
-
     # Negative control: a PDT with a live consumer must not be flagged zombie.
     live_record = ledger_by_view["pdt_regional_kpi"]
     assert live_record["status"] == "used"
@@ -334,8 +322,6 @@ def test_graph_node_detail_carries_pdt_ledger_fields():
     record, not just name/kind/source, so the graph click isn't an anticlimax. Both
     fixture zombies + a negative-control 'used' PDT, since the color/status mapping
     branches on status."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
     SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
@@ -369,8 +355,6 @@ def test_graph_node_detail_status_vocabulary_per_kind():
     """Status vocabulary (dashboard PR #23) — PDT/explore/view nodes carry the honest
     three-way zombie vocabulary instead of a flattened DEAD/ORPHAN flag, with colors
     matching the legend."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
     SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
@@ -412,8 +396,6 @@ def test_graph_node_detail_status_vocabulary_per_kind():
 def test_graph_node_pdt_dependencies_and_table_references():
     """Explore -> PDT dependency and physical-table -> referencing-view data (dashboard
     PR #23), derived from the graph edges rather than invented."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
     SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
@@ -431,8 +413,8 @@ def test_graph_node_pdt_dependencies_and_table_references():
 def test_schema_drift_rows_differ_by_field_not_true_duplicates():
     """Schema Drift dedup arithmetic (dashboard PR #23) — rows that look byte-identical
     on kind/table/column/source_file/reason actually differ by `field` (the LookML field
-    whose SQL references the drifted column). Pin that assumption: it's why the dashboard
-    surfaces the Field column instead of collapsing genuinely distinct issues under a
+    whose SQL references the drifted column). Pin that assumption: it's why reports
+    surface the Field column instead of collapsing genuinely distinct issues under a
     fake ×N dedup."""
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
@@ -455,45 +437,7 @@ def test_schema_drift_rows_differ_by_field_not_true_duplicates():
     assert len(full_keys) == len(drift), (
         "rows differ by `field` — every row is a genuinely distinct issue once field is shown"
     )
-
-    html = build_dashboard_html(artifacts, graph)
-    assert "<th>Field</th>" in html
-    assert "legacy_order_detail.total_unit_cost" in html
-
-
-def test_l1_facts_inlines_usage_pdt_build_and_schema_table_facts():
-    """Slice 08 — the raw L1 facts (explore_usage, pdt_builds, schema_tables) must reach
-    the dashboard data block Python-side, keyed to match the evidence-id suffixes the JS
-    looks them up by, so evidence sentences never re-derive a number the L1 layer already
-    computed."""
-    from strata_lookml.outputs.dashboard import _build_l1_facts
-
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    facts = _build_l1_facts(graph)
-
-    assert facts["period"] == {"start": "2026-05-07", "end": "2026-06-06", "days": 30}
-
-    dead_finance = facts["usage"]["explore:em_legacy_v2.dead_finance_v2"]
-    assert dead_finance["query_count"] == 0
-    assert dead_finance["content_reference_count"] == 0
-
-    live_explore_key = next(
-        key for key, rec in graph.metadata["l1"]["explore_usage"].items() if rec["query_count"] > 0
-    )
-    assert facts["usage"][f"explore:{live_explore_key}"]["query_count"] > 0
-
-    zombie_build = facts["pdt_build"]["pdt_attribution_full_funnel"]
-    assert zombie_build["build_count"] == 180
-    assert zombie_build["estimated_cost_usd"] == 45000.0
-    assert zombie_build["bytes_processed"] == 7200000000000000
-
-    schema_table = facts["schema_table"]["acme-analytics.silver.int_attributed_purchases"]
-    assert schema_table["column_count"] > 0
-    assert schema_table["columns"], "column NAMES must be plumbed, not just a count (Codex PR #28)"
-    assert schema_table["column_count"] == len(schema_table["columns"])
+    assert any(r.get("field") == "legacy_order_detail.total_unit_cost" for r in drift)
 
 
 def test_l1_facts_covers_explores_without_usage_rows():
@@ -502,8 +446,6 @@ def test_l1_facts_covers_explores_without_usage_rows():
     need evidence. Every explore node must get a usage entry; row absence is itself the
     zero-usage fact and is flagged so the sentence states it rather than implying a
     serialized row existed."""
-    from strata_lookml.outputs.dashboard import _build_l1_facts
-
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
     SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
@@ -519,933 +461,13 @@ def test_l1_facts_covers_explores_without_usage_rows():
     l1_entry = evidence_facts(graph)["explore_usage_evidence"][removed]
     assert l1_entry["no_usage_row"] is True
 
-    facts = _build_l1_facts(graph)
-    entry = facts["usage"][f"explore:{removed}"]
-    assert entry == l1_entry, "outputs must reshape the L1 record verbatim, not re-derive"
-    assert entry["no_usage_row"] is True
-    assert entry["query_count"] == 0
-    assert entry["content_reference_count"] == 0
+    assert l1_entry["query_count"] == 0
+    assert l1_entry["content_reference_count"] == 0
 
     # Explores WITH rows are untouched by the backfill (no flag, real counts kept).
-    with_row = next(k for k in facts["usage"] if not facts["usage"][k].get("no_usage_row"))
-    assert "no_usage_row" not in facts["usage"][with_row]
-
-
-def test_unique_anchor_suffixes_collisions_deterministically():
-    """Codex PR #28 r12 — two views in different source files that map to the same physical
-    table and define the same-named field referencing the same missing column produce the
-    SAME SchemaDriftRecord id, while the grouping key keeps them as separate rows. The bare
-    id would give both the same DOM anchor, so the second row's copy-link resolves to the
-    first. uniqueAnchor() keeps the first occurrence bare (previously shared links stay
-    valid) and suffixes each later collision in render order."""
-    import re
-
-    from strata_lookml.outputs.dashboard import build_dashboard_html
-
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    html = build_dashboard_html(build_artifacts(graph), graph)
-
-    m = re.search(r"function uniqueAnchor\(base\) \{(.+?)\n\}", html, re.S)
-    assert m, "uniqueAnchor() must ship in the generated page"
-
-    # Execute the real shipped logic rather than restating it here.
-    seen: dict[str, int] = {}
-
-    def unique_anchor(base: str) -> str:
-        n = seen.get(base, 0) + 1
-        seen[base] = n
-        return f"{base}:{n}" if n > 1 else base
-
-    dup = "schema:missing_column:acme.silver.t.col:view.field"
-    assert unique_anchor(dup) == dup, "first occurrence keeps the bare id"
-    assert unique_anchor(dup) == dup + ":2"
-    assert unique_anchor(dup) == dup + ":3"
-    assert unique_anchor("other") == "other", "unrelated ids are unaffected"
-
-
-def test_copy_link_fragment_round_trips_percent_escapes():
-    """Codex PR #28 r11 — the copy-link wrote the raw row id while openHashTarget() reads it
-    back through decodeURIComponent(). An id holding a literal percent-escape (a quoted
-    physical table like 'foo%20bar') decoded to 'foo bar' on open and matched nothing. The
-    writer now encodes; the reader decodes first and falls back to the raw hash so links
-    copied from an older build still resolve."""
-    from strata_lookml.outputs.dashboard import build_dashboard_html
-
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    html = build_dashboard_html(build_artifacts(graph), graph)
-
-    assert "encodeURIComponent(id)" in html, "the fragment writer must encode"
-    assert "decodeURIComponent(raw)" in html, "the fragment reader must decode"
-    assert "getElementById(raw)" in html, (
-        "reader must fall back to the raw hash so pre-fix copied links still resolve"
-    )
-
-    # The property itself, on an id shaped like the one that broke.
-    from urllib.parse import quote, unquote
-
-    hostile = "schema:missing_column:foo%20bar.unit_cost:legacy.col"
-    assert unquote(quote(hostile, safe="")) == hostile
-
-
-def test_fact_lookups_are_prototype_safe():
-    """Codex PR #28 r9 — JSON.parse yields prototyped objects, so a bare key like
-    'constructor' or 'toString' would resolve to an inherited member and report a missing
-    table as PRESENT, contradicting the drift verdict. Every L1 fact lookup routes through
-    ownFact(); NODE_BY_ID is prototype-free so it also can't be poisoned on assignment."""
-    from strata_lookml.outputs.dashboard import build_dashboard_html
-
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    html = build_dashboard_html(build_artifacts(graph), graph)
-
-    assert "function ownFact(" in html, "the own-property lookup helper must ship"
-    assert "Object.create(null)" in html, "NODE_BY_ID must be prototype-free"
-    # No raw bracket lookup into a JSON-parsed fact map may remain.
-    for raw in ("L1_FACTS.usage[", "L1_FACTS.pdt_build[", "L1_FACTS.schema_table["):
-        assert raw not in html, f"raw prototype-exposed lookup survived: {raw}"
-
-
-def test_data_derived_fields_are_escaped_in_innerhtml_templates():
-    """Found by an internal sweep, not by review: escaping was applied per-field rather than
-    per-source, so `source_file` was escaped in the Schema Drift row and NOT in the Dead Code
-    Register row three functions away. A later sweep (issue #29) found the guardrail itself had
-    a blind spot: it only matched literal `${r.field}` / `${c.field}` tokens, so interpolation
-    through an intermediate variable (`${label}`) or a nested map-callback parameter (`${e}`,
-    `${v}`) passed silently even though those were exactly as unescaped.
-
-    This version flags ANY `${...}` interpolation inside an innerHTML-class template (innerHTML/
-    outerHTML/insertAdjacentHTML) unless the expression is provably safe: wrapped in
-    escapeHtml()/a known-safe helper (Number(...) among them — see `_SAFE_WRAPPERS`), purely
-    structural (`.map().join(literal)` chains whose callback body is itself safe), or a bare local
-    variable whose OWN assignment
-    (within the same top-level IIFE/function scope — scoping matters, see
-    `_safe_vars_for_scope`) resolves to one of the above. Allowlist of safe *shapes*, not a
-    blocklist of bad field names — a new unescaped field is exactly the regression this is here
-    to catch, and a fixed list would not see it."""
-    from strata_lookml.outputs.dashboard import build_dashboard_html
-
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    html = build_dashboard_html(build_artifacts(graph), graph)
-
-    offenders = _find_unescaped_innerhtml_interpolations(html)
-    assert not offenders, (
-        "unescaped `${...}` interpolation reaching an innerHTML-class sink: "
-        + ", ".join(f"line {line}: {expr}" for line, expr in offenders)
-    )
-
-
-# ── Escaping guardrail internals ────────────────────────────────────────────────
-# A small allowlist-based JS-template safety checker used only by
-# test_data_derived_fields_are_escaped_in_innerhtml_templates above. It is a heuristic, not a
-# full JS parser: it understands template literals, ternaries, `||`/`+`/`-`, string/number
-# literals, and `.map(fn).join(literal)` / `.slice(n,m)` chains whose callback body is itself
-# safe. Anything it can't prove safe is flagged — false positives get wrapped in escapeHtml()
-# (harmless), false negatives are the actual risk, which is why every sink fix in issue #29 has
-# a matching negative-control run (remove the escapeHtml, confirm this test goes red).
-
-# Every name below was checked against its actual dashboard.py implementation (Codex PR #30
-# r2 P2 — the allowlist previously trusted a helper's NAME, not what it does with its
-# arguments): each one escapes/derives every data-derived value it interpolates from its OWN
-# body, so a call is safe no matter what its arguments contain.
-#   escapeHtml — the sanitizer itself.
-#   Number — the JS built-in. `Number(x)` can only ever evaluate to a primitive number (or
-#     NaN); there is no code path back to a string, so a template-literal coercion of its
-#     result is always digits/`NaN`/`Infinity`, never attacker text (Codex PR #30 r4). Call
-#     sites wrap otherwise-unprovable numeric-ish receivers in it (e.g. `Number(r.bytes_processed)`,
-#     `Number((r.explores||[]).length)`) rather than trusting the checker to see through them.
-#   fmt_usd — every code path is `'$' + v.toFixed(2)`; `.toFixed` exists ONLY on
-#     Number.prototype, so for any non-number `v` (a string, array, object, null, undefined —
-#     everything JSON.parse can produce besides a bare number) `v.toFixed` is `undefined` and
-#     calling it throws a TypeError before the `+` concatenation ever runs. It can return
-#     `'$' + <digits>` or throw; there is no path back to input-derived text, so it stays
-#     unconditionally safe (Codex PR #30 r4 audit).
-#   primaryChipHtml, evidenceHtml — wrap every argument they interpolate in escapeHtml().
-#   evidenceListHtml — `ids.map(evidenceHtml).join('')`, i.e. only ever emits evidenceHtml's
-#     already-safe output.
-#   consumerListHtml — escapes `c.key`; the only other field read (`c.dead`) is a boolean
-#     used to pick between two fixed literal strings, never interpolated itself.
-#   statusBadge — returns one of a fixed set of literal `<span>` strings chosen by comparing
-#     fields against literal values; no field is ever interpolated into the output.
-_SAFE_WRAPPERS = (
-    "escapeHtml",
-    "Number",
-    "fmt_usd",
-    "primaryChipHtml",
-    "evidenceListHtml",
-    "consumerListHtml",
-    "statusBadge",
-    "evidenceHtml",
-)
-# uniqueAnchor is deliberately NOT here (Codex PR #30 r1): it returns its `base` argument
-# verbatim, unescaped — it's an id-collision-disambiguation helper, not an HTML-safety
-# wrapper. Every current call site only feeds its result into an already-safe wrapper
-# (primaryChipHtml, which escapes it) or a non-sink `.id =` assignment, never directly
-# into a `${...}` innerHTML placeholder — but the allowlist must not claim otherwise.
-
-# detailRow(key, valHtml) escapes `key` internally but returns `valHtml` VERBATIM — every
-# real call site escapes it first, but the helper itself does not (Codex PR #30 r2 P2: it
-# was wrongly listed alongside the unconditionally-safe wrappers above, which would have let
-# `${detailRow('X', r.name)}` pass the guardrail with an unescaped second argument). It is
-# safe only when EVERY argument passed to it is itself provably safe — checked by recursing
-# into the call's arguments rather than trusting the callee's name.
-#
-# fmt_bytes lives here too, moved OUT of the unconditionally-safe tier above (Codex PR #30 r4):
-# unlike fmt_usd, its threshold checks (`b >= 1e12`, `b >= 1e9`, ...) all evaluate false when
-# `b` is a non-numeric string (`>=` coerces via ToNumber, which yields NaN, and every NaN
-# comparison is false) — every threshold falls through to the final `return b + ' B'`, and for
-# a string `b` that `+` is concatenation, not arithmetic: it returns the input string verbatim
-# with ' B' appended. `${fmt_bytes(r.name)}` would pass the checker unescaped exactly like the
-# original detailRow bug. Safe only when its argument is independently proven safe — every real
-# call site now wraps its argument in `Number(...)` (see dashboard.py), which IS provable via
-# the `Number` entry in `_SAFE_WRAPPERS` above.
-_ARG_SAFE_WRAPPERS = ("detailRow", "fmt_bytes")
-_SINK_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*`")
-_SINK_CALL_RE = re.compile(r"\.insertAdjacentHTML\s*\(\s*['\"][^'\"]*['\"]\s*,\s*`")
-# A sink assigned a bare identifier rather than a literal template — e.g.
-# `el.innerHTML = content;` — instead of resolving straight to a template literal.
-# Only the simple `const x = \`...\`; ... el.innerHTML = x;` shape is tracked (Artemis
-# PR #30 should_fix): the identifier is resolved against this scope's own template-literal
-# const/let declarations (see `_template_vars_for_scope`); an identifier that resolves to
-# neither a safe var nor a known template-literal declaration is flagged, not assumed safe.
-_SINK_VAR_ASSIGN_RE = re.compile(r"\.(?:innerHTML|outerHTML)\s*\+?=\s*([A-Za-z_]\w*)\s*;")
-_CONST_RE = re.compile(r"\b(?:const|let)\s+(\[[^\]]*\]|[A-Za-z_]\w*)\s*=\s*")
-# `(item, index) =>` — the callback's second parameter (forEach/map) is always the numeric index.
-_CALLBACK_INDEX_PARAMS_RE = re.compile(r"\(\s*[A-Za-z_]\w*\s*,\s*([A-Za-z_]\w*)\s*\)")
-_CALLBACK_INDEX_CALL_RE = re.compile(
-    r"\.(?:forEach|map)\(\s*\(\s*[A-Za-z_]\w*\s*,\s*([A-Za-z_]\w*)\s*\)\s*=>"
-)
-_TEMPLATE_CONST_RE = re.compile(r"\b(?:const|let)\s+([A-Za-z_]\w*)\s*=\s*`")
-# Top-level (column-0) IIFEs and function declarations — this file's scopes, consistently
-# formatted. Variable-safety is inferred per scope so a `label`/`cls` local in one function
-# can't leak "safe" status into an unrelated same-named local in another (issue #29 review).
-_TOP_LEVEL_BLOCK_RE = re.compile(
-    r"^(?:\(function\s*\([^)]*\)\s*\{|function\s+[A-Za-z_]\w*\s*\([^)]*\)\s*\{)", re.M
-)
-
-
-def _find_matching_paren(text, open_idx, open_ch="(", close_ch=")"):
-    depth = 0
-    i = open_idx
-    n = len(text)
-    while i < n:
-        c = text[i]
-        if c in "'\"":
-            j = i + 1
-            while j < n and text[j] != c:
-                if text[j] == "\\":
-                    j += 1
-                j += 1
-            i = j + 1
-            continue
-        if c == "`":
-            _, end = _extract_template_placeholders(text, i + 1)
-            i = end
-            continue
-        if c == open_ch:
-            depth += 1
-        elif c == close_ch:
-            depth -= 1
-            if depth == 0:
-                return i
-        i += 1
-    return -1
-
-
-class _Placeholder(str):
-    """A `${...}` expression's text, plus the index in the scanned text where it begins — lets
-    a caller tell which enclosing callback body (if any) a flattened nested placeholder is in."""
-
-    pos = -1
-
-    def __new__(cls, text, pos):
-        obj = super().__new__(cls, text)
-        obj.pos = pos
-        return obj
-
-
-def _extract_template_placeholders(text, start):
-    """Given text[start] just after an opening backtick, return (placeholders, end_index):
-    every `${...}` expression found — including ones nested inside template literals that
-    themselves live inside an outer `${...}` (e.g. a nested-template map callback) — and
-    the index just past the closing backtick."""
-    pos = start
-    n = len(text)
-    mode_stack = ["tmpl"]
-    cur_expr = []
-    starts = []
-    placeholders = []
-    while pos < n:
-        ch = text[pos]
-        top = mode_stack[-1]
-        if top == "tmpl":
-            if ch == "\\":
-                pos += 2
-                continue
-            if ch == "`":
-                mode_stack.pop()
-                pos += 1
-                if not mode_stack:
-                    return placeholders, pos
-                continue
-            if ch == "$" and pos + 1 < n and text[pos + 1] == "{":
-                mode_stack.append(("expr", 1))
-                cur_expr.append([])
-                starts.append(pos + 2)
-                pos += 2
-                continue
-            pos += 1
-            continue
-        _, depth = top
-        if ch == "`":
-            nested_placeholders, nested_end = _extract_template_placeholders(text, pos + 1)
-            placeholders.extend(nested_placeholders)
-            cur_expr[-1].append(text[pos:nested_end])
-            pos = nested_end
-            continue
-        if ch in "'\"":
-            j = pos + 1
-            while j < n and text[j] != ch:
-                if text[j] == "\\":
-                    j += 1
-                j += 1
-            cur_expr[-1].append(text[pos : j + 1])
-            pos = j + 1
-            continue
-        if ch == "{":
-            mode_stack[-1] = ("expr", depth + 1)
-            cur_expr[-1].append(ch)
-            pos += 1
-            continue
-        if ch == "}":
-            if depth == 1:
-                expr_text = "".join(cur_expr.pop())
-                placeholders.append(_Placeholder(expr_text, starts.pop()))
-                mode_stack.pop()
-            else:
-                mode_stack[-1] = ("expr", depth - 1)
-                cur_expr[-1].append(ch)
-            pos += 1
-            continue
-        cur_expr[-1].append(ch)
-        pos += 1
-    return placeholders, pos
-
-
-def _split_top_level(s, seps):
-    """Split `s` on any token in `seps` at bracket/string/template-literal depth 0."""
-    seps = sorted(seps, key=len, reverse=True)
-    parts = []
-    buf = []
-    depth = 0
-    i = 0
-    n = len(s)
-    while i < n:
-        c = s[i]
-        if c in "'\"":
-            j = i + 1
-            while j < n and s[j] != c:
-                if s[j] == "\\":
-                    j += 1
-                j += 1
-            buf.append(s[i : j + 1])
-            i = j + 1
-            continue
-        if c == "`":
-            _, end = _extract_template_placeholders(s, i + 1)
-            buf.append(s[i:end])
-            i = end
-            continue
-        if c in "([{":
-            depth += 1
-            buf.append(c)
-            i += 1
-            continue
-        if c in ")]}":
-            depth -= 1
-            buf.append(c)
-            i += 1
-            continue
-        if depth == 0:
-            matched = next((sep for sep in seps if s.startswith(sep, i)), None)
-            if matched:
-                parts.append("".join(buf))
-                buf = []
-                i += len(matched)
-                continue
-        buf.append(c)
-        i += 1
-    parts.append("".join(buf))
-    return parts
-
-
-def _neutralize_maps_and_slices(expr, safe_vars):
-    """Replace `.map(param => body)` with the neutral `.map()` when `body` is itself safe
-    (whatever the map's base array contains is never rendered directly — only what the
-    callback returns is), and `.slice(n, m)` with `.slice()` unconditionally. Returns
-    (new_expr, all_maps_were_safe)."""
-    out = []
-    i = 0
-    n = len(expr)
-    ok = True
-    while i < n:
-        m = re.match(r"\.map\(", expr[i:])
-        if m:
-            open_idx = i + m.end() - 1
-            close_idx = _find_matching_paren(expr, open_idx)
-            if close_idx == -1:
-                out.append(expr[i])
-                i += 1
-                continue
-            callback = expr[open_idx + 1 : close_idx]
-            arrow_parts = _split_top_level(callback, ["=>"])
-            body_safe_vars = safe_vars
-            if len(arrow_parts) == 2:
-                # The map's optional 2nd param is the numeric index — safe inside THIS body only.
-                im = _CALLBACK_INDEX_PARAMS_RE.fullmatch(arrow_parts[0].strip())
-                if im:
-                    body_safe_vars = safe_vars | {im.group(1)}
-            if len(arrow_parts) == 2 and _is_safe_expr(arrow_parts[1], body_safe_vars):
-                out.append(".map()")
-                i = close_idx + 1
-                continue
-            ok = False
-            out.append(expr[i : close_idx + 1])
-            i = close_idx + 1
-            continue
-        m2 = re.match(r"\.slice\(\s*[\d,\s]*\)", expr[i:])
-        if m2:
-            out.append(".slice()")
-            i += m2.end()
-            continue
-        out.append(expr[i])
-        i += 1
-    return "".join(out), ok
-
-
-def _is_call_of(expr, name):
-    m = re.match(re.escape(name) + r"\s*\(", expr)
-    if not m:
-        return False
-    depth = 0
-    i = m.end() - 1
-    n = len(expr)
-    while i < n:
-        if expr[i] == "(":
-            depth += 1
-        elif expr[i] == ")":
-            depth -= 1
-            if depth == 0:
-                return i == n - 1
-        i += 1
-    return False
-
-
-def _call_args(expr, name):
-    """If `expr` is exactly a call to `name(...)` (nothing before it, nothing trailing after
-    its closing paren), return its top-level-split argument expressions; else None."""
-    m = re.match(re.escape(name) + r"\s*\(", expr)
-    if not m:
-        return None
-    open_idx = m.end() - 1
-    close_idx = _find_matching_paren(expr, open_idx)
-    if close_idx != len(expr) - 1:
-        return None
-    args_str = expr[open_idx + 1 : close_idx]
-    if not args_str.strip():
-        return []
-    return _split_top_level(args_str, [","])
-
-
-def _is_safe_expr(expr, safe_vars):
-    expr = expr.strip()
-    if not expr:
-        return True
-
-    if expr.startswith("(") and expr.endswith(")"):
-        depth = 0
-        wraps_all = True
-        for idx, c in enumerate(expr):
-            if c == "(":
-                depth += 1
-            elif c == ")":
-                depth -= 1
-                if depth == 0 and idx != len(expr) - 1:
-                    wraps_all = False
-                    break
-        if wraps_all:
-            return _is_safe_expr(expr[1:-1], safe_vars)
-
-    if any(_is_call_of(expr, name) for name in _SAFE_WRAPPERS):
-        return True
-
-    for name in _ARG_SAFE_WRAPPERS:
-        args = _call_args(expr, name)
-        if args is not None:
-            return all(_is_safe_expr(a, safe_vars) for a in args)
-
-    if expr.startswith("`"):
-        placeholders, end = _extract_template_placeholders(expr, 1)
-        if end == len(expr):
-            # Nested placeholders are flattened; an index var of a callback inside THIS
-            # template is trusted only for placeholders positioned within that callback's body.
-            scopes = _callback_index_scopes(expr)
-            return all(
-                _is_safe_expr(p, _safe_vars_at(safe_vars, scopes, p.pos)) for p in placeholders
-            )
-
-    if len(expr) >= 2 and expr[0] == expr[-1] and expr[0] in "'\"":
-        return True
-
-    if re.fullmatch(r"-?\d+(\.\d+)?", expr):
-        return True
-
-    if re.fullmatch(r"[A-Za-z_]\w*", expr):
-        return expr in safe_vars
-
-    parts = _split_top_level(expr, ["?", ":"])
-    if len(parts) >= 3 and len(parts) % 2 == 1:
-        value_indices = list(range(1, len(parts) - 1, 2)) + [len(parts) - 1]
-        return all(_is_safe_expr(parts[idx], safe_vars) for idx in value_indices)
-
-    parts = _split_top_level(expr, ["||"])
-    if len(parts) > 1:
-        return all(_is_safe_expr(p, safe_vars) for p in parts)
-
-    parts = _split_top_level(expr, ["+", "-"])
-    if len(parts) > 1:
-        return all(_is_safe_expr(p, safe_vars) for p in parts)
-
-    # `.length` is deliberately NOT trusted as a safe ending (Codex PR #30 r4): every value
-    # this checker sees is JSON-parsed data, and a plain object can carry an own property
-    # literally named `length` (`r.length === '<img ...>'`) that shadows the real Array/String
-    # `.length` accessor entirely — `r.length` returns that string, not a count. A genuine
-    # Array's or primitive String's `.length` IS always numeric (the engine won't let you
-    # assign it anything else), but this checker has no way to prove a given receiver is
-    # actually one of those rather than a generic record — so every real `.length` value that
-    # reaches a sink is wrapped in `Number(...)` at the dashboard.py call site instead (see
-    # dashboard.py's evCount/explores/fields/views call sites), which the `Number` entry in
-    # `_SAFE_WRAPPERS` above proves safe unconditionally.
-
-    m = re.match(r"(.*)\.toLocaleString\s*\(\s*\)\s*$", expr, re.S)
-    if m and _is_safe_numeric_expr(m.group(1)):
-        return True
-
-    neutralized, ok = _neutralize_maps_and_slices(expr, safe_vars)
-    if not ok:
-        return False
-    if neutralized != expr:
-        return _is_safe_join_chain_residual(neutralized)
-
-    return False
-
-
-def _is_safe_numeric_expr(expr):
-    """Narrower than `_is_safe_expr`: proves `expr` can only ever evaluate to a JS number,
-    not merely that it won't inject unescaped HTML. `String.prototype.toLocaleString`
-    returns its receiver's own string value UNCHANGED (`'<img>'.toLocaleString() ===
-    '<img>'`), so treating `<receiver>.toLocaleString()` as a safe ending requires proving
-    the receiver is numeric -- a generically "safe" (e.g. already-escaped-string) receiver
-    is not enough (Codex PR #30 r3: `${r.name.toLocaleString()}` would otherwise pass this
-    checker unescaped, since strings implement `toLocaleString` and return themselves).
-
-    `.length` is NOT trusted as a numeric ending here either, for the same reason
-    `_is_safe_expr` doesn't trust it (Codex PR #30 r4): a JSON-sourced object can carry an
-    own `length` property that isn't a number at all, so `r.length.toLocaleString()` could
-    resolve to a receiver whose `.length` is attacker-controlled text, not a count."""
-    expr = expr.strip()
-    if not expr:
-        return False
-
-    if expr.startswith("(") and expr.endswith(")"):
-        depth = 0
-        wraps_all = True
-        for idx, c in enumerate(expr):
-            if c == "(":
-                depth += 1
-            elif c == ")":
-                depth -= 1
-                if depth == 0 and idx != len(expr) - 1:
-                    wraps_all = False
-                    break
-        if wraps_all:
-            return _is_safe_numeric_expr(expr[1:-1])
-
-    if re.fullmatch(r"-?\d+(\.\d+)?", expr):
-        return True
-
-    if _is_call_of(expr, "Number"):
-        return True
-
-    parts = _split_top_level(expr, ["+", "-", "*", "/"])
-    if len(parts) > 1:
-        return all(_is_safe_numeric_expr(p) for p in parts)
-
-    return False
-
-
-def _is_safe_join_chain_residual(expr):
-    """After `.map()`/`.slice()` neutralization, only an identifier/property-access base
-    (never itself rendered — it's just the iteration source), the neutral tokens, and a
-    trailing `.join('literal')` may remain."""
-    m = re.search(r"\.join\(\s*(?:'[^']*'|\"[^\"]*\")\s*\)$", expr)
-    if m:
-        expr = expr[: m.start()]
-    if expr.startswith("("):
-        close = _find_matching_paren(expr, 0)
-        if close == -1:
-            return False
-        inner = expr[1:close]
-        if not re.fullmatch(r"[A-Za-z_][\w.]*(?:\s*\|\|\s*\[\s*\])?", inner):
-            return False
-        expr = expr[close + 1 :]
-    return re.fullmatch(r"(?:\.[A-Za-z_]\w*(?:\(\))?|\[[^\]]*\])*", expr) is not None
-
-
-def _iter_top_level_blocks(js):
-    for m in _TOP_LEVEL_BLOCK_RE.finditer(js):
-        brace_idx = m.end() - 1
-        end = _find_matching_paren(js, brace_idx, open_ch="{", close_ch="}")
-        if end != -1:
-            yield m.start(), end + 1
-
-
-def _safe_vars_for_scope(block):
-    """Local vars in `block` whose own assignment is provably safe (recursing through the
-    same rules `_is_safe_expr` uses), so a later bare `${name}` in the same scope can be
-    trusted. Scoped per top-level block on purpose: two unrelated functions in this file both
-    have a local named `label`, and only one of them is escapeHtml()-derived."""
-    safe_vars = set()
-    for cm in _CONST_RE.finditer(block):
-        name_group = cm.group(1)
-        rhs = _split_top_level(block[cm.end() :], [";"])[0]
-        names = (
-            [x.strip() for x in name_group[1:-1].split(",")]
-            if name_group.startswith("[")
-            else [name_group]
-        )
-        if _is_safe_expr(rhs, safe_vars):
-            safe_vars.update(names)
-    return safe_vars
-
-
-def _callback_index_scopes(block):
-    """`(body_start, body_end, index_name)` for every `.forEach/.map((item, index) => ...)`
-    in `block`. Array.prototype.forEach/map's optional second callback arg is always the
-    numeric index — but only inside that callback, so it is trusted per callback body, never
-    block-wide (an outer data-derived binding with the same name stays unsafe; issue #31)."""
-    # Blank out line comments (same length, so offsets still line up): an apostrophe in prose
-    # ("the slice's own ...") would otherwise derail the paren matcher's string handling. The
-    # leading-whitespace requirement leaves `//` inside URL string literals alone.
-    code = re.sub(
-        r"(?m)(^|\s)//[^\n]*",
-        lambda m: m.group(1) + " " * (len(m.group(0)) - len(m.group(1))),
-        block,
-    )
-    scopes = []
-    for im in _CALLBACK_INDEX_CALL_RE.finditer(code):
-        open_idx = code.index("(", im.start())
-        close_idx = _find_matching_paren(code, open_idx)
-        if close_idx != -1:
-            scopes.append((im.end(), close_idx, im.group(1)))
-    return scopes
-
-
-def _safe_vars_at(safe_vars, scopes, pos):
-    """`safe_vars` plus the index variable of every callback whose body contains `pos`."""
-    return safe_vars | {name for start, end, name in scopes if start <= pos < end}
-
-
-def _template_vars_for_scope(block):
-    """Map of `name -> placeholders` for every `const`/`let` in `block` whose RHS is a
-    template literal (`const x = \\`...\\`;`), so a later bare-identifier sink assignment
-    (`el.innerHTML = x;`) can be resolved back to the placeholders it actually carries,
-    the same way `${x}` interpolation would be."""
-    template_vars = {}
-    for tm in _TEMPLATE_CONST_RE.finditer(block):
-        placeholders, _ = _extract_template_placeholders(block, tm.end())
-        template_vars[tm.group(1)] = placeholders
-    return template_vars
-
-
-def _find_unescaped_innerhtml_interpolations(html):
-    offenders = []
-    for block_start, block_end in _iter_top_level_blocks(html):
-        block = html[block_start:block_end]
-        block_safe_vars = _safe_vars_for_scope(block)
-        scopes = _callback_index_scopes(block)
-        template_vars = _template_vars_for_scope(block)
-        for regex in (_SINK_ASSIGN_RE, _SINK_CALL_RE):
-            for sm in regex.finditer(block):
-                placeholders, _ = _extract_template_placeholders(block, sm.end())
-                line_no = html[: block_start + sm.start()].count("\n") + 1
-                for p in placeholders:
-                    # Flattened nested placeholders may sit inside a callback body.
-                    safe_vars = _safe_vars_at(block_safe_vars, scopes, p.pos)
-                    if not _is_safe_expr(p, safe_vars):
-                        offenders.append((line_no, p.strip()[:80]))
-        for vm in _SINK_VAR_ASSIGN_RE.finditer(block):
-            name = vm.group(1)
-            safe_vars = _safe_vars_at(block_safe_vars, scopes, vm.start())
-            line_no = html[: block_start + vm.start()].count("\n") + 1
-            if name in safe_vars:
-                continue
-            if name in template_vars:
-                for p in template_vars[name]:
-                    # Resolve at the placeholder's DECLARATION position, not the sink's: an
-                    # index var in scope at the sink says nothing about the declaring scope.
-                    if not _is_safe_expr(p, _safe_vars_at(block_safe_vars, scopes, p.pos)):
-                        offenders.append((line_no, p.strip()[:80]))
-                continue
-            # Neither a provably-safe local nor a traceable template-literal declaration —
-            # a bare identifier reaching an innerHTML-class sink that this checker cannot
-            # prove safe is exactly the class of regression it exists to catch.
-            offenders.append((line_no, f"unresolved variable `{name}` assigned to sink"))
-    return offenders
-
-
-def test_embedded_json_cannot_break_out_of_script_block():
-    """Codex PR #28 r6 — json.dumps leaves `<` intact, so a data value containing
-    `</script>` would terminate the inline script element and hand the rest of the
-    payload to the HTML parser as live markup. Every JSON embed goes through
-    `_embed_json`, which encodes `<` as `\\u003c` (identical after JS string parsing)."""
-    from strata_lookml.outputs.dashboard import _embed_json, build_dashboard_html  # noqa: F401
-
-    hostile = {"period": {"start": "</script><b>x</b>"}, "col": "a<b"}
-    embedded = _embed_json(hostile)
-    assert "</script>" not in embedded
-    assert "<" not in embedded
-    import json as _json
-
-    assert _json.loads(embedded) == hostile  # pure serialization change
-
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    # Poison a value that lands in the L1_FACTS script literal; the generated page must
-    # not contain the sequence raw anywhere inside its scripts.
-    graph.metadata["l1"]["period"] = {"start": "</script><i>pwn</i>", "end": "x", "days": 30}
-    html = build_dashboard_html(build_artifacts(graph), graph)
-    import re
-
-    for m in re.finditer(r"<script>([\s\S]*?)</script>", html):
-        assert "<i>pwn</i>" not in m.group(1)
-
-
-def test_evidence_namespaces_all_have_sentence_handling():
-    """Hard constraint (slice-08): every evidence-id namespace present in the shipped
-    artifacts must resolve to a rendered sentence or a named, deliberate fallback — a
-    namespace the dashboard's evidenceSentence() dispatcher doesn't handle silently
-    no-ops for the user. Enumerate the REAL enterprise_mono artifacts (not a synthetic
-    list) and pin them against dashboard.py's documented namespace set, then confirm the
-    generated JS actually carries a case for each one."""
-    from strata_lookml.outputs.dashboard import KNOWN_EVIDENCE_NAMESPACES, build_dashboard_html
-
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    artifacts = build_artifacts(graph)
-
-    found: set[str] = set()
-
-    def walk(obj):
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                if key == "evidence_ids" and isinstance(value, list):
-                    for eid in value:
-                        found.add(str(eid).split(":", 1)[0])
-                else:
-                    walk(value)
-        elif isinstance(obj, list):
-            for item in obj:
-                walk(item)
-
-    walk(artifacts)
-
-    assert found, "fixture must exercise at least one evidence namespace"
-    assert found <= KNOWN_EVIDENCE_NAMESPACES, (
-        f"artifact evidence ids use namespace(s) {found - KNOWN_EVIDENCE_NAMESPACES} not "
-        "declared in dashboard.py's KNOWN_EVIDENCE_NAMESPACES — add a case to "
-        "evidenceSentence() and the constant before shipping"
-    )
-
-    html = build_dashboard_html(artifacts, graph)
-    for namespace in found:
-        assert f"case '{namespace}'" in html, (
-            f"generated dashboard JS has no evidenceSentence() case for '{namespace}'"
-        )
-
-
-def test_schema_table_sentence_renders_known_column_names():
-    """A missing_column finding's evidence chips were unverifiable: the `field:` sentence
-    is a declared no-fact fallback and `schema_table:` only reported a column COUNT.
-    Preserve the FULL column-name list (no display cap — a truncated list hides exactly
-    the fact a reader needs: whether the missing column is among the hidden ones, Codex
-    PR #28 round 3) so a reader can see the named column is absent."""
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    artifacts = build_artifacts(graph)
-    html = build_dashboard_html(artifacts, graph)
-
-    assert "fact.columns" in html
-    assert "cols.slice(0, 30)" not in html, "the 30-column display cap must be removed"
-    assert "cols.join(', ')" in html
-    # field: fallback stays the honest, unchanged no-fact message.
-    assert "no field-level L1 fact is tracked for" in html
-
-
-def test_physical_table_evidence_namespace_resolves_present_and_missing():
-    """missing_table drift records cite the physical table's OWN graph node id
-    (`physical_table:<name>`) as evidence_ids[0] — the Cleanup Roadmap uses that as its
-    primary chip, so evidenceSentence() must handle the `physical_table` namespace rather
-    than fall through to the generic no-sentence default (Codex PR #28)."""
-    graph = build_graph(
-        FIXTURES, FIXTURES / "usage_facts.json", FIXTURES / "schema_facts_drift.json"
-    )
-    artifacts = build_artifacts(graph)
-    html = build_dashboard_html(artifacts, graph)
-
-    drift = artifacts["schema_drift"]
-    missing_tables = [r for r in drift if r["kind"] == "missing_table"]
-    assert missing_tables, "fixture must exercise a missing_table drift record"
-    assert missing_tables[0]["evidence_ids"][0].startswith("physical_table:")
-
-    assert "case 'physical_table'" in html
-    assert "is not present in the provided schema facts" in html
-    assert "scanned ${scanned}" in html
-
-
-def test_schema_drift_and_roadmap_rows_get_stable_ids_and_copy_links():
-    """Slice contract (conductor/slice-08-evidence-trust-core.md lines 22 + 45): ANY
-    finding is shareable and EVERY row gets a copy-link affordance — Codex found only Dead
-    Code Register and PDT Ledger rows shipped it. Extend the same primaryChipHtml()-based
-    pattern to Schema Drift and Cleanup Roadmap rows, reusing each row's own pre-existing
-    evidence ids rather than inventing a new id scheme (Codex PR #28)."""
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    artifacts = build_artifacts(graph)
-    html = build_dashboard_html(artifacts, graph)
-
-    drift = artifacts["schema_drift"]
-    assert drift, "fixture must exercise schema drift rows"
-    assert all(r["id"].startswith("schema:") for r in drift)
-
-    roadmap = artifacts["cleanup_roadmap"]
-    assert roadmap, "fixture must exercise roadmap rows"
-    assert all(r["evidence_ids"] for r in roadmap)
-
-    # Both row classes anchor through the SHARED uniqueAnchor() helper (Codex r12): a
-    # data-derived id is not guaranteed unique — a roadmap can act twice on one artifact,
-    # and two views in different files can yield the same SchemaDriftRecord id — and a
-    # duplicate id silently resolves every copy-link past the first to the wrong row.
-    # Asserted as behavior, not as literal source lines: the previous form pinned the exact
-    # assignment text, so a correct refactor failed the test while the property it cared
-    # about was still true.
-    assert "function uniqueAnchor(base)" in html, "the shared anchor helper must ship"
-    assert "uniqueAnchor(r.id)" in html, "drift rows must route through it"
-    assert "uniqueAnchor('roadmap:' + primaryId)" in html, "roadmap rows must route through it"
-
-    # The chip's evidence id stays the row's own pre-existing evidence id, verbatim — the
-    # anchor namespace is separate from the evidence-id namespace and never replaces it.
-    assert "const primaryId = r.evidence_ids[0];" in html
-    assert "primaryChipHtml('schema_table:' + r.table, chipLabel, driftAnchor)" in html
-    assert "primaryChipHtml(primaryId, r.target, roadmapId)" in html
-    # Superseded collision rules must be gone, not merely unreachable.
-    assert "if (!document.getElementById(primaryId)) li.id = primaryId;" not in html
-    assert "roadmapIdCounts" not in html
-
-
-def test_roadmap_and_ledger_dom_ids_are_all_unique():
-    """Regression for the duplicate-DOM-id bug a live browser pass caught (round 2): every
-    row/li in the generated dashboard must have a unique id, or `getElementById` silently
-    resolves only the first match and later rows/anchors become unreachable. Cheap
-    Python-side check — reproduce the JS id-assignment scheme against the artifact data
-    rather than standing up a DOM (Codex PR #28)."""
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    artifacts = build_artifacts(graph)
-
-    roadmap = artifacts["cleanup_roadmap"]
-    assert roadmap, "fixture must exercise roadmap rows"
-
-    seen: dict[str, int] = {}
-    dupes: dict[str, int] = {}
-    for r in roadmap:
-        primary_id = r["evidence_ids"][0]
-        roadmap_id = f"roadmap:{primary_id}"
-        seen[roadmap_id] = seen.get(roadmap_id, 0) + 1
-        if seen[roadmap_id] > 1:
-            roadmap_id = f"{roadmap_id}:{seen[roadmap_id]}"
-        dupes[roadmap_id] = dupes.get(roadmap_id, 0) + 1
-
-    assert all(count == 1 for count in dupes.values()), (
-        f"the roadmap:-prefixed id-collision resolution produced duplicates: {dupes}"
-    )
-
-    ledger_ids = {f"pdt:{r['view']}" for r in artifacts["pdt_ledger"]}
-    dead_ids = {r["id"] for r in artifacts["dead_code_register"]}
-    drift_ids = {r["id"] for r in artifacts["schema_drift"]}
-    roadmap_ids = set(dupes.keys())
-    assert not roadmap_ids & (ledger_ids | dead_ids | drift_ids), (
-        "roadmap: namespace must never collide with a ledger/register/drift row's own id"
-    )
-
-
-def test_evidence_sentence_panel_assigned_via_text_content():
-    """Output-encoding hardening: evidence sentences interpolate fixture-supplied fields
-    (e.g. period.start/end, source_file); the panel must be assigned via textContent, not
-    innerHTML, so markup in fixture data can never render as markup (Codex PR #28)."""
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    artifacts = build_artifacts(graph)
-    html = build_dashboard_html(artifacts, graph)
-
-    assert "panel.textContent = evId + ': ' + evidenceSentence(evId);" in html
-    # The sentence-building helpers no longer need to HTML-escape fixture-supplied fields
-    # now that nothing assigns their output via innerHTML (evidenceHtml()'s own
-    # escapeHtml(evId) call is unrelated — that's a real innerHTML pill label, correctly
-    # still escaped).
-    assert "escapeHtml(modelDotName)" not in html
-    assert "escapeHtml(sourceFile)" not in html
-    assert "No graph node found for evidence id '${evId}'." in html
-
-
-def test_evidence_chips_and_deep_links_present_in_generated_html():
-    """Both fixture zombies must be reachable via a literal #dead:explore:.../#pdt:...
-    hash target with a copy-link affordance — the deep-link contract slice-08 adds."""
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    artifacts = build_artifacts(graph)
-    html = build_dashboard_html(artifacts, graph)
-
-    assert '"dead:explore:em_legacy_v2.dead_finance_v2"' in html
-    assert '"pdt:pdt_attribution_full_funnel"' in html
-    assert '"pdt:pdt_customer_value_score"' in html
-    assert "copy-link-btn" in html
-    assert "openHashTarget" in html
-    assert "evidence-sentence" in html
+    usage = evidence_facts(graph)["explore_usage_evidence"]
+    with_row = next(k for k in usage if not usage[k].get("no_usage_row"))
+    assert "no_usage_row" not in usage[with_row]
 
 
 def test_strata_gate_script_and_output_cli(tmp_path):
@@ -1492,109 +514,9 @@ def test_strata_gate_script_and_output_cli(tmp_path):
     assert (out / "cleanup_roadmap.json").exists()
 
 
-def _wrap_in_scope(body):
-    return "(function () {\n" + body + "\n})();\n"
-
-
-def test_guardrail_callback_index_is_scoped_to_its_callback():
-    """Issue #31: a callback's index variable is numeric only inside that callback. An outer
-    data-derived binding with the same name must stay unsafe at a sink outside the callback."""
-    leaked = _wrap_in_scope(
-        "const label = r.name;\nxs.map((x, label) => x);\nli.innerHTML = `${label}`;"
-    )
-    offenders = _find_unescaped_innerhtml_interpolations(leaked)
-    assert [expr for _, expr in offenders] == ["label"]
-
-    # Same shape through the bare-identifier sink form.
-    leaked_var = _wrap_in_scope(
-        "const label = r.name;\nxs.forEach((x, label) => x);\nli.innerHTML = label;"
-    )
-    assert _find_unescaped_innerhtml_interpolations(leaked_var)
-
-
-def test_guardrail_callback_index_is_still_trusted_inside_its_callback():
-    # Inside a forEach body (sink in the callback) ...
-    in_foreach = _wrap_in_scope("xs.forEach((x, i) => {\n  li.innerHTML = `row ${i}`;\n});")
-    assert _find_unescaped_innerhtml_interpolations(in_foreach) == []
-    # ... and inside a map body feeding a sink placeholder.
-    in_map = _wrap_in_scope(
-        "li.innerHTML = `${(xs || []).map((x, i) => `<td>${i}</td>`).join('')}`;"
-    )
-    assert _find_unescaped_innerhtml_interpolations(in_map) == []
-    # The first (item) param is never trusted.
-    item = _wrap_in_scope("li.innerHTML = `${(xs || []).map((x, i) => `<td>${x}</td>`).join('')}`;")
-    assert _find_unescaped_innerhtml_interpolations(item)
-
-
-def test_guardrail_variable_template_resolves_at_declaration_position():
-    """Codex PR #63: a template assigned via a variable is checked where it was DECLARED. An
-    outer data-derived `i` interpolated in the template must stay unsafe even when the sink
-    that uses the variable sits inside a callback whose own index is also called `i`."""
-    shadowed = _wrap_in_scope(
-        "const i = r.name;\n"
-        "const t = `<b>${i}</b>`;\n"
-        "xs.forEach((x, i) => {\n  li.innerHTML = t;\n});"
-    )
-    assert [e for _, e in _find_unescaped_innerhtml_interpolations(shadowed)] == ["i"]
-
-    # Declared inside the callback, the index is legitimately trusted.
-    declared_inside = _wrap_in_scope(
-        "xs.forEach((x, i) => {\n  const t = `<b>${i}</b>`;\n  li.innerHTML = t;\n});"
-    )
-    assert _find_unescaped_innerhtml_interpolations(declared_inside) == []
-
-
-def test_guardrail_nested_index_only_maps():
-    """Codex PR #63 P2: each nested callback's index is trusted inside its own body."""
-    nested = _wrap_in_scope(
-        "li.innerHTML = `${(xs || []).map((x, i) => "
-        "`<tr>${(x.cells || []).map((c, j) => `<td>${i}-${j}</td>`).join('')}</tr>`).join('')}`;"
-    )
-    assert _find_unescaped_innerhtml_interpolations(nested) == []
-
-    # The inner index does not leak into the outer callback body outside the inner callback.
-    leaked = _wrap_in_scope(
-        "li.innerHTML = `${(xs || []).map((x, i) => "
-        "`<tr>${j}${(x.cells || []).map((c, j) => `<td>${j}</td>`).join('')}</tr>`).join('')}`;"
-    )
-    assert _find_unescaped_innerhtml_interpolations(leaked)
-
-
-def test_legend_tokens_are_emitted_from_the_node_palette():
-    """Graph nodes and the legend that explains them read one palette: NODE_PALETTE is
-    stamped onto nodes AND emitted as the --n-* CSS tokens every legend swatch uses. A
-    hand-copied hex in the legend could drift from the node it describes; this pins that
-    every palette entry reaches the page as a token and the legend references them."""
-    ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
-    USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
-    SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
-    graph = build_graph(ENTERPRISE, USAGE, SCHEMA)
-    html = build_dashboard_html(build_artifacts(graph), graph)
-
-    assert "/*__PALETTE__*/" not in html, "palette placeholder must be substituted"
-    legend = html[html.index('id="graph-legend"') :]
-    legend = legend[: legend.index("</section>")]
-    for key, hex_ in NODE_PALETTE.items():
-        token = f"--n-{key.replace('_', '-')}"
-        assert f"{token}: {hex_};" in html, f"{key} must be emitted as a CSS token"
-        assert f"var({token})" in legend, f"legend must render {key} from its token"
-    # The statuses the legend distinguishes must stay visually distinct.
-    distinct = [
-        "explore_active",
-        "explore_dead",
-        "view_active",
-        "view_orphan",
-        "zombie",
-        "pdt_unused",
-    ]
-    assert len({NODE_PALETTE[k] for k in distinct}) == len(distinct)
-
-
 def test_attention_flag_marks_exactly_the_problem_nodes():
     """The graph's "Needs attention" filter and the empty-panel start-here list read the
     Python-side `attention` flag; pin it against both fixture zombies and live negatives."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
     ENTERPRISE = ROOT / "tests" / "lookml" / "enterprise_mono"
     USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
     SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
@@ -1646,87 +568,6 @@ def test_analysis_coverage_reads_each_enrichment_marker():
     }
 
 
-def _js_function(html: str, name: str) -> str:
-    """Source of top-level `function name(...) {...}` from the generated page, by brace
-    matching (the bodies hold only balanced braces: blocks, objects, `${}` placeholders)."""
-    start = html.index(f"function {name}(")
-    depth, i = 0, html.index("{", start)
-    while True:
-        ch = html[i]
-        depth += ch == "{"
-        depth -= ch == "}"
-        i += 1
-        if depth == 0:
-            return html[start:i]
-
-
-def _node_or_skip() -> str:
-    import shutil
-
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("node not on PATH — dashboard logic under test is JavaScript")
-    return node
-
-
-def _run_hero(html: str, coverage, summary, drift_count, ledger) -> dict:
-    node = _node_or_skip()
-    names = ("fmt_money", "plural", "notRunText", "heroCopy", "kpiCards")
-    args = json.dumps([coverage, summary, drift_count, ledger])
-    script = "\n".join(_js_function(html, n) for n in names) + (
-        f"\nconst A = {args};\n"
-        "console.log(JSON.stringify({hero: heroCopy(...A), cards: kpiCards(...A)}));\n"
-    )
-    out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(out.stdout)
-
-
-def test_headline_never_claims_clean_when_checks_did_not_run():
-    """Codex PR #65: with no usage/schema facts the finding lists default to [], and the page
-    announced "This repo is clean." The headline and KPIs must say the checks did not run,
-    with no clean claim and no 0, unless the check actually ran."""
-    gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
-    usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
-    clean = "This repo is clean. Nothing needs attention."
-
-    def hero_for(graph):
-        from strata_lookml.l1.enrich import analysis_coverage
-
-        artifacts = build_artifacts(graph)
-        html = build_dashboard_html(artifacts, graph)
-        return _run_hero(
-            html,
-            analysis_coverage(graph),
-            artifacts["usage_summary"],
-            len(artifacts["schema_drift"]),
-            artifacts["pdt_ledger"],
-        ), html
-
-    # No facts at all: not-run headline, every KPI reads "Not run", never 0.
-    bare, html = hero_for(build_graph(gcs))
-    assert bare["hero"]["headline"] != clean
-    assert "did not run" in bare["hero"]["headline"]
-    assert {c["value"] for c in bare["cards"]} == {"Not run"}
-
-    # Usage only: findings lead, and the skipped drift check is named, not zeroed.
-    partial, _ = hero_for(build_graph(gcs, usage))
-    assert partial["hero"]["headline"] != clean
-    assert "Schema facts not loaded" in partial["hero"]["lede"]
-    drift_card = next(c for c in partial["cards"] if c["href"] == "#drift")
-    assert drift_card["value"] == "Not run"
-
-    # Both checks ran and found nothing: the clean headline is allowed.
-    ran = _run_hero(
-        html,
-        {"usage": True, "schema": True},
-        {"ir_explore_count": 3, "active_explore_count": 3},
-        0,
-        [],
-    )
-    assert ran["hero"]["headline"] == clean
-    assert "Not run" not in {c["value"] for c in ran["cards"]}
-
-
 def test_active_explores_share_the_dead_code_population():
     """Codex PR #65: `explore_count` counts usage rows, but `_dead_code()` checks every
     resolved explore, so "explore_count - dead explores" undercounts and goes negative when
@@ -1753,84 +594,21 @@ def test_active_explores_share_the_dead_code_population():
     # No usage checks: there is no verdict to subtract, so no active count at all.
     assert strata_usage_summary(build_graph(gcs))["active_explore_count"] is None
 
-    html = build_dashboard_html(build_artifacts(unqueried), unqueried)
-    out = _run_hero(html, {"usage": True, "schema": False}, s, 0, [])
-    card = next(c for c in out["cards"] if c["label"] == "Active explores")
-    assert card["value"] == 0, "active explores must come from L1, never go negative"
-    assert card["sub"] == "of 7 explores"
-
-
-def test_filter_change_drops_a_pinned_selection():
-    """Codex PR #65: with node A pinned, searching for an unrelated node B left `pinned` set,
-    so A's neighborhood overrode the results: B carried both `match` and `faded`. Run the
-    page's own state functions against real headless Cytoscape (the vendored build)."""
-    from strata_lookml.outputs.dashboard import _build_graph_data
-
-    node = _node_or_skip()
-    gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
-    usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
-    graph = build_graph(gcs, usage)
-    data = _build_graph_data(graph)
-    html = build_dashboard_html(build_artifacts(graph), graph)
-
-    neighbors: dict[str, set[str]] = {n["data"]["id"]: set() for n in data["nodes"]}
-    for e in data["edges"]:
-        neighbors[e["data"]["source"]].add(e["data"]["target"])
-        neighbors[e["data"]["target"]].add(e["data"]["source"])
-    pin_a = next(i for i in neighbors if i.startswith("explore:") and neighbors[i])
-    target_b = next(
-        n["data"]
-        for n in data["nodes"]
-        if n["data"]["id"] not in neighbors[pin_a] | {pin_a}
-        and n["data"]["kind"] == "physical_table"
-        and neighbors[n["data"]["id"]]
-    )
-    names = ("newGraphState", "setGraphFilter", "graphFilteredSet", "applyGraphState")
-    cytoscape_js = ROOT / "src" / "strata_lookml" / "assets" / "js" / "cytoscape.min.js"
-    script = (
-        f"const cytoscape = require({json.dumps(str(cytoscape_js))});\n"
-        + "\n".join(_js_function(html, n) for n in names)
-        + f"""
-const data = {json.dumps(data)};
-const cy = cytoscape({{ headless: true, styleEnabled: false, elements: [...data.nodes, ...data.edges] }});
-const A = cy.getElementById({json.dumps(pin_a)}), B = cy.getElementById({json.dumps(target_b["id"])});
-const st = newGraphState();
-st.pinned = A;
-const kept = setGraphFilter(st, {{ query: '' }});  // no change: the pin survives
-const pinKept = st.pinned === A;
-setGraphFilter(st, {{ query: {json.dumps(target_b["label"].lower())} }});
-applyGraphState(cy, st);
-const afterSearch = {{ pinned: st.pinned, bMatch: B.hasClass('match'), bFaded: B.hasClass('faded'),
-  aHl: A.hasClass('hl') }};
-st.pinned = A;  // selecting after filtering pins again and wins
-applyGraphState(cy, st);
-console.log(JSON.stringify({{ kept, pinKept, afterSearch,
-  reselect: {{ aHl: A.hasClass('hl'), aFaded: A.hasClass('faded') }} }}));
-"""
-    )
-    out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True)
-    r = json.loads(out.stdout)
-    assert r["kept"] is False and r["pinKept"] is True
-    assert r["afterSearch"] == {"pinned": None, "bMatch": True, "bFaded": False, "aHl": False}
-    assert r["reselect"] == {"aHl": True, "aFaded": False}
-
 
 def test_explores_are_unknown_not_active_when_usage_facts_not_loaded():
     """N7: dead status needs usage evidence, so with none loaded every explore used to render
     green "active". Without usage they carry the neutral "unknown" status/colour (from
-    COVERAGE, serialized — not inferred in JS), the legend shows the state and the note;
-    with usage loaded the active/dead colours are unchanged."""
+    COVERAGE, serialized — not inferred in JS); with usage loaded the active/dead colours
+    are unchanged."""
     gcs = ROOT / "tests" / "lookml" / "gcs_analytics"
     usage = ROOT / "tests" / "fixtures" / "gcs_usage_facts.json"
 
     def page(graph):
-        html = build_dashboard_html(build_artifacts(graph), graph)
-        explores = [
+        return [
             n["data"] for n in _build_graph_data(graph)["nodes"] if n["data"]["kind"] == "explore"
         ]
-        return html, explores
 
-    html, explores = page(build_graph(gcs))
+    explores = page(build_graph(gcs))
     assert explores
     assert {e["status"] for e in explores} == {"unknown"}
     assert {e["color"] for e in explores} == {NODE_PALETTE["explore_unknown"]}
@@ -1838,15 +616,10 @@ def test_explores_are_unknown_not_active_when_usage_facts_not_loaded():
         NODE_PALETTE["explore_active"],
         NODE_PALETTE["explore_dead"],
     )
-    assert "Usage facts not loaded" in html
-    assert 'id="legend-usage-note" hidden' not in html
-    assert "var(--n-explore-unknown)" in html
-    assert f"--n-explore-unknown: {NODE_PALETTE['explore_unknown']};" in html
 
-    html, explores = page(build_graph(gcs, usage))
+    explores = page(build_graph(gcs, usage))
     assert {e["status"] for e in explores} == {"active", "dead"}
     assert {e["color"] for e in explores} == {
         NODE_PALETTE["explore_active"],
         NODE_PALETTE["explore_dead"],
     }
-    assert 'id="legend-usage-note" hidden' in html

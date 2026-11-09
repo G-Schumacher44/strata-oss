@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 import subprocess
 import sys
@@ -79,6 +80,28 @@ def test_safe_svg_is_the_raw_html_door():
     assert out == "<svg/>"
 
 
+@pytest.mark.parametrize(
+    ("helper", "text"),
+    [
+        (wb.inline_script, "a = 1; </SCRIPT ><b>"),
+        (wb.inline_script, "a = '<!--';"),  # opens the script's escaped state
+        (wb.inline_style, "a{} </style><b>"),
+        (wb.page_fragment, "<p>x</p></Template><b>"),
+    ],
+)
+def test_the_export_doors_refuse_text_that_closes_their_element(helper, text):
+    with pytest.raises(ValueError, match="close its element"):
+        helper(text)
+
+
+def test_the_export_doors_pass_text_through_unchanged():
+    assert str(wb.inline_script("a < b && c > d")) == "a < b && c > d"
+    assert str(wb.page_fragment("<p>x</p>")) == "<p>x</p>"
+    payload = {"k": "</script><!--<b>&"}
+    assert "<" not in wb.json_script(payload)
+    assert json.loads(str(wb.json_script(payload))) == payload
+
+
 # --- static scans -------------------------------------------------------------------------
 
 _BANNED_TEMPLATE = re.compile(
@@ -121,7 +144,7 @@ def scan_markup_calls(root: Path, allowed: tuple[str, str]) -> list[str]:
     return bad
 
 
-ALLOWED = ("workbench/render.py", "safe_svg")
+ALLOWED = ("workbench/render.py", "_raw")
 
 
 def test_templates_ban_safe_autoescape_off_and_markup():
@@ -155,7 +178,7 @@ def test_negative_control_markup_scan_catches_planted_violations(tmp_path):
     (tmp_path / "workbench").mkdir()
     (tmp_path / "workbench" / "render.py").write_text(
         "from markupsafe import Markup\n"
-        "def safe_svg(s):\n    return Markup(s)\n"
+        "def _raw(s):\n    return Markup(s)\n"
         "def other(s):\n    return Markup(s)\n"
     )
     (tmp_path / "evil.py").write_text("import markupsafe\nx = markupsafe.Markup('<b>')\n")

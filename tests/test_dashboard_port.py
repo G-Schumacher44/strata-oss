@@ -1,4 +1,4 @@
-"""strata dashboard — default-port fallback and explicit-port failure (D9)."""
+"""strata workbench (alias dashboard) — default-port fallback and explicit-port failure (D9)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,10 @@ from strata_lookml.cli.main import strata_cli
 REPO = Path(__file__).parent / "lookml" / "gcs_analytics"
 
 
+def _plain(port: int) -> type[http.server.BaseHTTPRequestHandler]:
+    return http.server.BaseHTTPRequestHandler
+
+
 def _free_ports(n: int) -> list[int]:
     """n distinct high ports, held only briefly to learn their numbers."""
     socks = [socket.socket() for _ in range(n)]
@@ -29,6 +33,13 @@ def _free_ports(n: int) -> list[int]:
     finally:
         for s in socks:
             s.close()
+
+
+@pytest.fixture(autouse=True)
+def _home(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The workbench caches the IR under ~/.strata: keep it in a temp HOME."""
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+    monkeypatch.delenv("STRATA_CACHE_PATH", raising=False)
 
 
 @pytest.fixture
@@ -59,7 +70,7 @@ def _run_dashboard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *extra: str)
 
         def probe(host: str, key: str) -> None:
             conn = http.client.HTTPConnection("127.0.0.1", bound, timeout=5)
-            conn.putrequest("GET", "/dashboard.html", skip_host=True)
+            conn.putrequest("GET", "/findings", skip_host=True)
             conn.putheader("Host", host)
             conn.endheaders()
             seen[key] = conn.getresponse().status
@@ -81,7 +92,7 @@ def _run_dashboard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *extra: str)
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(
         strata_cli,
-        ["dashboard", "--repo", str(REPO), "--out", str(tmp_path / "out"), "--no-browser", *extra],
+        ["dashboard", "--repo", str(REPO), "--no-browser", *extra],
     )
     return result, seen
 
@@ -95,7 +106,7 @@ def test_busy_default_falls_back_and_allowlist_uses_bound_port(
         result, seen = _run_dashboard(tmp_path, monkeypatch)
     assert result.exit_code == 0, result.output
     assert seen["bound"] == fallback[0]
-    assert f"http://127.0.0.1:{fallback[0]}/dashboard.html" in result.output
+    assert f"http://127.0.0.1:{fallback[0]}/findings" in result.output
     assert seen["bound_host"] == 200
     assert seen["default_host"] == 403  # allow-list follows the bound port, not the default
 
@@ -163,10 +174,10 @@ def test_bound_dashboard_port_cannot_be_bound_twice(ports: tuple[int, range]) ->
     from strata_lookml.errors import StrataError
 
     base, _ = ports
-    first = dash.bind_server(base, explicit=True)
+    first = dash.bind_server(base, explicit=True, handler_factory=_plain)
     try:
         with pytest.raises(StrataError, match="already in use"):
-            dash.bind_server(base, explicit=True)
+            dash.bind_server(base, explicit=True, handler_factory=_plain)
     finally:
         first.server_close()
 
@@ -194,7 +205,7 @@ def test_windows_wsaeacces_triggers_fallback(
 ) -> None:
     base, fallback = ports
     _windows_busy(monkeypatch, {base})
-    server = dash.bind_server(base, explicit=False)
+    server = dash.bind_server(base, explicit=False, handler_factory=_plain)
     try:
         assert server.server_address[1] == fallback[0]
     finally:
@@ -209,7 +220,7 @@ def test_windows_wsaeacces_explicit_port_is_already_in_use(
     base, _ = ports
     _windows_busy(monkeypatch, {base})
     with pytest.raises(StrataError, match="already in use"):
-        dash.bind_server(base, explicit=True)
+        dash.bind_server(base, explicit=True, handler_factory=_plain)
 
 
 def test_eacces_off_windows_is_not_a_busy_port(
@@ -224,4 +235,4 @@ def test_eacces_off_windows_is_not_a_busy_port(
         lambda *a: (_ for _ in ()).throw(OSError(errno.EACCES, "denied")),
     )
     with pytest.raises(OSError):
-        dash.bind_server(base, explicit=False)
+        dash.bind_server(base, explicit=False, handler_factory=_plain)

@@ -13,8 +13,6 @@ from strata_lookml.l1.looker import (
     load_token,
     save_token,
 )
-from strata_lookml.outputs import build_artifacts
-from strata_lookml.outputs.dashboard import build_dashboard_html
 from strata_lookml.pipeline import build_graph_with_provider
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -94,19 +92,6 @@ def test_looker_provider_period_propagates_actual_query_window():
     assert period["days"] == days
     start, end = date.fromisoformat(period["start"]), date.fromisoformat(period["end"])
     assert (end - start).days == days
-
-
-def test_pdt_cost_sentence_states_real_window_not_fabricated_monthly():
-    """Codex PR #28: pdt_builds() sums bytes over `self.days` with no monthly
-    normalization, but the evidence sentence said `$X/mo` — a fabricated figure.
-    The sentence must state the cost over its real (non-30-day) window instead,
-    reusing periodPhrase()'s same honest 'an unknown window' fallback."""
-    graph = build_graph_with_provider(FIXTURES, LookerSystemActivityProvider(FakeRunner(), days=45))
-    artifacts = build_artifacts(graph)
-    html = build_dashboard_html(artifacts, graph)
-
-    assert "${fmt_usd(costUsd || 0)} estimated over ${periodPhrase()}" in html
-    assert "${fmt_usd(costUsd || 0)}/mo)" not in html
 
 
 def test_missing_token_fails_fast(tmp_path):

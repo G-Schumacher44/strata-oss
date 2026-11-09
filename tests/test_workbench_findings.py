@@ -17,10 +17,10 @@ import pytest
 from markupsafe import escape
 
 from strata_lookml.cli.dashboard import allowed_hosts
-from strata_lookml.outputs.dashboard import NODE_PALETTE
 from strata_lookml.pipeline import build_graph
 from strata_lookml.triage import TriageRow, TriageStore, triage_rows
 from strata_lookml.workbench.app import App, Response
+from strata_lookml.workbench.graph import NODE_PALETTE
 from strata_lookml.workbench.index import Staleness, Workbench, index_graph
 from strata_lookml.workbench.pages import findings as page
 from strata_lookml.workbench.pages.findings import group_rows

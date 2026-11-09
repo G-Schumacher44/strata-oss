@@ -391,38 +391,30 @@ the write path. Both write the same `~/.strata/triage/` store. **Graph** (`/grap
 draws one object's neighbourhood: what it reads and what reads it, one hop by default, two hops per
 direction and siblings on request, capped at 40 nodes; click a node to open its page. **⌘K /
 Ctrl-K** on any page jumps to any explore, view, PDT, table, field or finding by fuzzy name (on the
-graph it refocuses the graph); `/search?q=` is the same match without JavaScript. Until the static
-export lands, `strata dashboard --out DIR` keeps the static dashboard: all 8 output
-artifacts plus a self-contained HTML observability panel, served from DIR. No JavaScript
-framework, no CDN — all JS is bundled locally so it works in air-gapped or corp-network
-environments.
+graph it refocuses the graph); `/search?q=` is the same match without JavaScript.
 
-The static dashboard has four panels:
-
-- **Overview** — KPI tiles (active explores, dead artifacts, total PDT cost, schema drift hits) + the full dependency graph
-- **Dead Code Register** — every flagged explore and view with dual-evidence badges (structural + usage). Click any node to see what backs it.
-- **PDT Ledger** — cost per PDT per period, zombie vs. active status, which explores reference each PDT
-- **Schema Drift** — missing columns/tables per view, mapped back to physical table and connection
+`strata workbench --out DIR` (or `strata dashboard --out DIR`) writes the same workbench as one
+read-only, self-contained file, `DIR/dashboard.html`, for a CI artifact or a demo site: every
+Findings tab and category, the Overview, every explore, view, PDT, table and finding page, the
+graph and ⌘K, rendered by the same code as the server and switched by `#/<route>` links
+(`dashboard.html#/explore/sales.orders`). It opens over `file://`, fetches nothing, and has no
+acknowledge controls: statuses come from `--baseline` alone. Links to the old single-page
+dashboard (`dashboard.html#<finding id>`) still land on that finding. No JavaScript framework, no
+CDN — all JS is bundled locally so it works in air-gapped or corp-network environments.
 
 ```bash
-strata dashboard \
+strata workbench \
   --repo tests/lookml/enterprise_mono \
   --usage-fixture tests/fixtures/enterprise_usage_facts.json \
   --schema-fixture tests/fixtures/enterprise_schema_facts.json \
+  --baseline strata-baseline.json \
   --out output/enterprise_mono
 ```
 
-![Strata dashboard overview — enterprise_mono synthetic demo fixture: 23 active explores (11 dead), 11 dead artifacts, 14,242 queries, $63,755.94 estimated PDT cost/30d, 14 schema drift records, and the full dependency graph with zombie PDT diamonds in purple](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-overview.png)
-
-*enterprise_mono — 34 explores, 19 models, 30-day window. Green = active explore, red = dead explore, blue = view, orange = unused PDT, **purple = zombie PDT**, gray = physical table.*
-
-![Dependency graph zoomed on dead_finance_v2 — rendered dead-red with a DEPRECATE badge and QUERY COUNT: 0 in the node detail panel](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/graph-dead-explore.png)
-
-*`dead_finance_v2` selected — rendered dead-red with a **deprecate** verdict and QUERY COUNT: 0 in the node detail. Its backing PDT, `pdt_attribution_full_funnel`, is the purple zombie diamond in the full graph above, rebuilding at ~$45,000/month (estimated fixture data) to serve it.*
-
-![PDT Cost Ledger (synthetic demo fixture) — pdt_attribution_full_funnel flagged ⚠ ZOMBIE at $45,000/mo and pdt_customer_value_score at $18,750/mo, each citing its dead consumer explore, above the Cleanup Roadmap's KILL PDT actions](https://raw.githubusercontent.com/G-Schumacher44/strata-oss/main/docs/assets/dashboard-pdt-section.png)
-
-*PDT Cost Ledger — both zombie PDTs flagged ⚠ with their monthly cost and the dead explores that consume them, above the Cleanup Roadmap's KILL actions. Every verdict carries evidence links; the Dead Code Register panel (visible at top) applies the same dual-evidence rule — structural and usage tags both required before anything is flagged.*
+Size and speed, measured on synthetic copies of `enterprise_mono` (M4 Mac mini): the fixture
+itself exports 1.6 MB in 0.1 s; 20 copies (400 views, 3,920 fields, 540 findings, about the p95
+public LookML repo) 14.8 MB in 2.8 s; 50 copies (1,000 views, 9,800 fields, 1,350 findings)
+35.7 MB in 16 s. `tests/test_workbench_export.py` caps both.
 
 <details>
 <summary>How it works — L0 → L1 → L2 pipeline</summary>
@@ -701,7 +693,7 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 | `strata clean` | Remove `output/`, the repo's IR cache entry, legacy in-repo `strata_ir.db`, `__pycache__` |
 | `strata conductor` | Manage slice-based agent workflow and handoffs |
 | `strata diff` | Findings a branch introduces or fixes, against production usage |
-| `strata dashboard` | Alias of `strata workbench`; `--out DIR` writes and serves the static HTML dashboard |
+| `strata dashboard` | Alias of `strata workbench`; `--out DIR` writes the workbench as one static, read-only HTML file |
 | `strata findings` | List findings with triage status — table, `file:line:` lines for fzf/vim, or JSON |
 | `strata generate-schema` | Pull BigQuery INFORMATION_SCHEMA facts for drift checks |
 | `strata mcp` | Run, validate, and inspect MCP server configuration |

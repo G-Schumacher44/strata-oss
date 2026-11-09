@@ -2,8 +2,7 @@
 
 A plain `BaseHTTPRequestHandler`: no `SimpleHTTPRequestHandler`, no working-directory change,
 no filesystem path ever built from a request. Binding (loopback IP, port fallback, exclusive
-bind, the Host allow-list for the bound port) is `cli.dashboard.bind_server`, shared with the
-legacy export server. The one request with a body is `POST /api/triage`: `App.respond` checks it
+bind, the Host allow-list for the bound port) is `cli.dashboard.bind_server`. The one request with a body is `POST /api/triage`: `App.respond` checks it
 first and only then calls `_read_body` (bounded by Content-Length and a read timeout).
 """
 

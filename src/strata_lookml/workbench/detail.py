@@ -76,6 +76,14 @@ class Detail:
             # `field:`, `physical_table:`): match by node identity, never by the shared name.
             if item["evidence_ids"]:
                 self._roadmap.setdefault(item["evidence_ids"][0], []).append(item)
+        # Each view's fields in source order: the view page lists them (the static export
+        # has no field pages, so a field link there opens its view's page at the field).
+        self._fields: dict[str, list[Any]] = {}
+        for node in wb.graph.nodes.values():
+            if node.kind == "field":
+                self._fields.setdefault(str(node.attrs.get("view", "")), []).append(node)
+        for nodes in self._fields.values():
+            nodes.sort(key=lambda n: (n.attrs.get("source_line") or 0, n.name))
 
     # --- shared pieces -----------------------------------------------------------------
 
@@ -225,6 +233,7 @@ class Detail:
             "verdict": verdict,
             "evidence": self.evidence(evidence_ids),
             "facts": self._facts(obj),
+            "fields": self.view_fields(obj["name"]) if kind == "view" else [],
             "sql": obj["details"].get("sql") if kind == "field" else None,
             "content": self._content(obj) if kind == "explore" else None,
             "upstream": [self.group(k, v) for k, v in obj["upstream"].items()],
@@ -235,6 +244,17 @@ class Detail:
             "records": records,
             "side_title": f"Findings on this object · {len(records)}",
         }
+
+    def view_fields(self, view: str) -> list[dict[str, Any]]:
+        """A view's fields as links, each with its LookML kind and type."""
+        return [
+            {
+                **self.ref(node.id, str(node.attrs.get("field_name") or node.name)),
+                "kind": str(node.attrs.get("field_kind") or "field"),
+                "type": str(node.attrs.get("type") or ""),
+            }
+            for node in self._fields.get(view, ())
+        ]
 
     def _facts(self, obj: Mapping[str, Any]) -> list[tuple[str, str]]:
         kind, details, cov = obj["kind"], obj["details"], obj["coverage"]

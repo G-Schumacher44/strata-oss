@@ -278,7 +278,7 @@ def test_finding_id_with_a_literal_percent_escape_round_trips(hostile: App) -> N
         "/static/../pyproject.toml",
         "/static/..%2Fpyproject.toml",
         "/static/%2E%2E%2F%2E%2E%2Fpyproject.toml",
-        "/static/chart.umd.min.js",  # packaged, but not on the allow-list
+        "/static/vega.min.js",  # packaged (for `strata viz`), but not on the allow-list
         "/static/__init__.py",
         "/static/",
         "/static",
@@ -754,13 +754,12 @@ def test_workbench_url_on_another_port_warns(
     assert "names port 1, but the workbench is on" in result.output  # type: ignore[attr-defined]
 
 
-def test_workbench_flags_are_refused_with_out(tmp_path: Path) -> None:
+def test_port_is_refused_with_out(tmp_path: Path) -> None:
     result = CliRunner().invoke(
-        strata_cli,
-        ["dashboard", "--repo", str(TWIN), "--out", str(tmp_path), "--baseline", "b.json"],
+        strata_cli, ["dashboard", "--repo", str(TWIN), "--out", str(tmp_path), "--port", "1"]
     )
     assert result.exit_code == 2
-    assert "apply to the workbench, not --out" in result.output
+    assert "--out writes a file and serves nothing" in result.output
 
 
 def test_bad_baseline_is_a_usage_error(tmp_path: Path) -> None:
@@ -773,18 +772,35 @@ def test_bad_baseline_is_a_usage_error(tmp_path: Path) -> None:
     assert "not a version 1 Strata baseline" in result.output
 
 
-def test_legacy_export_still_writes_the_dashboard(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("command", ["workbench", "dashboard"])
+def test_out_writes_the_export_and_serves_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command: str
 ) -> None:
-    monkeypatch.setattr(http.server.HTTPServer, "serve_forever", lambda self: self.server_close())
-    monkeypatch.chdir(tmp_path)  # the legacy export serves its directory by chdir
-    monkeypatch.setattr(dash, "DEFAULT_PORT", _free_port())
+    def no_server(*args: object, **kwargs: object) -> None:
+        raise AssertionError("--out must not bind a server")
+
+    monkeypatch.setattr(dash, "bind_server", no_server)
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"version": 1, "findings": {}}), encoding="utf-8")
     out = tmp_path / "out"
     result = CliRunner().invoke(
-        strata_cli, ["dashboard", "--repo", str(TWIN), "--out", str(out), "--no-browser"]
+        strata_cli,
+        [
+            command,
+            "--repo",
+            str(TWIN),
+            "--out",
+            str(out),
+            "--baseline",
+            str(baseline),
+            "--no-browser",
+        ],
     )
     assert result.exit_code == 0, result.output
-    assert (out / "dashboard.html").is_file()
+    assert sorted(p.name for p in out.iterdir()) == ["dashboard.html"]  # no JSON artifacts
+    html = (out / "dashboard.html").read_text(encoding="utf-8")
+    assert '<template data-route="/findings?status=new"' in html
+    assert '<meta name="strata-token" content=' not in html
 
 
 def test_workbench_url_resolves_through_the_shared_resolver(
