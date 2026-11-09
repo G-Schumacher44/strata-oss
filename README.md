@@ -700,12 +700,12 @@ Built on [Vega-Lite](https://vega.github.io/vega-lite/) by the [UW Interactive D
 `strata findings` lists what `strata check` would report, with a triage status (`new` by default;
 `--status acknowledged|baselined|fixed|not_checked|all`, `--category`, `--baseline FILE`).
 `--format lines` prints one finding per line, `file:line: [category] label — message (id)`;
-a finding with no file prints `-:0:`. Paths are relative to the repo root, so run these from it.
+a finding with no file prints `-:0:`. With a workbench base (`--workbench-url`, `STRATA_WORKBENCH_URL` or config) each row also gets its finding URL (` <url>` after the id in `lines`, a `url` key in `json`). Paths are relative to the repo root, so run these from it.
 Acknowledgements live in `~/.strata/triage/`, never in the repo, and never change `strata check`.
 
 ```bash
 # fzf: pick findings, acknowledge them (the id is the trailing "(...)")
-strata findings --format lines | fzf -m | sed -E 's/.* \((.*)\)$/\1/' | strata ack - --note "known"
+strata findings --format lines | fzf -m | sed -E 's/.* \((.*)\)( <[^>]*>)?$/\1/' | strata ack - --note "known"
 
 # vim quickfix: the lines match vim's default errorformat (%f:%l:%m)
 vim -q <(strata findings --format lines)

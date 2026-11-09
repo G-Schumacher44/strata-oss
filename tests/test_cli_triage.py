@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from strata_lookml.cli.main import strata_cli
 from strata_lookml.gate import write_baseline
+from strata_lookml.links import finding_path, link
 from strata_lookml.pipeline import build_graph
 from strata_lookml.triage import TriageStore, triage_rows
 
@@ -21,7 +22,7 @@ SCHEMA = FIXTURES / "enterprise_schema_facts.json"
 ARGS = ["--repo", str(REPO), "--usage-fixture", str(USAGE), "--schema-fixture", str(SCHEMA)]
 # vim's default errorformat entry for a file:line:message list
 QUICKFIX = re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):(?P<msg>.*)$")
-ID_OF = re.compile(r".* \((.*)\)$")
+ID_OF = re.compile(r".* \((.*)\)( <[^>]*>)?$")  # the README sed, as a regex
 
 
 @pytest.fixture(autouse=True)
@@ -184,3 +185,21 @@ def test_json_format_errors_are_a_stdout_envelope_text_formats_stay_on_stderr():
         result = run("findings", *bad, "--format", fmt)
         assert result.exit_code == 1
         assert result.stdout == "" and "Error:" in result.stderr
+
+
+def test_workbench_url_adds_links_only_with_a_base(graph, monkeypatch):
+    base = "http://127.0.0.1:9000"
+    rows = json.loads(findings("--format", "json", "--workbench-url", base))
+    assert rows and all(r["url"] == link(base, finding_path(r["id"])) for r in rows)
+    assert all("url" not in r for r in json.loads(findings("--format", "json")))
+
+    lines = findings("--format", "lines", "--workbench-url", base).splitlines()
+    for text, row in zip(lines, rows, strict=True):
+        assert text.endswith(f" <{row['url']}>")
+        assert QUICKFIX.match(text) and ID_OF.match(text)[1] == row["id"]
+    assert "http://" in findings("--workbench-url", base)
+    assert "http://" not in findings()
+
+    monkeypatch.setenv("STRATA_WORKBENCH_URL", base)  # the shared resolver, env included
+    assert all("url" in r for r in json.loads(findings("--format", "json")))
+    assert run("findings", *ARGS, "--workbench-url", "nonsense").exit_code == 1

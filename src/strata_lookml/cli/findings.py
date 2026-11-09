@@ -70,21 +70,23 @@ def _flat(text: str) -> str:
     return " ".join(text.split())
 
 
-def _line(row: TriageRow) -> str:
-    """`file:line: [category] label — message (id)`; a row with no file is `-:0:`."""
+def _line(row: TriageRow, url: str | None) -> str:
+    """`file:line: [category] label — message (id)`, then ` <url>` with a workbench base;
+    a row with no file is `-:0:`."""
     where = f"{row.source_file or '-'}:{row.source_line or 0}"
-    return f"{where}: [{row.category}] {_flat(row.label)} — {_flat(row.message)} ({row.id})"
+    text = f"{where}: [{row.category}] {_flat(row.label)} — {_flat(row.message)} ({row.id})"
+    return f"{text} <{url}>" if url else text
 
 
-def _table(rows: list[TriageRow]) -> list[str]:
+def _table(rows: list[TriageRow], urls: list[str | None]) -> list[str]:
     cells = [
         (
             r.status,
             r.category,
             f"{r.source_file}:{r.source_line}" if r.source_file else "-",
-            _flat(r.label),
+            _flat(r.label) + (f"  {url}" if url else ""),
         )
-        for r in rows
+        for r, url in zip(rows, urls, strict=True)
     ]
     header = ("STATUS", "CATEGORY", "LOCATION", "FINDING")
     widths = [max(len(c[i]) for c in [header, *cells]) for i in range(3)]
@@ -117,6 +119,13 @@ def _table(rows: list[TriageRow]) -> list[str]:
     help="Only rows in this finding category.",
 )
 @click.option(
+    "--workbench-url",
+    "workbench_url",
+    default=None,
+    help="Workbench base URL (http(s)://… or an export .html; else STRATA_WORKBENCH_URL / "
+    "config workbench_url): each row gets a link to its finding page. No base, no links.",
+)
+@click.option(
     "--format",
     "fmt",
     type=click.Choice(["table", "lines", "json"]),
@@ -131,6 +140,7 @@ def findings(
     baseline_path: str | None,
     status: str,
     category: str | None,
+    workbench_url: str | None,
     fmt: str,
 ) -> None:
     """List findings with their triage status (new by default).
@@ -144,7 +154,14 @@ def findings(
     $ strata findings --repo tests/lookml/enterprise_mono --usage-fixture usage.json --format lines
     models/em_legacy_v2.model.lkml:23: [dead-code] em_legacy_v2.dead_finance_v2 — zero queries ... (dead:explore:em_legacy_v2.dead_finance_v2)
     $ vim -q <(strata findings --format lines)
+
+    With a workbench base (--workbench-url, STRATA_WORKBENCH_URL or config), `lines` and
+    `table` append each finding's URL (`lines`: ` <url>` after the id) and `json` rows gain `url`.
     """
+    from strata_lookml.config import load_workbench_url
+    from strata_lookml.links import finding_path, link
+
+    base = load_workbench_url(workbench_url)
     baseline = None
     if baseline_path:
         try:
@@ -159,13 +176,22 @@ def findings(
         for r in triage_rows(graph, baseline, store)
         if status in ("all", r.status) and category in (None, r.category)
     ]
+    urls = [link(base, finding_path(r.id)) for r in rows]
     if fmt == "json":
-        click.echo(json.dumps([dataclasses.asdict(r) for r in rows], indent=2))
+        click.echo(
+            json.dumps(
+                [
+                    {**dataclasses.asdict(r), **({"url": u} if u else {})}
+                    for r, u in zip(rows, urls, strict=True)
+                ],
+                indent=2,
+            )
+        )
     elif fmt == "lines":
-        for r in rows:
-            click.echo(_line(r))
+        for r, u in zip(rows, urls, strict=True):
+            click.echo(_line(r, u))
     elif rows:
-        click.echo("\n".join(_table(rows)))
+        click.echo("\n".join(_table(rows, urls)))
         click.echo(f"{len(rows)} finding(s)", err=True)
     else:
         click.echo(f"No {'' if status == 'all' else status + ' '}findings.", err=True)
@@ -208,7 +234,7 @@ def ack(
 
     \b
     $ strata ack dead:view:legacy_order_detail --note "kept for the 2027 audit"
-    $ strata findings --format lines | fzf -m | sed -E 's/.* \\((.*)\\)$/\\1/' | strata ack -
+    $ strata findings --format lines | fzf -m | sed -E 's/.* \\((.*)\\)( <[^>]*>)?$/\\1/' | strata ack -
     """
     wanted = _expand_ids(ids)
     _, store = _open(repo, usage_fixture, schema_fixture)
