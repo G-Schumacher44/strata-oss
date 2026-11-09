@@ -34,6 +34,14 @@ All notable changes to `strata-lookml` are documented here. The format follows
   explore, view, PDT, table, field or finding by fuzzy name (letters in order match: `lgcy ord` finds
   `legacy_order_detail`), from a lazily fetched `/api/index.json` (`{id, kind, label, path}` per item); on the
   graph it refocuses the graph. `/search?q=` is the same match without JavaScript.
+- Acknowledge from the web (workbench S9): `a`/`u` and the Acknowledge buttons on Findings (with an optional
+  note) and on detail and finding pages call `POST /api/triage`, the workbench's only write, a thin adapter over
+  the triage store, and repaint the status from its answer; errors show a toast with the hint. The request is
+  refused, with the store never called, unless `Origin` is the page's own, `Sec-Fetch-Site` (when sent) is
+  `same-origin`, `Content-Type` is exactly `application/json`, `X-Strata-Token` matches the per-process page
+  token (constant-time), and `Content-Length` is present and at most 64 KB; OPTIONS and every other method get
+  405 with no CORS headers. Responses are JSON only. Without JavaScript the pages stay read-only and `strata ack`
+  / `strata unack` remain the write path. See `docs/security-hardening.md`.
 - Workbench **Findings** page (workbench S5), the landing page at `/findings?status=&category=&q=&page=`:
   rows come from the triage core (statuses are never derived in the browser), with status tabs and counts
   (New, Acknowledged, Baselined, Fixed, Not checked, All), category chips, a filter over label, id and file,

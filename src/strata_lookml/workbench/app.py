@@ -2,15 +2,19 @@
 
 No socket code here (`server.py` adapts `http.server` to `App.respond`), so every route, header
 and error page is testable without a port. Order per request: Host allow-list, then method
-(GET/HEAD only until the triage POST lands), then routing. Every response, errors included,
-carries `SECURITY_HEADERS`. Findings is the triage list (S5, `pages/findings.py`); the graph is
-a focus neighbourhood (S8, `graph.py`) drawn from `/api/graph`; ⌘K and `/search` read one index
-(`jump.py`). The URL scheme, resolution and error contract here are final.
+(GET/HEAD everywhere except `POST /api/triage`, the one write: `_triage_post`), then routing.
+Every response, errors included, carries `SECURITY_HEADERS`. Findings is the triage list (S5,
+`pages/findings.py`); the graph is a focus neighbourhood (S8, `graph.py`) drawn from
+`/api/graph`; ⌘K and `/search` read one index (`jump.py`). The URL scheme, resolution and
+error contract here are final.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import hmac
+import json
+import re
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import cache
 from http import HTTPStatus
@@ -43,7 +47,7 @@ from strata_lookml.workbench.index import Staleness, Workbench
 from strata_lookml.workbench.jump import KIND_LABELS as JUMP_KINDS
 from strata_lookml.workbench.jump import jump_index, search, segments
 from strata_lookml.workbench.overview import overview_context
-from strata_lookml.workbench.pages.findings import findings_context, parse_query
+from strata_lookml.workbench.pages.findings import STATUS_LABELS, findings_context, parse_query
 from strata_lookml.workbench.pr_text import pr_comment
 from strata_lookml.workbench.render import render
 
@@ -60,6 +64,8 @@ SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
 ALLOWED_METHODS = ("GET", "HEAD")
 HTML = "text/html; charset=utf-8"
 JSON = "application/json; charset=utf-8"
+TRIAGE_PATH = "/api/triage"
+MAX_TRIAGE_BODY = 64 * 1024
 
 # Published name -> packaged asset. Fixed: a /static/ request is a dictionary lookup, never a
 # filesystem path, so no request can name a file outside this map.
@@ -109,6 +115,127 @@ def bare_error(status: int) -> Response:
     return _response(status, f"{status} {phrase}\n".encode(), "text/plain; charset=utf-8")
 
 
+def _json(
+    status: int, payload: Mapping[str, Any], extra: tuple[tuple[str, str], ...] = ()
+) -> Response:
+    return _response(status, _embed_json(payload).encode("utf-8"), JSON, extra)
+
+
+_WRITE_HINT = (
+    "Acknowledge from a workbench page, or use `strata ack` / `strata unack` "
+    "(the no-JavaScript path)."
+)
+
+
+# Stable error codes (the stdlib's reason phrases differ across Python versions).
+_REFUSAL_CODES = {
+    HTTPStatus.BAD_REQUEST: "invalid_input",
+    HTTPStatus.FORBIDDEN: "forbidden",
+    HTTPStatus.METHOD_NOT_ALLOWED: "method_not_allowed",
+    HTTPStatus.LENGTH_REQUIRED: "length_required",
+    HTTPStatus.REQUEST_ENTITY_TOO_LARGE: "too_large",
+    HTTPStatus.UNSUPPORTED_MEDIA_TYPE: "unsupported_media_type",
+}
+_RELOAD_HINT = "Reload the page: the token changes each time the workbench starts."
+
+
+class _Refused(Exception):
+    """A triage request that failed a check; the store was never called."""
+
+    def __init__(self, status: int, message: str, hint: str | None = _WRITE_HINT) -> None:
+        super().__init__(message)
+        self.response = _refusal(status, message, hint)
+
+
+def _refusal(
+    status: int,
+    message: str,
+    hint: str | None = _WRITE_HINT,
+    extra: tuple[tuple[str, str], ...] = (),
+) -> Response:
+    return _json(
+        status, {"error": message, "code": _REFUSAL_CODES[HTTPStatus(status)], "hint": hint}, extra
+    )
+
+
+def _write_request(
+    host: str,
+    token: str,
+    headers: Iterable[tuple[str, str]],
+    read: Callable[[int], bytes] | None,
+) -> tuple[str, list[str], str | None]:
+    """The checked `(action, ids, note)` of a triage POST, or `_Refused`.
+
+    Every check passes before the body is read: Origin is this server's own (`http://<Host>`,
+    the Host already allow-listed; missing is refused), `Sec-Fetch-Site` is same-origin when
+    sent, `Content-Type` is exactly `application/json` (a cross-origin page cannot send it
+    without a CORS preflight, which is never granted), `X-Strata-Token` is this process's token
+    (constant time), and `Content-Length` is present and at most `MAX_TRIAGE_BODY`.
+    """
+    values: dict[str, list[str]] = {}
+    for name, value in headers:
+        values.setdefault(name.lower(), []).append(value)
+
+    def one(name: str) -> str | None:
+        got = values.get(name, [])
+        if len(got) > 1:
+            raise _Refused(HTTPStatus.BAD_REQUEST, f"duplicate {name} header")
+        return got[0].strip() if got else None
+
+    if one("origin") != f"http://{host}":
+        raise _Refused(HTTPStatus.FORBIDDEN, "cross-origin write refused")
+    if one("sec-fetch-site") not in (None, "same-origin"):
+        raise _Refused(HTTPStatus.FORBIDDEN, "cross-site write refused")
+    if one("content-type") != "application/json":
+        raise _Refused(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Content-Type must be application/json")
+    given = (one("x-strata-token") or "").encode("utf-8", "surrogatepass")
+    if not hmac.compare_digest(given, token.encode("utf-8")):
+        raise _Refused(HTTPStatus.FORBIDDEN, "missing or wrong page token", hint=_RELOAD_HINT)
+    length = one("content-length")
+    if one("transfer-encoding") is not None or length is None:
+        raise _Refused(HTTPStatus.LENGTH_REQUIRED, "Content-Length is required")
+    if not re.fullmatch(r"[0-9]+", length):
+        raise _Refused(HTTPStatus.BAD_REQUEST, "Content-Length is not a number")
+    if int(length) > MAX_TRIAGE_BODY:
+        raise _Refused(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body over 64 KB")
+    try:
+        body = read(int(length)) if read else b""
+    except OSError:  # the client stalled past the server's read timeout
+        body = b""
+    if len(body) != int(length):
+        raise _Refused(HTTPStatus.BAD_REQUEST, "request body shorter than Content-Length")
+    return _triage_payload(body)
+
+
+def _triage_payload(body: bytes) -> tuple[str, list[str], str | None]:
+    """`{"action": "ack"|"unack", "ids": [str, ...], "note"?: str}` (note with ack only)."""
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise _Refused(HTTPStatus.BAD_REQUEST, "request body is not JSON") from None
+    if not isinstance(payload, dict) or not set(payload) <= {"action", "ids", "note"}:
+        raise _Refused(HTTPStatus.BAD_REQUEST, "expected an object with action, ids, note")
+    action, ids, note = payload.get("action"), payload.get("ids"), payload.get("note")
+    if action not in ("ack", "unack"):
+        raise _Refused(HTTPStatus.BAD_REQUEST, 'action must be "ack" or "unack"')
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, str) and i for i in ids):
+        raise _Refused(HTTPStatus.BAD_REQUEST, "ids must be a non-empty list of finding ids")
+    if note is not None and (action != "ack" or not isinstance(note, str)):
+        raise _Refused(HTTPStatus.BAD_REQUEST, "note must be a string, and only with ack")
+    return action, list(dict.fromkeys(ids)), note
+
+
+def _row_json(row: TriageRow) -> dict[str, Any]:
+    """What a page needs to repaint one row after a write (its status from `triage_rows`)."""
+    return {
+        "id": row.id,
+        "status": row.status,
+        "label": STATUS_LABELS[row.status],
+        "acked_at": row.acked_at,
+        "note": row.note,
+    }
+
+
 @cache
 def _static_body(name: str) -> bytes:
     package, resource = STATIC_ASSETS[name]
@@ -143,13 +270,27 @@ class App:
 
     # --- dispatch ----------------------------------------------------------------------
 
-    def respond(self, method: str, target: str, host: str | None) -> Response:
-        if (host or "").strip().lower() not in self.hosts:
+    def respond(
+        self,
+        method: str,
+        target: str,
+        host: str | None,
+        headers: Iterable[tuple[str, str]] = (),
+        read: Callable[[int], bytes] | None = None,
+    ) -> Response:
+        """`headers` and `read` (the body reader) are used only by `POST /api/triage`."""
+        allowed = (host or "").strip().lower()
+        if allowed not in self.hosts:
             return bare_error(403)
+        if urlsplit(target).path == TRIAGE_PATH:
+            return self._triage_post(method, allowed, headers, read)
         if method not in ALLOWED_METHODS:
             return self._error(
                 HTTPStatus.METHOD_NOT_ALLOWED,
-                StrataError(f"{method} is not supported.", hint="The workbench is read-only."),
+                StrataError(
+                    f"{method} is not supported.",
+                    hint="Pages are GET only; the one write is POST /api/triage.",
+                ),
                 extra=(("Allow", ", ".join(ALLOWED_METHODS)),),
             )
         try:
@@ -180,6 +321,48 @@ class App:
             if kind == "static":
                 return self._static(name)
         raise NotFound(f"no workbench page at {path}", hint="Start at /findings.")
+
+    # --- the one write: POST /api/triage -----------------------------------------------
+
+    def _triage_post(
+        self,
+        method: str,
+        host: str,
+        headers: Iterable[tuple[str, str]],
+        read: Callable[[int], bytes] | None,
+    ) -> Response:
+        """Acknowledge or unacknowledge from a workbench page: an adapter over `TriageStore`.
+
+        `_write_request` refuses anything a page of this server did not send; only then is the
+        store called. Every answer is JSON (`_embed_json`), never HTML, so nothing from the
+        request reaches markup.
+        """
+        if method != "POST":
+            return _refusal(
+                HTTPStatus.METHOD_NOT_ALLOWED,
+                f"{method} is not supported on {TRIAGE_PATH}.",
+                extra=(("Allow", "POST"),),
+            )
+        try:
+            action, ids, note = _write_request(host, self.token, headers, read)
+            if action == "ack":
+                self._store.acknowledge(ids, note)
+            else:
+                self._store.unacknowledge(ids)
+        except _Refused as refused:
+            return refused.response
+        except InvalidInput as exc:  # an id outside the allowlist: nothing was written
+            return _json(HTTPStatus.BAD_REQUEST, exc.to_dict())
+        except StrataError as exc:  # concurrent writers outlasted the retries
+            return _json(HTTPStatus.CONFLICT, exc.to_dict())
+        rows = self._triage_rows()
+        return _json(
+            HTTPStatus.OK,
+            {
+                "rows": [_row_json(rows[i]) for i in ids if i in rows],
+                "untracked": [i for i in ids if i not in rows],
+            },
+        )
 
     # --- rendering ---------------------------------------------------------------------
 

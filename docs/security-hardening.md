@@ -11,7 +11,7 @@ or Jira. Its writes are local files. Every command that writes or deletes files,
 | `strata_render_chart` (MCP tool) | One `.html` file, only under `~/.strata/output/` or `/tmp/`; other paths and other extensions are refused. |
 | `strata build` | The IR cache: the same `~/.strata/cache/` entry as the MCP server, or `--cache` / `STRATA_CACHE_PATH` (refused if that path is a symlink, a `.lkml`/`.lookml` file, a directory, or an existing file that is not a Strata IR cache, such as an unrelated SQLite database). |
 | `strata outputs` / `strata dashboard --out` | JSON artifacts and `dashboard.html` under `--out`. |
-| `strata workbench` (and `strata dashboard` without `--out`) | The IR cache, exactly as the MCP server writes it (reused on a second start when its inputs are unchanged). Nothing else: no artifacts, no files in the repo; a `--baseline` file is read, never written. |
+| `strata workbench` (and `strata dashboard` without `--out`) | The IR cache, exactly as the MCP server writes it (reused on a second start when its inputs are unchanged), and the triage acknowledgements store (next row) when a page acknowledges a finding (`POST /api/triage`). Nothing else: no artifacts, no files in the repo; a `--baseline` file is read, never written. |
 | `strata chart <type>` / `strata-chart` | One HTML file at `--out` (default: a fresh `strata_chart_*.html` in the system temp dir, path printed); any path the user names, never written through a symlink at the final component. |
 | `strata query navigate` | `--out`: a Markdown brief at the path the user names. `--chart`: an HTML chart under `~/.strata/output/`. |
 | `strata conductor init` / `new-slice` | `conductor/` files in the target repo. |
@@ -155,8 +155,10 @@ builds a filesystem path from a request:
 
 - **Host first.** Every request's `Host` must be on the allow-list for the bound port before any
   routing; otherwise 403 with a plain-text body (no page, so no token).
-- **Methods.** GET and HEAD only; any other method, including ones `http.server` does not know,
-  gets 405 with `Allow: GET, HEAD` (after the Host check). The request body is never read.
+- **Methods.** GET and HEAD only, except `POST /api/triage` (below); any other method, including
+  ones `http.server` does not know, gets 405 with `Allow: GET, HEAD` (after the Host check), and
+  `/api/triage` answers every method but POST, OPTIONS included, with 405 `Allow: POST` and no
+  CORS headers. No other request body is ever read.
 - **Headers on every response**, errors included: `Content-Security-Policy: default-src 'self';
   script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
@@ -169,8 +171,30 @@ builds a filesystem path from a request:
   the in-memory graph, never a path. Unknown objects render the error contract (message + hint)
   as a 404; ambiguous names a 300 page linking each candidate.
 - **Token.** Each server process generates a random token (`secrets.token_urlsafe(32)`) and puts
-  it in a `<meta name="strata-token">` on its pages, for the state-changing request that will
-  check it. Only allow-listed Hosts receive a page.
+  it in a `<meta name="strata-token">` on its pages, for the triage POST to check. Only
+  allow-listed Hosts receive a page.
+- **The one write: `POST /api/triage`** (`App._triage_post`, an adapter over
+  `strata_lookml.triage.TriageStore`). Body `{"action": "ack"|"unack", "ids": [...], "note"?}`.
+  The store is called only if every check passes, in this order, all before the body is read:
+  - the `Host` is allow-listed (as for every request; refused: plain-text 403);
+  - `Origin` is present and equals `http://<that Host>`; missing, `null`, another host, another
+    port, `https`, or a different allow-listed name is 403;
+  - `Sec-Fetch-Site`, when sent, is `same-origin` (403 otherwise);
+  - `Content-Type` is exactly `application/json` (415 otherwise). A cross-origin page cannot
+    send that without a CORS preflight, and the workbench never grants one;
+  - `X-Strata-Token` equals the process token (`hmac.compare_digest`; 403 otherwise);
+  - `Content-Length` is present and numeric (411 if missing or with `Transfer-Encoding`, 400 if
+    malformed) and at most 64 KB (413). The body then gets 5 seconds to arrive (the server is
+    single-threaded), and one shorter than its length is 400;
+  - the body is a UTF-8 JSON object with only those keys, `action` one of the two, `ids` a
+    non-empty list of non-empty strings, and `note` a string sent only with `ack` (400).
+
+  A duplicated checked header is 400. The store then applies its own id allowlist (an id no
+  current finding carries, and not already stored, is 400 and nothing is written) and its
+  concurrency retries (exhausted: 409). Every answer from this path is JSON (`{error, code,
+  hint}` on failure; the updated rows on success), serialized with `<` escaped, never HTML, so
+  nothing from a request reaches markup. Without JavaScript the pages stay read-only; `strata
+  ack` / `strata unack` write the same store under the same lock.
 - **Data.** The graph is loaded once at startup from the IR cache (`load_or_build`); while it
   runs the inputs are re-fingerprinted at most every 10 seconds and a change only shows a
   "restart to reload" banner. There is no reload endpoint.
@@ -178,6 +202,8 @@ builds a filesystem path from a request:
 `tests/test_workbench_server.py` enforces each point, and renders a fixture whose names, file
 names and table names carry markup, quotes, `%2F` and `..` through every route, asserting no
 response contains a tag, event attribute or link outside the page shell.
+`tests/test_workbench_triage_post.py` covers the triage POST: every refusal asserts that no
+`TriageStore` method ran and that the store file is byte-identical afterwards.
 
 ## Workbench Rendering And Escaping
 
