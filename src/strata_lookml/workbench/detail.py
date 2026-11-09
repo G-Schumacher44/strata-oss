@@ -72,7 +72,10 @@ class Detail:
         self.wb = wb
         self._roadmap: dict[str, list[Mapping[str, Any]]] = {}
         for item in roadmap:
-            self._roadmap.setdefault(item["target"], []).append(item)
+            # An item's first evidence id is its own subject node (`explore:`, `view:`, `pdt:`,
+            # `field:`, `physical_table:`): match by node identity, never by the shared name.
+            if item["evidence_ids"]:
+                self._roadmap.setdefault(item["evidence_ids"][0], []).append(item)
 
     # --- shared pieces -----------------------------------------------------------------
 
@@ -165,12 +168,15 @@ class Detail:
         )
 
     def roadmap_verdict(self, obj: Mapping[str, Any]) -> tuple[dict[str, str], list[str]]:
-        items = list(self._roadmap.get(obj["name"], ()))
-        if obj["kind"] in ("view", "pdt"):  # a view and its PDT share a name, not a record
-            items = [i for i in items if i["kind"] == obj["kind"]]
-        elif obj["kind"] == "table":  # column drift names the field; its evidence names the table
+        items = list(self._roadmap.get(obj["id"], ()))
+        if obj["kind"] == "table":  # column drift sits on the field; its evidence names the table
             marker = "schema_table:" + obj["name"]
-            items += [i for r in self._roadmap.values() for i in r if marker in i["evidence_ids"]]
+            items += [
+                i
+                for r in self._roadmap.values()
+                for i in r
+                if marker in i["evidence_ids"] and not any(i is j for j in items)
+            ]
         if not items:
             return (
                 {

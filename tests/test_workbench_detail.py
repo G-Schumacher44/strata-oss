@@ -323,3 +323,37 @@ def test_pdt_without_build_facts_says_not_loaded_never_zero(tmp_path: Path) -> N
     assert "not loaded for this PDT" in page
     assert "$0" not in page
     assert "Builds" not in page.split("Details")[1].split("Upstream")[0]
+
+
+def test_roadmap_actions_match_by_node_identity_not_name(tmp_path: Path) -> None:
+    """Table `sales.orders` and explore `sales.orders` share a dotted name: only the explore
+    carries the dead-explore action."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sales.model.lkml").write_text(
+        'connection: "c"\ninclude: "*.view.lkml"\nexplore: orders { from: v }\n', encoding="utf-8"
+    )
+    (repo / "v.view.lkml").write_text(
+        "view: v {\n  sql_table_name: sales.orders ;;\n  dimension: id { sql: ${TABLE}.id ;; }\n}\n",
+        encoding="utf-8",
+    )
+    usage = tmp_path / "usage.json"
+    usage.write_text(
+        json.dumps({"explore_usage": [], "content_references": [], "pdt_builds": []}),
+        encoding="utf-8",
+    )
+    schema = tmp_path / "schema.json"
+    schema.write_text(
+        json.dumps({"tables": [{"name": "sales.orders", "columns": ["id"]}]}), encoding="utf-8"
+    )
+    graph, inputs = load_graph(repo, str(usage), str(schema))
+    wb = index_graph(
+        graph, repo=repo, usage_fixture=str(usage), schema_fixture=str(schema), inputs=inputs
+    )
+    app = _app(wb)
+    roadmap = cleanup_roadmap(graph.metadata["l1"])
+    assert [i["target"] for i in roadmap] == ["sales.orders", "v"], "fixture: dead explore + view"
+    assert '<span class="v">NO ACTION</span>' in _page(app, "/table/sales.orders")
+    explore = _page(app, "/explore/sales.orders")
+    assert '<span class="v">DEPRECATE</span>' in explore
+    assert "REVIEW FOR DEPRECATION" in _page(app, "/view/v")  # its own record, by its own id
