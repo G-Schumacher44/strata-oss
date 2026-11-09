@@ -203,7 +203,7 @@ def test_canonical_explore_keys_resolve_exactly(tmp_path: Path) -> None:
     ):
         r = _get(app, object_path(node_id) or "")
         assert r.status == 200, (node_id, _text(r))
-        assert f"<dd>{node_id}</dd>" in _text(r)
+        assert f'data-node-id="{node_id}"' in _text(r)
     r = _get(app, "/explore/orders")  # hand-typed shorthand still offers both models
     assert r.status == 300
     assert '<a href="/explore/retail.v2.orders">retail.v2.orders</a>' in _text(r)
@@ -258,7 +258,9 @@ def test_every_object_and_finding_link_round_trips(hostile: App) -> None:
             continue
         assert r.status in (200, 300), (path, _text(r))
         if r.status == 200:
-            assert f"<dd>{escape(node.id)}</dd>" in _text(r), "the link reached another object"
+            assert f'data-node-id="{escape(node.id)}"' in _text(r), (
+                "the link reached another object"
+            )
         seen += 1
     assert seen > 8
     for finding_id in hostile.workbench.findings_by_id:
@@ -473,7 +475,18 @@ _SHELL_TAGS = {
     "dd",
     "ul",
     "li",
+    # the shared detail frame
+    "script",
+    "style",
+    "div",
+    "span",
+    "section",
+    "aside",
+    "button",
+    "textarea",
+    "pre",
 }
+_DETAIL_SCRIPT = '<script src="/static/detail.js" defer></script>'
 
 
 def _assert_inert(target: str, response: Response) -> None:
@@ -483,6 +496,9 @@ def _assert_inert(target: str, response: Response) -> None:
         assert "<" not in body, target  # `>` alone cannot open markup
         json.loads(body)
         return
+    # The detail pages load one external script from the allow-list; no other script may exist.
+    assert body.count("<script") == body.count(_DETAIL_SCRIPT), target
+    body = body.replace(_DETAIL_SCRIPT, "")
     for raw in ("<img", "<script", "</script>", "onerror=alert(1)>"):
         assert raw not in body, (target, raw)
     parser = _Markup()
@@ -499,6 +515,15 @@ def _assert_inert(target: str, response: Response) -> None:
             "role",
             "class",
             "aria-label",
+            "id",
+            "type",
+            "readonly",
+            "disabled",
+            "title",
+            "data-copy",
+            "data-copy-from",
+            "data-node-id",
+            "data-loc",
         }, (
             target,
             name,

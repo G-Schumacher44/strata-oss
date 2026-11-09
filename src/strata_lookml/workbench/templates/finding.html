@@ -1,0 +1,17 @@
+{% extends "_detail_frame.html" %}
+{% from "_lineage.html" import chips, finding_cards %}
+{% block body %}
+{% for e in entries %}<section>
+<div class="sec">Record {{ loop.index }} of {{ entries | length }} · {{ e.category_label }} · {{ e.status }}</div>
+<p>{{ e.message }}</p>
+{% if e.loc %}<p class="mono">{{ e.loc }}</p>{% endif %}
+{% if e.cost is not none %}<p>Rebuild cost: {{ e.cost }}</p>{% endif %}
+{% if e.suggested %}<p>Suggested: {{ e.suggested }}</p>{% endif %}
+{% if e.subject %}<div class="sec">Subject</div>
+<ul class="links"><li>{% if e.subject.href %}<a class="mono" href="{{ e.subject.href }}">{{ e.subject.text }}</a>{% else %}<span class="mono">{{ e.subject.text }}</span>{% endif %}{% if e.subject.mark %} <span class="pill {{ e.subject.mark }}">{{ e.subject.mark }}</span>{% endif %}<span class="rel">subject</span></li></ul>{% endif %}
+{% if e.evidence %}<div class="sec">Evidence</div>
+{{ chips(e.evidence) }}{% endif %}
+</section>
+{% endfor %}
+{% endblock %}
+{% block side %}{{ finding_cards(cards) }}{% endblock %}

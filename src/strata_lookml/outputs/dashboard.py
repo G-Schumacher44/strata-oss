@@ -1326,7 +1326,7 @@ function kpiCards(coverage, s, drift, ledger) {
     const evCount = Number((r.evidence_ids||[]).length);
     // Roadmap items carry no own artifact id — the chip itself resolves via the slice's own
     // evidence_ids[0] (explore:/view:/pdt:/field:, always the record's own namespace per
-    // _cleanup_roadmap()) verbatim, unchanged. The DOM anchor/copy-link target is a SEPARATE
+    // cleanup_roadmap()) verbatim, unchanged. The DOM anchor/copy-link target is a SEPARATE
     // 'roadmap:' namespace so it can never collide with a ledger/register row's own id —
     // multiple actions can share one primaryId (e.g. two roadmap rows on the same field),
     // so a ':2'/':3' suffix disambiguates within the roadmap itself.
