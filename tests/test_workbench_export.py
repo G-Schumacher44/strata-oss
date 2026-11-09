@@ -596,12 +596,14 @@ def test_page_takes_the_title_and_main_and_refuses_a_bare_error(
 
 # --- size and speed, measured at scale (spec §6b Q4) ---------------------------------------------
 
-# Measured on an M4 Mac mini (2026-11-08), recorded in the README: large 14.8 MB / 2.8 s,
-# very large 35.7 MB / 16.1 s. Bytes are deterministic: capped at 1.5x. Time varies by machine:
-# capped at 3x so a slower CI runner does not flake, while a quadratic regression still fails.
+# Measured 2026-11-08 (recorded in the README): large 14.8 MB, very large 35.7 MB; render time
+# on an M4 Mac mini 2.8 s / 16.1 s, on the CI runner (ubuntu-latest, Python 3.11) very large
+# 48.3 s, about 3x the mini, so large there is about 8.3 s. Bytes are deterministic and capped
+# at 1.5x. Time is capped at 1.5x the slowest machine that runs the suite (CI): a page-count
+# or per-page regression of the kind that took 20 copies to 325 s still fails by far.
 SCALES = {
-    "large": (20, 22_200_000, 8.5),
-    "very large": (50, 53_600_000, 48.0),
+    "large": (20, 22_200_000, 12.5),
+    "very large": (50, 53_600_000, 72.0),
 }
 
 
