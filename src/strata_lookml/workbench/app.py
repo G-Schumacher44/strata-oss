@@ -26,6 +26,7 @@ from strata_lookml.mcp.tools import strata_object
 from strata_lookml.outputs.dashboard import _embed_json, _palette_css
 from strata_lookml.triage import TriageStore, triage_rows
 from strata_lookml.workbench.index import Staleness, Workbench
+from strata_lookml.workbench.overview import overview_context
 from strata_lookml.workbench.pages.findings import findings_context, parse_query
 from strata_lookml.workbench.render import render
 
@@ -262,15 +263,7 @@ class App:
         return self._page("findings.html", "Findings", nav="findings", **context)
 
     def _overview(self, query: Mapping[str, list[str]]) -> Response:
-        wb = self.workbench
-        counts = wb.graph.node_counts()
-        facts = [(kind, str(n)) for kind, n in counts.items()]
-        if wb.source:
-            facts.append(("commit", str(wb.source.get("commit"))))
-            facts.append(("branch", str(wb.source.get("branch"))))
-        return self._placeholder(
-            "Overview", f"{wb.repo.name}: {len(wb.records)} findings.", facts=facts
-        )
+        return self._page("overview.html", "Overview", **overview_context(self.workbench))
 
     def _graph(self, query: Mapping[str, list[str]]) -> Response:
         focus = query.get("focus", [""])[0]

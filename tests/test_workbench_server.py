@@ -489,6 +489,17 @@ _SHELL_TAGS = {
     "b",
     "bdi",
     "dialog",
+    # /overview report (S7): structure, table and the server-built SVG bars
+    "article",
+    "strong",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "svg",
+    "rect",
 }
 _SHELL_ATTRS = {
     "lang",
@@ -513,6 +524,15 @@ _SHELL_ATTRS = {
     "aria-label",
     "aria-current",
     "aria-disabled",
+    # /overview inline SVG bars (S7)
+    "width",
+    "height",
+    "viewbox",
+    "x",
+    "y",
+    "rx",
+    "aria-hidden",
+    "focusable",
 }
 # The one script a page may load: the static file behind the CSP's script-src 'self'.
 _SANCTIONED_SCRIPT = '<script src="/static/workbench.js" defer></script>'
