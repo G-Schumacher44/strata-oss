@@ -661,3 +661,20 @@ def test_legacy_export_still_writes_the_dashboard(
     )
     assert result.exit_code == 0, result.output
     assert (out / "dashboard.html").is_file()
+
+
+def test_workbench_url_resolves_through_the_shared_resolver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("STRATA_WORKBENCH_URL", "http://127.0.0.1:1")
+    result, _ = _run(monkeypatch, tmp_path, "workbench")
+    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+    assert "http://127.0.0.1:1 names port 1" in result.output  # type: ignore[attr-defined]
+
+
+def test_invalid_workbench_url_is_refused(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        strata_cli, ["workbench", "--repo", str(TWIN), "--workbench-url", "ftp://x"]
+    )
+    assert result.exit_code == 1
+    assert "invalid workbench URL from --workbench-url" in result.output

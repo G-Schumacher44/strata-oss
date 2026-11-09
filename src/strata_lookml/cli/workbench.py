@@ -56,10 +56,8 @@ def _url_port(url: str | None) -> int | None:
 @click.option(
     "--workbench-url",
     default=None,
-    envvar="STRATA_WORKBENCH_URL",
-    show_envvar=True,
-    help="Base URL that check, PR reports and MCP results link to; warned about when the server "
-    "falls back to another port",
+    help="Workbench base URL that check, PR reports and MCP results link to (else "
+    "STRATA_WORKBENCH_URL / config workbench_url); warned about when it names another port",
 )
 @click.option(
     "--out",
@@ -113,6 +111,7 @@ def workbench(
         )
         return
 
+    from strata_lookml.config import load_workbench_url
     from strata_lookml.gate import BaselineError, load_baseline
     from strata_lookml.ir.store import describe_inputs
     from strata_lookml.workbench.app import App
@@ -120,6 +119,7 @@ def workbench(
     from strata_lookml.workbench.server import make_handler, new_token
 
     _repo = Path(repo).expanduser().resolve()
+    base_url = load_workbench_url(workbench_url)
     baseline = None
     if baseline_path:
         try:
@@ -145,7 +145,7 @@ def workbench(
         inputs=inputs,
         baseline=baseline,
         baseline_path=baseline_path,
-        base_url=workbench_url,
+        base_url=base_url,
     )
     token = new_token()
     staleness = Staleness(index.inputs, index.fingerprint)
@@ -159,10 +159,10 @@ def workbench(
     url = f"http://127.0.0.1:{bound}/findings"
     if bound != dash.DEFAULT_PORT and not explicit:
         click.echo(f"Port {dash.DEFAULT_PORT} is busy; using {bound}.")
-    linked = _url_port(workbench_url)
+    linked = _url_port(base_url)
     if linked is not None and linked != bound:
         click.secho(
-            f"Warning: --workbench-url {workbench_url} names port {linked}, but the workbench is "
+            f"Warning: the workbench URL {base_url} names port {linked}, but the workbench is "
             f"on {bound}; links built from it will not reach this server.",
             fg="yellow",
             err=True,

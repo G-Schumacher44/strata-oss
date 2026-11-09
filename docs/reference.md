@@ -167,6 +167,7 @@ Gate a LookML repo in CI: exit 0 pass, 1 gate failed, 2 usage error.
 - `--fail-on CATEGORIES` — default `none` — Comma-separated finding categories that also fail the gate: dead-code, unused-pdt, zombie-pdt, drift; or all / none. dead-code and the PDT categories need --usage-fixture; drift needs --schema-fixture.
 - `--baseline FILE` — Baseline file: known finding ids are ignored, so only NEW findings fail --fail-on.
 - `--write-baseline FILE` — Write the current findings' ids to this baseline file (sorted JSON), then gate.
+- `--workbench-url TEXT` — Workbench base URL (http(s)://… or an export .html; else STRATA_WORKBENCH_URL / config workbench_url): each failure gets a link to its finding page. No base, no links.
 - `--json` — flag — Print {passed, failures, counts, source?} as JSON
 
 ### `strata clean`
@@ -223,7 +224,7 @@ Alias of `strata workbench` (same options).
 - `--looker-url TEXT` — Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)
 - `--days INTEGER` — default `30` — Looker usage window in days
 - `--baseline FILE` — Baseline file (from `strata check --write-baseline`): its ids show as baselined. Read only.
-- `--workbench-url TEXT` — env `STRATA_WORKBENCH_URL` — Base URL that check, PR reports and MCP results link to; warned about when the server falls back to another port
+- `--workbench-url TEXT` — Workbench base URL that check, PR reports and MCP results link to (else STRATA_WORKBENCH_URL / config workbench_url); warned about when it names another port
 - `--out TEXT` — Instead of the workbench: write the JSON artifacts and the static dashboard.html to this directory and serve it
 - `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
 - `--no-browser` — flag — Skip opening the browser
@@ -454,7 +455,7 @@ Serve the triage workbench on 127.0.0.1: findings, overview and a page per objec
 - `--looker-url TEXT` — Looker API host URL for live L1 enrichment — the URL the `strata auth login` token was issued for (usually the instance URL)
 - `--days INTEGER` — default `30` — Looker usage window in days
 - `--baseline FILE` — Baseline file (from `strata check --write-baseline`): its ids show as baselined. Read only.
-- `--workbench-url TEXT` — env `STRATA_WORKBENCH_URL` — Base URL that check, PR reports and MCP results link to; warned about when the server falls back to another port
+- `--workbench-url TEXT` — Workbench base URL that check, PR reports and MCP results link to (else STRATA_WORKBENCH_URL / config workbench_url); warned about when it names another port
 - `--out TEXT` — Instead of the workbench: write the JSON artifacts and the static dashboard.html to this directory and serve it
 - `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
 - `--no-browser` — flag — Skip opening the browser
@@ -577,7 +578,7 @@ Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=
 
 **Object** (read-only)
 
-Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage or content-reference facts were not loaded (coverage.usage_checked / coverage.content_checked false) and for other kinds. An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found.
+Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details, workbench_url?}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage or content-reference facts were not loaded (coverage.usage_checked / coverage.content_checked false) and for other kinds. workbench_url (the object's workbench page) appears only when a workbench base URL is configured (STRATA_WORKBENCH_URL / config workbench_url). An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found.
 
 Parameters:
 - `kind` — 'explore' | 'view' | 'pdt' | 'table' | 'field' — required — What kind of object to read.

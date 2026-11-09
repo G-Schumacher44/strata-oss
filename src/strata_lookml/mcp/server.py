@@ -12,8 +12,9 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from strata_lookml.config import load_cache_path, load_repo_path
+from strata_lookml.config import load_cache_path, load_repo_path, load_workbench_url
 from strata_lookml.ir.types import IRGraph
+from strata_lookml.links import link, object_path
 from strata_lookml.mcp.tools import (
     FIND_FIELD_DEFAULT_LIMIT,
     FIND_FIELD_MAX_LIMIT,
@@ -191,8 +192,12 @@ def create_server(graph: IRGraph | None = None) -> MCPServer:
             ),
         ],
     ) -> dict[str, Any]:
-        """Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage or content-reference facts were not loaded (coverage.usage_checked / coverage.content_checked false) and for other kinds. An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found."""
-        return query_object(ir_graph, kind, name)
+        """Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details, workbench_url?}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage or content-reference facts were not loaded (coverage.usage_checked / coverage.content_checked false) and for other kinds. workbench_url (the object's workbench page) appears only when a workbench base URL is configured (STRATA_WORKBENCH_URL / config workbench_url). An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found."""
+        result = query_object(ir_graph, kind, name)
+        url = link(load_workbench_url(), object_path(result["id"]))
+        if url:
+            result["workbench_url"] = url
+        return result
 
     @server.tool(title="IR Status", annotations=_READ_ONLY)
     def strata_ir_status() -> dict[str, Any]:

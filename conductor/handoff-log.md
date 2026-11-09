@@ -2,7 +2,6 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-
 ## Date: 2026-11-08 — feat/wb-s4-server (local server, route table, security headers; workbench S4)
 
 Commit: 7b21e95

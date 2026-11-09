@@ -83,6 +83,13 @@ def _parse_fail_on(value: str) -> set[str]:
     help="Write the current findings' ids to this baseline file (sorted JSON), then gate.",
 )
 @click.option(
+    "--workbench-url",
+    "workbench_url",
+    default=None,
+    help="Workbench base URL (http(s)://… or an export .html; else STRATA_WORKBENCH_URL / "
+    "config workbench_url): each failure gets a link to its finding page. No base, no links.",
+)
+@click.option(
     "--json", "as_json", is_flag=True, help="Print {passed, failures, counts, source?} as JSON"
 )
 def check(
@@ -92,6 +99,7 @@ def check(
     fail_on_raw: str,
     baseline_path: str | None,
     write_baseline_path: str | None,
+    workbench_url: str | None,
     as_json: bool,
 ) -> None:
     """Gate a LookML repo in CI: exit 0 pass, 1 gate failed, 2 usage error.
@@ -111,9 +119,12 @@ def check(
     """
     from pathlib import Path
 
+    from strata_lookml.config import load_workbench_url
+    from strata_lookml.links import finding_path, link
     from strata_lookml.pipeline import build_graph
 
     fail_on = _parse_fail_on(fail_on_raw)
+    base = load_workbench_url(workbench_url)
     loaded = {"usage": usage_fixture, "schema": schema_fixture}
     for category in sorted(fail_on):
         needed = FINDING_CATEGORIES[category]
@@ -141,15 +152,18 @@ def check(
     if "source" in graph.metadata:
         result["source"] = graph.metadata["source"]
 
+    if base:
+        for failure in result["failures"]:
+            failure["url"] = link(base, finding_path(failure["id"]))
+
     if as_json:
         click.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
         for failure in result["failures"]:
-            click.secho(
-                f"FAIL [{failure['category']}] {failure['id']}: {failure['message']}",
-                fg="red",
-                err=True,
-            )
+            line = f"FAIL [{failure['category']}] {failure['id']}: {failure['message']}"
+            if "url" in failure:
+                line += f" <{failure['url']}>"
+            click.secho(line, fg="red", err=True)
         for stale in result.get("stale_baseline_ids", []):
             click.secho(f"WARN stale baseline id (no longer found): {stale}", fg="yellow", err=True)
         summary = ", ".join(
