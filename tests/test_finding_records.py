@@ -124,3 +124,44 @@ def test_an_explore_integrity_failure_cites_its_explore(monkeypatch):
         assert r["source_file"] == node.source_file
         assert r["source_line"] == node.attrs["source_line"]
         assert r["message"] == "bad verdict"
+
+
+def _missing_table_record(tmp_path, files):
+    for name, text in files.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    schema = tmp_path / "schema.json"
+    schema.write_text('{"tables": [{"name": "ds.other", "columns": ["id"]}]}', encoding="utf-8")
+    graph = build_graph(tmp_path, None, schema)
+    records = [r for r in finding_records(graph) if r["id"] == "schema:missing_table:ds.gone"]
+    assert len(records) == 1
+    return graph, records[0]
+
+
+_PDT = (
+    "view: summary {\n  derived_table: {\n    sql: select id from ds.gone ;;\n  }\n"
+    "  dimension: id {\n    sql: ${TABLE}.id ;;\n  }\n}\n"
+)
+_DIRECT = "view: direct {\n  sql_table_name: ds.gone ;;\n}\n"
+
+
+def test_a_table_read_only_by_pdt_sql_cites_the_pdt_view(tmp_path):
+    graph, record = _missing_table_record(tmp_path, {"a_summary.view.lkml": _PDT})
+
+    view = graph.get_node("view:summary")
+    assert (record["source_file"], record["source_line"]) == (view.source_file, 1)
+
+
+def test_a_table_read_by_a_pdt_and_a_view_cites_one_nodes_file_and_line(tmp_path):
+    # The PDT file sorts first, so it created the table node; the direct view is cited instead
+    # only if its (file, line) wins. Whichever wins, file and line must be the same node's.
+    (first, second) = (tmp_path / "one", tmp_path / "two")
+    first.mkdir(), second.mkdir()
+    graph, record = _missing_table_record(
+        first, {"b_summary.view.lkml": _PDT, "a_direct.view.lkml": "\n\n\n" + _DIRECT}
+    )
+
+    assert (record["source_file"], record["source_line"]) == ("a_direct.view.lkml", 4)
+    graph, record = _missing_table_record(
+        second, {"a_summary.view.lkml": _PDT, "b_direct.view.lkml": _DIRECT}
+    )
+    assert (record["source_file"], record["source_line"]) == ("a_summary.view.lkml", 1)

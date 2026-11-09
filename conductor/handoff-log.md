@@ -25,9 +25,9 @@ Exact Next Steps: twin gate, operator merges. S2 and S3 land serially; on a main
 ### Deviations from the brief
 
 - (Closed in review.) Integrity failures are records too (category `integrity`, the gate's ids); `_integrity_failures` projects from them. Resolution errors carry no node, file or line, so `subject_id`/`source_file`/`source_line` are None there; explore failures cite their explore node.
-- `physical_table` nodes have no line, so a missing_table record cites the line of the first view that reads the table (via `view->physical_table`).
+- `physical_table` nodes have no line, so a missing_table record cites ONE referencing node, a view (`view->physical_table`) or a PDT (`pdt->upstream`), first by (source_file, line, id), and takes both file and line from it (Codex P2: never mixed coordinates).
 - G14 is not reachable from LookML: field ids are `view.field`, and a dotted-name pair collapses to one field node. The collision test injects a duplicate drift record into the L1 facts.
 
 ### Gates
 
-pytest 422 passed, 1 skipped, ruff check + format --check clean, mypy `src/strata_lookml` clean. Golden: `strata check --fail-on all --json` and `--write-baseline` outputs byte-identical to origin/main for enterprise_mono, gcs_analytics and thelook (fixtures). Negative control: `tests/test_finding_records.py` on origin/main code (detached worktree) fails to import `finding_records`, and its PDT nodes have `source_line` None on all 5.
+pytest 424 passed, 1 skipped, ruff check + format --check clean, mypy `src/strata_lookml` clean. Golden: `strata check --fail-on all --json` and `--write-baseline` outputs byte-identical to origin/main for enterprise_mono, gcs_analytics and thelook (fixtures). Negative control: `tests/test_finding_records.py` on origin/main code (detached worktree) fails to import `finding_records`, and its PDT nodes have `source_line` None on all 5.

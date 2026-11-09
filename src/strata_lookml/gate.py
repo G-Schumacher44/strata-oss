@@ -52,23 +52,46 @@ def _record(
     source_file: str | None,
     evidence_ids: list[str],
     cost_usd: float | None = None,
-    line_from: str | None = None,
+    cited_id: str | None = None,
 ) -> dict[str, Any]:
     subject = graph.get_node(subject_id)
-    cited = graph.get_node(line_from) if line_from else subject
+    # Both coordinates come from ONE node: the cited one, else the subject.
+    cited = graph.get_node(cited_id) if cited_id else subject
     record: dict[str, Any] = {
         "category": category,
         "id": finding_id,
         "message": message,
         "label": label,
         "subject_id": subject_id,
-        "source_file": source_file or (subject.source_file if subject else None),
+        "source_file": cited.source_file
+        if cited_id and cited
+        else source_file or (subject.source_file if subject else None),
         "source_line": cited.attrs.get("source_line") if cited else None,
         "evidence_ids": list(evidence_ids),
     }
     if cost_usd is not None:
         record["cost_usd"] = cost_usd
     return record
+
+
+def _table_referrer(graph: IRGraph, table_id: str) -> str | None:
+    """The node a missing table is cited from: a view reading it (`view\u2192physical_table`) or a
+    PDT whose SQL reads it (`pdt\u2192upstream`), first by (source_file, source_line, id).
+
+    A table node has no line of its own, and its `source_file` is whichever view created it
+    first, so its coordinates are never mixed with the referrer's.
+    """
+    sources = {
+        e.source
+        for e in graph.edges
+        if e.target == table_id and e.relation in ("view\u2192physical_table", "pdt\u2192upstream")
+    }
+    nodes = [n for n in map(graph.get_node, sources) if n is not None]
+
+    def order(node: Any) -> tuple[str, int, str]:
+        return (node.source_file or "", node.attrs.get("source_line") or 10**9, node.id)
+
+    return min(nodes, key=order).id if nodes else None
 
 
 def _integrity_records(graph: IRGraph) -> list[dict[str, Any]]:
@@ -169,19 +192,11 @@ def _opt_in_records(graph: IRGraph) -> list[dict[str, Any]]:
         if r["kind"] == "missing_column":
             label = f"{r['field']} \u2190 {_short_table(r['table'], 1)}.{r['column']}"
             subject_id = r["evidence_ids"][0]
-            line_from = None
+            cited_id = None
         else:
             label = _short_table(r["table"], 2)
             subject_id = f"physical_table:{r['table']}"
-            # A table node has no line of its own: cite the first view that reads it.
-            line_from = next(
-                (
-                    e.source
-                    for e in graph.edges
-                    if e.relation == "view\u2192physical_table" and e.target == subject_id
-                ),
-                None,
-            )
+            cited_id = _table_referrer(graph, subject_id)
         records.append(
             _record(
                 graph,
@@ -192,7 +207,7 @@ def _opt_in_records(graph: IRGraph) -> list[dict[str, Any]]:
                 subject_id,
                 r["source_file"],
                 r["evidence_ids"],
-                line_from=line_from,
+                cited_id=cited_id,
             )
         )
     return records
