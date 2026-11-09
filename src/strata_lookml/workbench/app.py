@@ -24,6 +24,7 @@ from strata_lookml.links import finding_path, object_path
 from strata_lookml.mcp.tools import strata_object
 from strata_lookml.outputs.dashboard import _embed_json
 from strata_lookml.workbench.index import Staleness, Workbench
+from strata_lookml.workbench.overview import overview_context
 from strata_lookml.workbench.render import render
 
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
@@ -213,15 +214,7 @@ class App:
         )
 
     def _overview(self, query: Mapping[str, list[str]]) -> Response:
-        wb = self.workbench
-        counts = wb.graph.node_counts()
-        facts = [(kind, str(n)) for kind, n in counts.items()]
-        if wb.source:
-            facts.append(("commit", str(wb.source.get("commit"))))
-            facts.append(("branch", str(wb.source.get("branch"))))
-        return self._placeholder(
-            "Overview", f"{wb.repo.name}: {len(wb.records)} findings.", facts=facts
-        )
+        return self._page("overview.html", "Overview", **overview_context(self.workbench))
 
     def _graph(self, query: Mapping[str, list[str]]) -> Response:
         focus = query.get("focus", [""])[0]

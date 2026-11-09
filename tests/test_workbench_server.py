@@ -473,6 +473,21 @@ _SHELL_TAGS = {
     "dd",
     "ul",
     "li",
+    # /overview report (S7): structure, table and the server-built SVG bars
+    "article",
+    "h2",
+    "strong",
+    "code",
+    "style",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "svg",
+    "rect",
+    "span",
 }
 
 
@@ -499,6 +514,14 @@ def _assert_inert(target: str, response: Response) -> None:
             "role",
             "class",
             "aria-label",
+            "width",
+            "height",
+            "viewbox",
+            "x",
+            "y",
+            "rx",
+            "aria-hidden",
+            "focusable",
         }, (
             target,
             name,
