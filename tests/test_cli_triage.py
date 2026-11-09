@@ -172,3 +172,15 @@ def test_env_vars_replace_the_options(monkeypatch):
     monkeypatch.setenv("STRATA_SCHEMA_FIXTURE", str(SCHEMA))
     result = run("findings", "--format", "json")
     assert result.exit_code == 0 and json.loads(result.stdout)
+
+
+def test_json_format_errors_are_a_stdout_envelope_text_formats_stay_on_stderr():
+    bad = ["--repo", "/nonexistent"]
+    result = run("findings", *bad, "--format", "json")
+    assert result.exit_code == 1
+    envelope = json.loads(result.stdout)
+    assert set(envelope) == {"error", "code", "hint"}
+    for fmt in ("table", "lines"):
+        result = run("findings", *bad, "--format", fmt)
+        assert result.exit_code == 1
+        assert result.stdout == "" and "Error:" in result.stderr

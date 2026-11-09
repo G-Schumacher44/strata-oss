@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import click
 
+from strata_lookml.cli._contract import JsonCommand
 from strata_lookml.gate import FINDING_CATEGORIES, INTEGRITY, BaselineError, load_baseline
 
 if TYPE_CHECKING:
@@ -92,7 +93,7 @@ def _table(rows: list[TriageRow]) -> list[str]:
     ]
 
 
-@click.command("findings")
+@click.command("findings", cls=JsonCommand)
 @_repo_option
 @_fixture_options
 @click.option(
