@@ -10,7 +10,7 @@ import subprocess
 from html.parser import HTMLParser
 from importlib import resources
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import pytest
 from markupsafe import escape
@@ -23,6 +23,7 @@ from strata_lookml.workbench.app import App, Response
 from strata_lookml.workbench.index import Staleness, Workbench, index_graph
 from strata_lookml.workbench.pages import findings as page
 from strata_lookml.workbench.pages.findings import group_rows
+from strata_lookml.workbench.pr_text import CATEGORY_LABELS, pr_comment
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT / "lookml" / "enterprise_mono"
@@ -184,7 +185,6 @@ def test_pdt_dead_view_and_zombie_findings_group_into_one_row() -> None:
     assert pair["data-ids"] == f"pdt:{PDT} dead:view:{PDT}"  # ids unchanged
     assert pair["cats"] == ["zombie-pdt", "dead-code"]
     assert pair["data-href"] == f"/finding/pdt%3A{PDT}"
-    assert f"`pdt:{PDT}`" in pair["data-comment"] and f"`dead:view:{PDT}`" in pair["data-comment"]
     # The category filter finds the group from either half.
     for category in ("dead-code", "zombie-pdt"):
         filtered = _rows(_get(_app(_workbench()), f"/findings?status=all&category={category}"))
@@ -240,14 +240,42 @@ def test_a_baselined_drift_id_without_schema_facts_is_not_checked_never_fixed() 
 # --- PR comment text, cost, coverage ------------------------------------------------------------
 
 
+def _comment(app: App, ids: list[str]) -> Response:
+    return _get(app, "/api/pr-comment?" + urlencode([("id", i) for i in ids]))
+
+
+def test_the_list_copies_the_one_pr_comment_builder() -> None:
+    """`c` fetches /api/pr-comment for the row's ids: the text is `pr_text.pr_comment` over
+    their records, byte for byte (G19: the list, finding and detail pages share one builder)."""
+    wb = _workbench()
+    app = _app(wb)
+    (pair,) = [r for r in _rows(_get(app, "/findings")) if PDT in r["data-ids"]]
+    ids = pair["data-ids"].split(" ")
+    response = _comment(app, ids)
+    assert response.status == 200
+    assert ("Content-Type", "text/plain; charset=utf-8") in response.headers
+    assert ("X-Content-Type-Options", "nosniff") in response.headers
+    records = [dict(r) for i in ids for r in wb.findings_by_id[i]]
+    expected = pr_comment(records, {"kind": "finding", "id": "", "name": ""}, None)
+    assert response.body.decode() == expected
+    assert expected.startswith("**Strata** found 2 LookML findings:")
+    assert f"`pdt:{PDT}`" in expected and f"`dead:view:{PDT}`" in expected
+
+
 def test_pr_comment_links_only_with_a_workbench_base() -> None:
-    (plain,) = [r for r in _rows(_get(_app(_workbench()), "/findings")) if PDT in r["data-ids"]]
-    assert "Workbench:" not in plain["data-comment"]
-    assert "Rebuild cost: $45,000 over 30 days" in plain["data-comment"]
+    plain = _comment(_app(_workbench()), [f"pdt:{PDT}"]).body.decode()
+    assert "Workbench:" not in plain
     base = "http://127.0.0.1:8765"
-    linked = _app(_workbench(base_url=base))
-    (row,) = [r for r in _rows(_get(linked, "/findings")) if PDT in r["data-ids"]]
-    assert f"  - Workbench: {base}/finding/pdt%3A{PDT}" in row["data-comment"]
+    linked = _comment(_app(_workbench(base_url=base)), [f"pdt:{PDT}"]).body.decode()
+    assert f"  - Workbench: {base}/finding/pdt%3A{PDT}" in linked
+
+
+def test_pr_comment_skips_ids_without_a_current_record() -> None:
+    app = _app(_workbench(baseline={"dead-code": {"dead:explore:m.gone"}}))
+    assert _comment(app, ["dead:explore:m.gone"]).status == 404  # fixed: nothing to quote
+    assert _comment(app, []).status == 404
+    mixed = _comment(app, ["dead:explore:m.gone", f"pdt:{PDT}"]).body.decode()
+    assert "m.gone" not in mixed and mixed.startswith("**Strata** found 1 LookML finding:")
 
 
 def test_cost_column_coverage_strip_and_palette() -> None:
@@ -347,7 +375,7 @@ def test_workbench_js_passes_node_check() -> None:
 
 def test_every_finding_category_has_a_label() -> None:
     """A category added to the gate without a label would KeyError every /findings request."""
-    assert set(page.CATEGORY_LABELS) == set(page.CATEGORIES)
+    assert set(CATEGORY_LABELS) >= set(page.CATEGORIES)
 
 
 def test_help_dialog_has_a_close_button_that_works_without_javascript() -> None:

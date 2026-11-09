@@ -42,6 +42,22 @@
     );
   }
 
+  // Copy text that is still being fetched. A ClipboardItem holding the promise keeps the
+  // keypress's user activation across the fetch (Safari requires it); else copy once it arrives.
+  function copyAsync(textPromise, message, failure) {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      var blob = textPromise.then(function (t) { return new Blob([t], { type: "text/plain" }); });
+      navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]).then(
+        function () { toast(message); },
+        function () {
+          textPromise.then(function (t) { copyText(t, message); }, function (err) { toast(failure(err)); });
+        }
+      );
+      return;
+    }
+    textPromise.then(function (t) { copyText(t, message); }, function (err) { toast(failure(err)); });
+  }
+
   // --- theme ---------------------------------------------------------------------------
 
   var themeButton = $('[data-action="theme"]');
@@ -142,10 +158,20 @@
     function copyComment() {
       var rs = targets();
       if (!rs.length) { toast("Nothing to copy"); return; }
-      var blocks = rs.map(function (r) { return r.getAttribute("data-comment"); });
-      var text = [section.getAttribute("data-comment-head"), ""].concat(blocks).join("\n");
+      // The server builds the text (workbench/pr_text.py, the one PR-comment builder).
+      var params = new URLSearchParams();
+      ids(rs).forEach(function (id) { params.append("id", id); });
+      var text = fetch("/api/pr-comment?" + params.toString(), { credentials: "same-origin" })
+        .then(function (r) {
+          if (!r.ok) throw new Error(r.status === 404 ? "none" : String(r.status));
+          return r.text();
+        });
       var n = ids(rs).length;
-      copyText(text, "Copied PR comment for " + n + " finding" + (n === 1 ? "" : "s"));
+      copyAsync(text, "Copied PR comment for " + n + " finding" + (n === 1 ? "" : "s"), function (err) {
+        return err && err.message === "none"
+          ? "No current finding to comment on (fixed and not-checked have no record)"
+          : "Could not build the PR comment";
+      });
     }
 
     function copyPaths() {

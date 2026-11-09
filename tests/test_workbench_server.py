@@ -203,7 +203,7 @@ def test_canonical_explore_keys_resolve_exactly(tmp_path: Path) -> None:
     ):
         r = _get(app, object_path(node_id) or "")
         assert r.status == 200, (node_id, _text(r))
-        assert f"<dd>{node_id}</dd>" in _text(r)
+        assert f'data-node-id="{node_id}"' in _text(r)
     r = _get(app, "/explore/orders")  # hand-typed shorthand still offers both models
     assert r.status == 300
     assert '<a href="/explore/retail.v2.orders">retail.v2.orders</a>' in _text(r)
@@ -258,7 +258,9 @@ def test_every_object_and_finding_link_round_trips(hostile: App) -> None:
             continue
         assert r.status in (200, 300), (path, _text(r))
         if r.status == 200:
-            assert f"<dd>{escape(node.id)}</dd>" in _text(r), "the link reached another object"
+            assert f'data-node-id="{escape(node.id)}"' in _text(r), (
+                "the link reached another object"
+            )
         seen += 1
     assert seen > 8
     for finding_id in hostile.workbench.findings_by_id:
@@ -489,6 +491,10 @@ _SHELL_TAGS = {
     "b",
     "bdi",
     "dialog",
+    # the shared detail frame (S6)
+    "aside",
+    "textarea",
+    "pre",
     # /overview report (S7): structure, table and the server-built SVG bars
     "article",
     "strong",
@@ -533,9 +539,15 @@ _SHELL_ATTRS = {
     "rx",
     "aria-hidden",
     "focusable",
+    # the detail frame (S6)
+    "readonly",
 }
-# The one script a page may load: the static file behind the CSP's script-src 'self'.
-_SANCTIONED_SCRIPT = '<script src="/static/workbench.js" defer></script>'
+# The only scripts a page may load: allow-listed /static/ files behind the CSP's
+# script-src 'self', each at most once. Nothing else that opens a <script> may appear.
+_SANCTIONED_SCRIPTS = (
+    '<script src="/static/workbench.js" defer></script>',
+    '<script src="/static/detail.js" defer></script>',
+)
 
 
 def _assert_inert(target: str, response: Response) -> None:
@@ -545,8 +557,10 @@ def _assert_inert(target: str, response: Response) -> None:
         assert "<" not in body, target  # `>` alone cannot open markup
         json.loads(body)
         return
-    assert body.count(_SANCTIONED_SCRIPT) <= 1, target
-    stripped = body.replace(_SANCTIONED_SCRIPT, "")
+    stripped = body
+    for script in _SANCTIONED_SCRIPTS:
+        assert body.count(script) <= 1, (target, script)
+        stripped = stripped.replace(script, "")
     for raw in ("<img", "<script", "</script>", "onerror=alert(1)>"):
         assert raw not in stripped, (target, raw)
     parser = _Markup()

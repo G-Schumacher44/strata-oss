@@ -20,8 +20,9 @@ from urllib.parse import urlencode
 
 from strata_lookml.errors import InvalidInput
 from strata_lookml.gate import FINDING_CATEGORIES, INTEGRITY
-from strata_lookml.links import finding_path, link
+from strata_lookml.links import finding_path
 from strata_lookml.triage import TriageRow
+from strata_lookml.workbench.pr_text import CATEGORY_LABELS, usd
 
 PAGE_SIZE = 200
 
@@ -40,13 +41,6 @@ STATUS_LABELS = {
     "baselined": "baselined",
     "fixed": "fixed",
     "not_checked": "not checked",
-}
-CATEGORY_LABELS = {
-    INTEGRITY: "integrity",
-    "dead-code": "dead code",
-    "unused-pdt": "unused PDT",
-    "zombie-pdt": "zombie PDT",
-    "drift": "drift",
 }
 CATEGORIES = (INTEGRITY, *FINDING_CATEGORIES)
 _PDT_CATEGORIES = ("zombie-pdt", "unused-pdt")
@@ -161,32 +155,10 @@ def findings_href(status: str, category: str = "all", q: str = "", page: int = 1
     return "/findings?" + urlencode(params)
 
 
-def _usd(cost: float) -> str:
-    return f"${cost:,.0f}" if cost >= 100 else f"${cost:,.2f}"
-
-
 def _location(row: TriageRow) -> str | None:
     if not row.source_file:
         return None
     return f"{row.source_file}:{row.source_line}" if row.source_line else row.source_file
-
-
-def _comment_lines(
-    row: TriageRow, cost: float | None, days: int | None, base_url: str | None
-) -> list[str]:
-    """One finding as PR-comment Markdown: a bullet, then its location, cost and link."""
-    lines = [f"- **{CATEGORY_LABELS[row.category]}** `{row.id}` — {' '.join(row.message.split())}"]
-    location = _location(row)
-    if location:
-        lines.append(f"  - `{location}`")
-    if cost is not None:
-        lines.append(f"  - Rebuild cost: {_usd(cost)}" + (f" over {days} days" if days else ""))
-    url = (
-        link(base_url, finding_path(row.id)) if row.status not in ("fixed", "not_checked") else None
-    )
-    if url:  # no base -> no link (a guessed port would be wrong)
-        lines.append(f"  - Workbench: {url}")
-    return lines
 
 
 def findings_context(
@@ -195,8 +167,6 @@ def findings_context(
     *,
     costs: Mapping[str, float],
     days: int | None,
-    base_url: str | None,
-    repo_name: str,
 ) -> dict[str, Any]:
     """The template context for one `/findings` request."""
     items = group_rows(rows)
@@ -238,10 +208,7 @@ def findings_context(
     pages = max(1, math.ceil(len(shown) / PAGE_SIZE))
     page = min(query.page, pages)
     start = (page - 1) * PAGE_SIZE
-    listed = [
-        _item_context(item, costs=costs, days=days, base_url=base_url)
-        for item in shown[start : start + PAGE_SIZE]
-    ]
+    listed = [_item_context(item, costs) for item in shown[start : start + PAGE_SIZE]]
     return {
         "query": query,
         "tabs": tabs,
@@ -259,21 +226,15 @@ def findings_context(
         if pages > 1
         else [],
         "cost_heading": f"Cost / {days}d" if days else "Cost",
-        "comment_head": f"**Strata** LookML findings ({repo_name}):",
         "empty": _empty_message(query),
     }
 
 
-def _item_context(
-    item: Item, *, costs: Mapping[str, float], days: int | None, base_url: str | None
-) -> dict[str, Any]:
+def _item_context(item: Item, costs: Mapping[str, float]) -> dict[str, Any]:
     lead = item.rows[0]
     current = lead.status not in ("fixed", "not_checked")
     cost = next((costs[r.id] for r in item.rows if r.id in costs), None)
     locations = list(dict.fromkeys(loc for r in item.rows if (loc := _location(r))))
-    comment: list[str] = []
-    for row in item.rows:
-        comment += _comment_lines(row, costs.get(row.id), days, base_url)
     return {
         "ids": [r.id for r in item.rows],
         "chips": [(c, CATEGORY_LABELS[c]) for c in item.categories],
@@ -287,10 +248,9 @@ def _item_context(
         ],
         "location": locations[0] if locations else None,
         "locations": "\n".join(locations),
-        "cost": _usd(cost) if cost is not None else None,
+        "cost": usd(cost) if cost is not None else None,
         "status": lead.status,
         "status_label": STATUS_LABELS[lead.status],
-        "comment": "\n".join(comment),
     }
 
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from functools import cache, cached_property
+from functools import cache
 from http import HTTPStatus
 from importlib import resources
 from typing import Any
@@ -23,11 +23,14 @@ from strata_lookml.identifiers import explore_matches, explores_by_key, table_ma
 from strata_lookml.ir.types import explore_id, explore_key
 from strata_lookml.links import finding_path, object_path
 from strata_lookml.mcp.tools import strata_object
+from strata_lookml.outputs.artifacts import cleanup_roadmap
 from strata_lookml.outputs.dashboard import _embed_json, _palette_css
-from strata_lookml.triage import TriageStore, triage_rows
+from strata_lookml.triage import TriageRow, TriageStore, triage_rows
+from strata_lookml.workbench.detail import Detail
 from strata_lookml.workbench.index import Staleness, Workbench
 from strata_lookml.workbench.overview import overview_context
 from strata_lookml.workbench.pages.findings import findings_context, parse_query
+from strata_lookml.workbench.pr_text import pr_comment
 from strata_lookml.workbench.render import render
 
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
@@ -51,6 +54,7 @@ STATIC_ASSETS: Mapping[str, tuple[str, str]] = {
     "cytoscape-dagre.min.js": ("strata_lookml.assets.js", "cytoscape-dagre.min.js"),
     "workbench.js": ("strata_lookml.assets.js", "workbench.js"),
     "workbench.css": ("strata_lookml.assets.css", "workbench.css"),
+    "detail.js": ("strata_lookml.assets.js", "detail.js"),
 }
 _STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
@@ -103,12 +107,15 @@ class App:
         self.hosts = hosts
         self.token = token
         self.staleness = staleness
+        self._store = TriageStore.open(workbench.repo, workbench.graph)
+        self._detail = Detail(workbench, cleanup_roadmap(workbench.graph.metadata.get("l1", {})))
         self._pages: dict[str, Callable[[Mapping[str, list[str]]], Response]] = {
             "/findings": self._findings,
             "/overview": self._overview,
             "/graph": self._graph,
             "/search": self._search,
             "/api/index.json": self._api_index,
+            "/api/pr-comment": self._api_pr_comment,
         }
 
     # --- dispatch ----------------------------------------------------------------------
@@ -240,16 +247,10 @@ class App:
 
     # --- pages ----------------------------------------------------------------------------
 
-    @cached_property
-    def _store(self) -> TriageStore:
-        return TriageStore.open(self.workbench.repo, self.workbench.graph)
-
     def _findings(self, query: Mapping[str, list[str]]) -> Response:
         wb = self.workbench
         parsed = parse_query(query)
-        baseline = None if wb.baseline is None else {k: set(v) for k, v in wb.baseline.items()}
-        # Read per request: an ack from `strata ack` shows on the next reload.
-        rows = triage_rows(wb.graph, baseline, self._store)
+        rows = list(self._triage_rows().values())
         costs = {r["id"]: float(r["cost_usd"]) for r in wb.records if r.get("cost_usd") is not None}
         period = self._period()
         context = findings_context(
@@ -257,10 +258,25 @@ class App:
             parsed,
             costs=costs,
             days=period.get("days"),
-            base_url=wb.base_url,
-            repo_name=wb.repo.name,
         )
         return self._page("findings.html", "Findings", nav="findings", **context)
+
+    def _api_pr_comment(self, query: Mapping[str, list[str]]) -> Response:
+        """`pr_text.pr_comment` for the current findings among `?id=...` (the list's `c`).
+
+        The browser never formats the comment: it fetches this text and copies it, so the
+        Findings list, the finding page and the detail pages share one builder.
+        """
+        ids = list(dict.fromkeys(query.get("id", [])))
+        records = [dict(r) for i in ids for r in self.workbench.findings_by_id.get(i, ())]
+        if not records:
+            raise NotFound(
+                "no current finding among the requested ids",
+                hint="Fixed and not-checked findings have no record to comment on.",
+            )
+        subject = {"kind": "finding", "id": "", "name": ""}
+        text = pr_comment(records, subject, self.workbench.base_url)
+        return _response(HTTPStatus.OK, text.encode("utf-8"), "text/plain; charset=utf-8")
 
     def _overview(self, query: Mapping[str, list[str]]) -> Response:
         return self._page("overview.html", "Overview", **overview_context(self.workbench))
@@ -306,18 +322,23 @@ class App:
             if not candidates:
                 raise
             return self._candidates_page(kind, name, exc.message, candidates)
-        facts = [("kind", obj["kind"]), ("id", obj["id"])]
-        if obj["source_file"]:
-            line = obj["source_line"]
-            facts.append(
-                ("defined in", f"{obj['source_file']}:{line}" if line else obj["source_file"])
-            )
-        return self._placeholder(
-            f"{kind} {obj['name']}",
-            "The detail page arrives in a later release.",
-            facts=facts,
-            links=self._finding_links(self.workbench.findings_by_node.get(obj["id"], ())),
+        page = self._detail.object_page(obj, self._triage_rows())
+        records = page.pop("records")
+        pr_text = pr_comment(
+            records,
+            obj,
+            self.workbench.base_url,
+            verdict=(page["verdict"]["label"], page["verdict"]["why"]),
         )
+        return self._page("detail.html", f"{kind} {obj['name']}", pr_text=pr_text, **page)
+
+    def _triage_rows(self) -> dict[str, TriageRow]:
+        """Each finding id's triage row in `triage_rows` order, read fresh per request (an ack
+        made by the CLI shows on reload). Findings, the finding page and the detail pages all
+        read rows through here."""
+        wb = self.workbench
+        baseline = None if wb.baseline is None else {k: set(v) for k, v in wb.baseline.items()}
+        return {r.id: r for r in triage_rows(wb.graph, baseline, self._store)}
 
     def _candidates_page(
         self, kind: str, name: str, message: str, links: list[tuple[str, str]]
@@ -356,29 +377,10 @@ class App:
                 hint="It may be fixed, or its category was not run. The findings list shows "
                 "every current id.",
             )
-        facts: list[tuple[str, str]] = []
-        for record in records:
-            facts.append(("category", record["category"]))
-            facts.append(("message", record["message"]))
-            if record["source_file"]:
-                line = record["source_line"]
-                facts.append(
-                    (
-                        "defined in",
-                        f"{record['source_file']}:{line}" if line else record["source_file"],
-                    )
-                )
-        links = []
-        for record in records:
-            path = object_path(record["subject_id"]) if record["subject_id"] else None
-            if path is not None:
-                links.append((path, record["subject_id"]))
-        return self._placeholder(
-            f"finding {finding_id}",
-            f"{len(records)} record(s). The finding page arrives in a later release.",
-            facts=facts,
-            links=links,
-        )
+        page = self._detail.finding_page(finding_id, records, self._triage_rows())
+        subject = {"kind": "finding", "id": finding_id, "name": finding_id}
+        pr_text = pr_comment(records, subject, self.workbench.base_url)
+        return self._page("finding.html", f"finding {finding_id}", pr_text=pr_text, **page)
 
     def _static(self, name: str) -> Response:
         if name not in STATIC_ASSETS:

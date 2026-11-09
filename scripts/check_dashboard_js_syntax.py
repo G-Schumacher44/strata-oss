@@ -1,5 +1,6 @@
 """Build a dashboard from fixture data and syntax-check every generated <script> block with
-`node --check`, then the workbench's static script (`assets/js/workbench.js`) the same way. Catches page-fatal JS syntax errors the Python test suite can't see — the
+`node --check`, then the workbench's hand-written static scripts (`assets/js/*.js`, not the
+vendored `*.min.js`) the same way. Catches page-fatal JS syntax errors the Python test suite can't see — the
 guardrail test asserts strings inside the generated HTML, it never executes the JS (issue #29,
 round-1 precedent: a regex bug in the fixed generator killed every script on the page and was
 only caught by a live browser pass).
@@ -29,7 +30,12 @@ FIXTURE_SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
 
 # Hand-written scripts served from the workbench /static/ allow-list (not generated, but
 # never executed by the Python suite either).
-STATIC_SCRIPTS = (ROOT / "src" / "strata_lookml" / "assets" / "js" / "workbench.js",)
+# Every hand-written script (not a vendored *.min.js) in the package's JS assets.
+STATIC_SCRIPTS = tuple(
+    p
+    for p in sorted((ROOT / "src" / "strata_lookml" / "assets" / "js").glob("*.js"))
+    if not p.name.endswith(".min.js")
+)
 
 SCRIPT_BLOCK_RE = re.compile(r"<script>(.*?)</script>", re.DOTALL)
 
