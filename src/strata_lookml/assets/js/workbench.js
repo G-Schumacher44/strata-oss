@@ -416,6 +416,23 @@
   }
   // </fuzzy>
 
+  // <target> Where a palette pick goes: on a graph page (any element marked data-graph, focused
+  // or not) an object the graph draws refocuses it with the page's hop state; anything else,
+  // and findings and fields everywhere, open their page (tests run this under node).
+  function paletteTarget(graph, item) {
+    if (graph && item.kind !== "finding" && item.kind !== "field") {
+      var params = new URLSearchParams();
+      params.set("focus", item.id);
+      var up = graph.getAttribute("data-up") || "1", down = graph.getAttribute("data-down") || "1";
+      if (up === down) params.set("hops", up);
+      else { params.set("up", up); params.set("down", down); }
+      if (graph.hasAttribute("data-siblings")) params.set("siblings", "1");
+      return "/graph?" + params.toString();
+    }
+    return item.path;
+  }
+  // </target>
+
   function jumpPalette(dialog) {
     if (!dialog) return null;
     var input = $("[data-palette-input]", dialog);
@@ -505,24 +522,11 @@
       paint();
     }
 
-    function target(item) {
-      if (graph && item.kind !== "finding" && item.kind !== "field") {
-        var params = new URLSearchParams();
-        params.set("focus", item.id);
-        var up = graph.getAttribute("data-up"), down = graph.getAttribute("data-down");
-        if (up === down) params.set("hops", up);
-        else { params.set("up", up); params.set("down", down); }
-        if (graph.hasAttribute("data-siblings")) params.set("siblings", "1");
-        return "/graph?" + params.toString();
-      }
-      return item.path;
-    }
-
     function go(i) {
       var res = results[i];
       if (!res) return;
       dialog.close();
-      location.href = target(res.item);
+      location.href = paletteTarget(graph, res.item);
     }
 
     input.addEventListener("input", function () { cursor = 0; match(); });

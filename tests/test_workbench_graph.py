@@ -210,6 +210,50 @@ def test_graph_without_a_focus_offers_explores(app: App) -> None:
     body = _get(app, "/graph").body.decode()
     assert 'href="/graph?focus=explore%3Aem_orders_base%3Aorders&amp;hops=1"' in body
     assert "data-graph-canvas" not in body
+    # Still a graph context for ⌘K (Codex P2 on #93): default hops, siblings off.
+    assert '<section class="graph-page" data-graph data-up="1" data-down="1">' in body
+
+
+def _palette_target_js() -> str:
+    source = WORKBENCH_JS.read_text(encoding="utf-8")
+    js = re.search(r"// <target>.*?\n(.*?)// </target>", source, re.S)
+    assert js, "the <target> markers around paletteTarget are missing"
+    return js.group(1)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
+def test_palette_pick_on_a_graph_page_refocuses_the_graph(tmp_path: Path) -> None:
+    """workbench.js `paletteTarget` under node, with the graph sections the server renders."""
+    explore = {"id": "explore:m:e", "kind": "explore", "path": "/explore/m.e"}
+    finding = {"id": "dead:explore:m.e", "kind": "finding", "path": "/finding/x"}
+    field = {"id": "field:v.f", "kind": "field", "path": "/field/v.f"}
+    unfocused = {"data-graph": "", "data-up": "1", "data-down": "1"}  # the /graph picker
+    focused = {"data-graph": "", "data-up": "2", "data-down": "1", "data-siblings": ""}
+    cases = [
+        (unfocused, explore),
+        (unfocused, finding),
+        (unfocused, field),
+        (focused, explore),
+        (None, explore),  # not a graph page
+    ]
+    harness = (
+        _palette_target_js()
+        + "function el(a) { return a && { getAttribute: (k) => (k in a ? a[k] : null),"
+        + " hasAttribute: (k) => k in a }; }\n"
+        + f"console.log(JSON.stringify({json.dumps(cases)}.map(c => paletteTarget(el(c[0]), c[1]))));\n"
+    )
+    script = tmp_path / "target.js"
+    script.write_text(harness)
+    node = shutil.which("node")
+    assert node is not None
+    out = subprocess.run([node, str(script)], capture_output=True, text=True, check=True).stdout
+    assert json.loads(out) == [
+        "/graph?focus=explore%3Am%3Ae&hops=1",
+        "/finding/x",
+        "/field/v.f",
+        "/graph?focus=explore%3Am%3Ae&up=2&down=1&siblings=1",
+        "/explore/m.e",
+    ]
 
 
 def test_detail_pages_link_into_the_graph_when_it_draws_the_node(app: App) -> None:
