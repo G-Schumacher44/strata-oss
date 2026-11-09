@@ -28,6 +28,14 @@ All notable changes to `strata-lookml` are documented here. The format follows
 - `strata_lookml.links`: the one id-to-URL builder for the workbench (`object_path`, `finding_path`, `link`); no base
   URL means no link. An import-graph test keeps the core (triage, links, gate, MCP tools) free of HTTP, Jinja and TUI
   code.
+- `strata diff <base-ref> [<head-ref>]` (workbench S13): analyses both refs (head defaults to the working
+  tree) with the same usage/schema fixtures and classifies every finding id as new, fixed or unchanged.
+  `--json` prints `{base, head, new, fixed, unchanged_count}`; `--fail-on-new` exits 1 when the head introduces
+  a finding. Refs are exported read-only with `git archive` into a temp directory, so nothing is created in
+  your repo (no worktree, ref or file); submodule contents are not included. An unknown ref is `invalid_input`.
+- Run provenance: when the repo is a git checkout, `strata check --json`, `strata build` and the graph
+  metadata record `source: {commit, branch, dirty}` (branch is `"detached"` on a detached HEAD). Read-only
+  git calls; omitted outside git.
 - `gate.finding_records(graph)`: every finding, integrity failures included, as one record with its subject node, source
   file and line, evidence ids, a short display label and (PDTs) cost. `strata check` output and the
   baseline file are unchanged: both are projections of it. PDT nodes now carry their view's

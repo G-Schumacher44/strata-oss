@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -193,7 +194,13 @@ def test_generate_schema_rejects_hostile_identifiers_before_bq(tmp_path, monkeyp
         calls.append(list(argv))
         return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
 
-    monkeypatch.setattr(gs.subprocess, "run", fake_run)
+    # Scope the fake to the generate_schema module: patching `gs.subprocess.run` would replace
+    # the global `subprocess.run` for everything in the process (e.g. git provenance calls).
+    monkeypatch.setattr(
+        gs,
+        "subprocess",
+        types.SimpleNamespace(run=fake_run, CalledProcessError=subprocess.CalledProcessError),
+    )
     result = CliRunner().invoke(
         gs.generate_schema, ["--repo", str(repo), "--out", str(tmp_path / "out.json")]
     )
