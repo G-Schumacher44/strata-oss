@@ -456,26 +456,22 @@ def _view_ancestors(chain: Sequence[str], own_name: str) -> list[str]:
     return list(ancestors)
 
 
-def _node_finding_ids(graph: IRGraph, kind: str, node_id: str, name: str) -> list[str]:
-    """Ids of the findings on one node, taken from `findings_by_category` (the same records
-    `strata check` gates on), matched by each category's own subject."""
+def _node_finding_ids(graph: IRGraph, node_id: str) -> list[str]:
+    """Ids of the findings on one node: the `finding_records` (the same records `strata check`
+    gates on) whose `subject_id` is this node. A table also carries the column drift on it
+    (that record's subject is the field, but its evidence names the table)."""
     # Deferred: gate -> synthesis.slices imports this module.
-    from strata_lookml.gate import findings_by_category
+    from strata_lookml.gate import finding_records
 
-    l1 = graph.metadata.get("l1", {})
-    ids: set[str] = set()
-    if kind == "explore":
-        ids.add(f"dead:explore:{name}")
-    elif kind == "view":
-        ids.add(f"dead:view:{name}")
-    elif kind == "pdt":
-        ids.add(node_id)
-    elif kind == "table":
-        ids.update(r["id"] for r in l1.get("schema_drift", []) if r.get("table") == name)
-    elif kind == "field":
-        ids.update(r["id"] for r in l1.get("schema_drift", []) if r.get("field") == name)
-    present = {f["id"] for records in findings_by_category(graph).values() for f in records or []}
-    return sorted(ids & present)
+    table_ref = f"schema_table:{node_id.removeprefix('physical_table:')}"
+    is_table = node_id.startswith("physical_table:")
+    return sorted(
+        {
+            r["id"]
+            for r in finding_records(graph)
+            if r["subject_id"] == node_id or (is_table and table_ref in r["evidence_ids"])
+        }
+    )
 
 
 def _explore_content(graph: IRGraph, key: str) -> dict[str, Any] | None:
@@ -596,7 +592,7 @@ def strata_object(graph: IRGraph, kind: str, name: str) -> dict[str, Any]:
         "source_line": node.attrs.get("source_line"),
         "upstream": upstream,
         "downstream": downstream,
-        "findings": _node_finding_ids(graph, kind, node.id, label),
+        "findings": _node_finding_ids(graph, node.id),
         "coverage": {"usage_checked": coverage["usage"], "schema_checked": coverage["schema"]},
         "content": content,
         "details": details,

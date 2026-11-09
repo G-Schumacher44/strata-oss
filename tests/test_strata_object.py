@@ -162,3 +162,17 @@ def test_refined_view_does_not_list_itself_as_an_ancestor(tmp_path):
     assert any(c.startswith("+") for c in chain)  # the fixture really is a refined view
     assert strata_object(graph, "view", "orders")["upstream"]["extends"] == ["base"]
     assert strata_object(graph, "view", "base")["upstream"]["extends"] == []
+
+
+def test_findings_land_on_their_subject_node(graph):
+    from strata_lookml.gate import finding_records
+
+    landed = 0
+    for r in finding_records(graph):
+        node = graph.get_node(r["subject_id"]) if r["subject_id"] else None
+        assert node is not None, r["id"]
+        kind = {"physical_table": "table"}.get(node.kind, node.kind)
+        name = f"{node.attrs['model']}.{node.name}" if kind == "explore" else node.name
+        assert r["id"] in strata_object(graph, kind, name)["findings"], r["id"]
+        landed += 1
+    assert landed

@@ -19,6 +19,10 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- `gate.finding_records(graph)`: every finding, integrity failures included, as one record with its subject node, source
+  file and line, evidence ids, a short display label and (PDTs) cost. `strata check` output and the
+  baseline file are unchanged: both are projections of it. PDT nodes now carry their view's
+  `source_line`.
 - Workbench rendering foundation (`strata_lookml.workbench`): one Jinja2 environment (autoescape on for every
   template extension, `StrictUndefined`, no extensions) over packaged `workbench/templates/`, a `render()` helper,
   and `safe_svg()` as the only place `markupsafe.Markup` may be built. Guard tests ban `|safe`,
