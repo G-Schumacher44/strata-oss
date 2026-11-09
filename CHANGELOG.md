@@ -20,7 +20,7 @@ All notable changes to `strata-lookml` are documented here. The format follows
 ### Added
 
 - Triage core (`strata_lookml.triage`, workbench S4b): `TriageStore` keeps acknowledged finding ids in
-  `~/.strata/triage/<repo_key>.json` (0600, atomic replace, optimistic `rev` concurrency, ids allowlisted against the
+  `~/.strata/triage/<repo_key>.json` (0600, atomic replace, writers serialized by an OS advisory lock plus a `rev` check, ids allowlisted against the
   current findings), append-only (unacknowledge sets `unacked_at`; an entry is pruned only 90 days after its id was
   last seen absent from a checked category). `triage_rows` derives each id's status once: new, acknowledged, baselined
   (wins over an acknowledgement), fixed, or not checked (never fixed when the category did not run). `strata check`
