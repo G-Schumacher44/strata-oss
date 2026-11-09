@@ -150,11 +150,15 @@ def test_lineage_marks_dead_and_zombie_from_finding_status(app: App) -> None:
     assert 'class="pill zombie">zombie</span>' in explore  # its joined zombie PDT view
 
 
-def test_findings_on_the_object_link_to_finding_pages_with_disabled_ack(app: App) -> None:
+def test_findings_on_the_object_link_to_finding_pages_with_an_ack_control(app: App) -> None:
+    fid = "dead:explore:em_legacy_v2.dead_finance_v2"
     page = _page(app, "/explore/em_legacy_v2.dead_finance_v2")
-    assert f'href="{finding_path("dead:explore:em_legacy_v2.dead_finance_v2")}"' in page
-    assert re.search(r"<button[^>]*disabled[^>]*>Acknowledge</button>", page)
-    assert "(S9)" in page
+    assert f'href="{finding_path(fid)}"' in page
+    # Disabled until workbench.js enables it: without JavaScript the CLI is the write path.
+    button = re.search(r"<button[^>]*data-triage=[^>]*>Acknowledge</button>", page)
+    assert button and " disabled " in button.group(0)
+    assert f'data-triage-id="{fid}"' in button.group(0)
+    assert "strata ack" in button.group(0)
 
 
 # --- content usage: counts vs not loaded -----------------------------------------------------
@@ -282,13 +286,15 @@ def test_status_pill_is_the_real_triage_status(app: App) -> None:
     from strata_lookml.triage import TriageStore
 
     fid = "dead:explore:em_legacy_v2.dead_finance_v2"
-    assert '<span class="pill">new</span>' in _page(app, "/explore/em_legacy_v2.dead_finance_v2")
+    assert '<span class="pill" data-status>new</span>' in _page(
+        app, "/explore/em_legacy_v2.dead_finance_v2"
+    )
     TriageStore.open(ENTERPRISE, app.workbench.graph).acknowledge([fid], note="DATA-412 sunset")
     for target in ("/explore/em_legacy_v2.dead_finance_v2", finding_path(fid)):
         page = _page(app, target)  # read fresh: no restart after an ack from the CLI
-        assert '<span class="pill">acknowledged</span>' in page, target
+        assert '<span class="pill" data-status>acknowledged</span>' in page, target
         assert "DATA-412 sunset" in page
-    assert '<span class="pill">new</span>' not in _page(app, finding_path(fid))
+    assert '<span class="pill" data-status>new</span>' not in _page(app, finding_path(fid))
 
 
 def test_baselined_status_wins_over_new(tmp_path: Path) -> None:
@@ -303,7 +309,7 @@ def test_baselined_status_wins_over_new(tmp_path: Path) -> None:
         baseline=ids,
     )
     page = _page(_app(based), "/explore/em_legacy_v2.dead_finance_v2")
-    assert '<span class="pill">baselined</span>' in page
+    assert '<span class="pill" data-status>baselined</span>' in page
 
 
 def test_pdt_without_build_facts_says_not_loaded_never_zero(tmp_path: Path) -> None:

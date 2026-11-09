@@ -385,8 +385,9 @@ tabs (New, Acknowledged, Baselined, Fixed, Not checked, All) with counts, catego
 filter and 200 rows per page, all plain links and query strings, so it works without JavaScript.
 With JavaScript the list is keyboard-driven (`j`/`k` move, `Enter` open, `x` select, `/` filter,
 `f` category, `1`–`6` tabs, `c` copy a PR comment, `y` copy `file:line`, `?` the full map).
-Acknowledge from the terminal with `strata ack` for now; the web button arrives with the triage
-POST. The other workbench pages are being built out slice by
+`a`/`u` (or the Acknowledge buttons, here and on detail pages) acknowledge or withdraw, with an
+optional note; without JavaScript the pages are read-only and `strata ack` / `strata unack` are
+the write path. Both write the same `~/.strata/triage/` store. The other workbench pages are being built out slice by
 slice; until they land, `strata dashboard --out DIR` keeps the static dashboard: all 8 output
 artifacts plus a self-contained HTML observability panel, served from DIR. No JavaScript
 framework, no CDN — all JS is bundled locally so it works in air-gapped or corp-network

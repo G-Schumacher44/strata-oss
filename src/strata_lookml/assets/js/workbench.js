@@ -1,8 +1,9 @@
-// Strata workbench: keyboard map and copy actions over server-rendered pages.
+// Strata workbench: keyboard map, copy and acknowledge actions over server-rendered pages.
 //
 // Progressive enhancement only. Every page works without this file: tabs, category chips and
 // pages are links, the filter is a GET form. Nothing here derives a status or filters rows;
-// it reads what the server rendered (data-* attributes) and moves a cursor over it.
+// it reads what the server rendered (data-* attributes) and moves a cursor over it. A status
+// shown after an acknowledge is the one POST /api/triage answers with.
 //
 // Safety: DOM is built with createElement/textContent only. No HTML string is ever parsed
 // (tests/test_workbench_findings.py bans the parsing sinks in this file).
@@ -57,6 +58,87 @@
     }
     textPromise.then(function (t) { copyText(t, message); }, function (err) { toast(failure(err)); });
   }
+
+  // --- triage writes: POST /api/triage ----------------------------------------------------
+  //
+  // The one write. The server refuses any request without this page's Origin, exactly
+  // `Content-Type: application/json` and the page token from <meta name="strata-token">.
+  // Without JavaScript the pages are read-only; `strata ack` / `strata unack` write instead.
+
+  var tokenMeta = $('meta[name="strata-token"]');
+
+  function postTriage(action, ids, note) {
+    var body = { action: action, ids: ids };
+    if (note) body.note = note;
+    return fetch("/api/triage", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Strata-Token": tokenMeta ? tokenMeta.getAttribute("content") || "" : "",
+      },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.json().then(
+        function (data) { if (!r.ok) throw data; return data; },
+        function () { throw { error: "The workbench answered " + r.status }; }
+      );
+    });
+  }
+
+  function triageFailed(err) {
+    var message = (err && err.error) || "Could not reach the workbench";
+    if (err && err.hint) message += " — " + err.hint;
+    toast(message);
+  }
+
+  function rowsById(data) {
+    var byId = {};
+    ((data && data.rows) || []).forEach(function (row) { byId[row.id] = row; });
+    return byId;
+  }
+
+  // Replace a status pill's text, keeping its leading dot (<i>) when it has one.
+  function setStatusText(el, text) {
+    var dot = $("i", el);
+    while (el.firstChild) el.removeChild(el.firstChild);
+    if (dot) el.appendChild(dot);
+    el.appendChild(doc.createTextNode(text));
+  }
+
+  function triageToast(action, n) {
+    toast((action === "ack" ? "Acknowledged " : "Unacknowledged ") + n + " finding" + (n === 1 ? "" : "s"));
+  }
+
+  // Detail and finding pages: one button per finding card (server-rendered disabled).
+  $all("[data-triage]").forEach(function (button) {
+    button.disabled = false;
+    button.removeAttribute("title");
+    button.addEventListener("click", function () {
+      var id = button.getAttribute("data-triage-id");
+      var action = button.getAttribute("data-triage");
+      if (!id) return;
+      button.disabled = true;
+      postTriage(action, [id]).then(function (data) {
+        var row = rowsById(data)[id];
+        var next = row && row.acked_at ? "unack" : "ack";
+        $all("[data-triage-id]").forEach(function (b) {
+          if (b.getAttribute("data-triage-id") !== id) return;
+          b.setAttribute("data-triage", next);
+          b.textContent = next === "ack" ? "Acknowledge" : "Unacknowledge";
+          var card = b.closest(".fcard");
+          var pill = card && $("[data-status]", card);
+          if (pill) setStatusText(pill, row ? row.status : "untracked");
+          var acked = card && $("[data-acked]", card);
+          if (acked) {
+            acked.hidden = !(row && row.acked_at);
+            acked.textContent = acked.hidden ? "" : "acknowledged " + row.acked_at + (row.note ? " · " + row.note : "");
+          }
+        });
+        triageToast(action, 1);
+      }, triageFailed).then(function () { button.disabled = false; });
+    });
+  });
 
   // --- theme ---------------------------------------------------------------------------
 
@@ -115,6 +197,7 @@
     var count = $("[data-count]", section);
     var selectAll = $("[data-select-all]", section);
     var actionbar = $("[data-actionbar]", section);
+    var noteInput = $("[data-note]", section);
     var cursor = 0;
 
     // A JSON array the server put in a data attribute (ids and paths may hold spaces).
@@ -194,8 +277,25 @@
       copyText(seen.join("\n"), "Copied " + (seen.length === 1 ? seen[0] : seen.length + " paths"));
     }
 
-    function triageHint(verb) {
-      toast(verb + " from the web arrives with S9; use `strata " + (verb === "Acknowledging" ? "ack" : "unack") + "`");
+    // a / u: acknowledge or withdraw the selected rows (else the cursor row), then repaint
+    // each row's status from the server's answer for its lead id.
+    function triage(action) {
+      var rs = targets();
+      var wanted = ids(rs);
+      if (!wanted.length) { toast("No finding selected"); return; }
+      var note = action === "ack" && noteInput ? noteInput.value.trim() : "";
+      postTriage(action, wanted, note).then(function (data) {
+        var byId = rowsById(data);
+        rs.forEach(function (r) {
+          var cell = $("[data-status]", r);
+          var lead = byId[jsonList(r, "data-ids")[0]];
+          if (!cell) return;
+          cell.className = "st st-" + (lead ? lead.status : "untracked");
+          setStatusText(cell, lead ? lead.label : "untracked");
+        });
+        if (noteInput && action === "ack") noteInput.value = "";
+        triageToast(action, wanted.length);
+      }, triageFailed);
     }
 
     function cycleCategory() {
@@ -232,10 +332,14 @@
         var button = e.target.closest("[data-action]");
         if (!button) return;
         var action = button.getAttribute("data-action");
-        if (action === "ack") triageHint("Acknowledging");
-        else if (action === "unack") triageHint("Unacknowledging");
+        if (action === "ack" || action === "unack") triage(action);
         else if (action === "comment") copyComment();
         else if (action === "path") copyPaths();
+      });
+    }
+    if (noteInput) {
+      noteInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); triage("ack"); }
       });
     }
     paint();
@@ -262,8 +366,8 @@
           if (tab) location.href = tab.href;
           return true;
         }
-        if (k === "a") { triageHint("Acknowledging"); return true; }
-        if (k === "u") { triageHint("Unacknowledging"); return true; }
+        if (k === "a") { triage("ack"); return true; }
+        if (k === "u") { triage("unack"); return true; }
         if (k === "c") { copyComment(); return true; }
         if (k === "y") { copyPaths(); return true; }
         if (k === "Escape" && selected().length) {

@@ -118,6 +118,8 @@ main ul { padding-left:18px; } main li a { font-family:var(--mono); font-size:12
 .abtn { display:inline-flex; align-items:center; gap:7px; height:28px; padding:0 9px; border-radius:var(--r); color:var(--text-2); }
 .abtn:hover { background:var(--surface2); color:var(--text); }
 .abtn[aria-disabled="true"] { opacity:.45; cursor:help; background:none; }
+.actionbar .note { width:160px; height:26px; padding:0 8px; margin-right:4px; border-radius:var(--r); border:1px solid var(--border); background:var(--surface); color:var(--text); font:inherit; font-size:12.5px; }
+.actionbar .note::placeholder { color:var(--muted); }
 
 /* ---------- Overlays ---------- */
 .dialog { width:min(620px, calc(100% - 32px)); background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px; box-shadow:0 24px 64px rgba(0,0,0,.5); padding:18px 20px; margin-top:12vh; }
