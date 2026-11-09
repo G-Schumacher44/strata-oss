@@ -4,8 +4,8 @@ Current active handoff block only — older entries move to `handoff-archive.md`
 
 ## Date: 2026-11-08 — feat/wb-s9-triage-post (acknowledge from the web; workbench S9)
 
-Commit: 8de7e13
-  (Latest implementation commit; the PR squash-merges.)
+Commit: 0d6ef05
+  (Latest implementation commit: the /api/pr-comment review test; earlier 8de7e13 (the triage POST). The PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
 Conductor Mode: feature — slice S9 of `workbench-spec-2026-11-08.md` (D4, D6, §5 S9). Codex-gated: the workbench's only write.
 Context Budget: medium
@@ -35,3 +35,10 @@ Fail-before: the new test file run against a throwaway detached worktree of orig
 Negative controls (each check mutated out of `app.py`, restored from a copy, `cmp` clean): Origin check removed → 8 fail; missing Origin allowed → 2; Sec-Fetch-Site → 3; Content-Type → 5; token → 3; 64 KB cap → 1; Content-Length required → 1; duplicate-header rule → 1; extra-key rule → 1. Every refusal case asserts no `TriageStore` method ran (class spy over acknowledge/unacknowledge/observe/snapshot/_mutate) and the store file is byte-identical.
 Concurrency: `strata ack` in a subprocess while the live server took 29 POSTs; every id from both sides is acked afterwards. Stalled body: a request 3 bytes short gets 400 after the timeout and the next POST succeeds.
 Visual (headless Chrome, isolated profile `dev_project_tmp/wb-s9/chrome-profile`, server on 18931 with HOME in `dev_project_tmp/wb-s9/home`, both stopped afterwards): `a` on the cursor row flipped the pill new → ack (`findings-after-a.png`), the Acknowledged tab lists it after a reload (`findings-acknowledged-tab.png`), `u` flipped it back, a note typed with Enter was stored, a stale token showed the toast "missing or wrong page token — Reload the page ..." (`findings-error-toast.png`), the detail card button toggled ack/unack with pill and acknowledged line repainted (`detail-after-ack.png`), and with JS disabled the card button is disabled (`detail-nojs.png`). No console errors.
+
+### Addendum: review of `GET /api/pr-comment` (S5's read-only route)
+
+- No gap found, so no behaviour change. Host is checked before routing (403, plain text, no page). Every method other than GET and HEAD gets 405 with `Allow: GET, HEAD`. Successes are `text/plain` with `nosniff`. The server never sends an `Access-Control-*` header on any response, so a cross-origin page can send the GET but cannot read the answer.
+- Ids are dictionary lookups into `findings_by_id`. Unknown ids are skipped; if none match, the 404 says "no current finding among the requested ids" without the ids. The comment text is built from finding records, never from the request.
+- New test in 0d6ef05: `test_pr_comment_route_is_read_only_host_checked_and_never_cors_readable`. It sends GET/HEAD/POST/OPTIONS/PUT with a cross-origin `Origin` and checks that no CORS header comes back, POST/OPTIONS/PUT get 405, the content type and nosniff are right, a hostile unknown id gets 404 that does not echo it, and a foreign Host gets the bare 403. Negative controls: adding `Access-Control-Allow-Origin: *` to `_response` fails it, and echoing the ids in the 404 message fails it.
+- Gates: pytest 724 passed, 1 skipped. ruff, ruff format, mypy and JS syntax are clean.
