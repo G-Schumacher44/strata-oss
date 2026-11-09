@@ -53,22 +53,23 @@ strata outputs \
 
 Writes 8 JSON files to `output/my-repo/` — see [CLI reference](./cli-guide.md#output-artifacts).
 
-### 3 — Dashboard
+### 3 — Workbench
 
 ```bash
-strata dashboard \
+strata workbench \
   --repo /path/to/your/lookml \
   --usage-fixture /path/to/usage_facts.json \
-  --schema-fixture /path/to/schema_facts.json \
-  --out output/my-repo
+  --schema-fixture /path/to/schema_facts.json
 ```
 
-Opens `http://127.0.0.1:8765` (if that port is busy and `--port` was not passed, it uses the next free port up to 8785 and prints the URL; an explicit busy `--port` fails). Self-contained HTML — also works by opening
-`output/my-repo/dashboard.html` directly. Four panels: Overview, Dead Code
-Register, PDT Ledger, Schema Drift.
+Serves the triage workbench at `http://127.0.0.1:8765/findings` (if that port is busy and `--port`
+was not passed, it uses the next free port up to 8785 and prints the URL; an explicit busy
+`--port` fails): a page per finding and per object, read from the IR cache (no files written
+beyond it and the acknowledgements store). `strata dashboard` is an alias.
 
-Without `--out`, `strata dashboard` is an alias of `strata workbench`: a local server with a page
-per finding and per object, read from the IR cache (no files written beyond it).
+Add `--out output/my-repo` to write the same pages as one read-only file instead,
+`output/my-repo/dashboard.html`, that opens directly in a browser (`file://`) and serves nothing.
+Pass `--baseline` so its Baselined and Fixed tabs are filled; acknowledgements are not exported.
 
 ---
 

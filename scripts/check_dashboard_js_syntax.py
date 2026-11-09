@@ -1,9 +1,9 @@
-"""Build a dashboard from fixture data and syntax-check every generated <script> block with
-`node --check`, then the workbench's hand-written static scripts (`assets/js/*.js`, not the
-vendored `*.min.js`) the same way. Catches page-fatal JS syntax errors the Python test suite can't see — the
-guardrail test asserts strings inside the generated HTML, it never executes the JS (issue #29,
-round-1 precedent: a regex bug in the fixed generator killed every script on the page and was
-only caught by a live browser pass).
+"""Write the workbench's static export from fixture data and syntax-check every inline
+<script> in it with `node --check`, then every hand-written workbench script (`assets/js/*.js`,
+not the vendored `*.min.js`) the same way. Catches page-fatal JS syntax errors the Python suite
+can't see: the tests assert strings in the generated HTML and run a few marked functions under
+node, but never load a whole page (issue #29: a regex bug in a generator killed every script
+on the page and was only caught by a live browser pass).
 
 Usage: python scripts/check_dashboard_js_syntax.py
 """
@@ -20,24 +20,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from strata_lookml.outputs import build_artifacts  # noqa: E402
-from strata_lookml.outputs.dashboard import build_dashboard_html  # noqa: E402
 from strata_lookml.pipeline import build_graph  # noqa: E402
+from strata_lookml.workbench.export import export  # noqa: E402
+from strata_lookml.workbench.index import index_graph  # noqa: E402
 
 FIXTURE_REPO = ROOT / "tests" / "lookml" / "enterprise_mono"
 FIXTURE_USAGE = ROOT / "tests" / "fixtures" / "enterprise_usage_facts.json"
 FIXTURE_SCHEMA = ROOT / "tests" / "fixtures" / "enterprise_schema_facts.json"
 
-# Hand-written scripts served from the workbench /static/ allow-list (not generated, but
-# never executed by the Python suite either).
-# Every hand-written script (not a vendored *.min.js) in the package's JS assets.
+# Every hand-written script (not a vendored *.min.js) in the package's JS assets: the live
+# workbench serves them from /static/, the export inlines them.
 STATIC_SCRIPTS = tuple(
     p
     for p in sorted((ROOT / "src" / "strata_lookml" / "assets" / "js").glob("*.js"))
     if not p.name.endswith(".min.js")
 )
 
+# Executable inline scripts only: the JSON payload is <script type="application/json">.
 SCRIPT_BLOCK_RE = re.compile(r"<script>(.*?)</script>", re.DOTALL)
+
+
+def _check(node: str, path: Path, label: str) -> bool:
+    result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"--- syntax error in {label} ---", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+    return result.returncode == 0
 
 
 def main() -> int:
@@ -47,45 +55,29 @@ def main() -> int:
         return 0
 
     graph = build_graph(FIXTURE_REPO, FIXTURE_USAGE, FIXTURE_SCHEMA)
-    html = build_dashboard_html(build_artifacts(graph), graph)
+    workbench = index_graph(
+        graph, repo=FIXTURE_REPO, usage_fixture=None, schema_fixture=None, inputs={}
+    )
+    html = export(workbench)
 
     blocks = SCRIPT_BLOCK_RE.findall(html)
     if not blocks:
-        print("no <script> blocks found in generated dashboard HTML", file=sys.stderr)
+        print("no <script> blocks found in the generated export", file=sys.stderr)
         return 1
 
-    failures = 0
-    for script in STATIC_SCRIPTS:
-        result = subprocess.run([node, "--check", str(script)], capture_output=True, text=True)
-        if result.returncode != 0:
-            failures += 1
-            print(f"--- syntax error in {script.name} ---", file=sys.stderr)
-            print(result.stderr, file=sys.stderr)
+    failures = sum(not _check(node, script, script.name) for script in STATIC_SCRIPTS)
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, block in enumerate(blocks):
-            # Skip blocks that are just external script tags with no inline body, or that are
-            # JSON payloads (application/json <script> tags never reach SCRIPT_BLOCK_RE's plain
-            # <script> match, but guard anyway in case a future block is whitespace-only).
-            if not block.strip():
-                continue
-            js_path = Path(tmpdir) / f"dashboard_block_{i}.js"
+            js_path = Path(tmpdir) / f"export_block_{i}.js"
             js_path.write_text(block, encoding="utf-8")
-            result = subprocess.run(
-                [node, "--check", str(js_path)],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                failures += 1
-                print(f"--- syntax error in <script> block {i} ---", file=sys.stderr)
-                print(result.stderr, file=sys.stderr)
+            failures += not _check(node, js_path, f"<script> block {i}")
 
     if failures:
         print(f"{failures} script(s) failed node --check", file=sys.stderr)
         return 1
 
     print(
-        f"{len(blocks)} generated <script> block(s) and {len(STATIC_SCRIPTS)} static script(s) "
+        f"{len(blocks)} export <script> block(s) and {len(STATIC_SCRIPTS)} static script(s) "
         "passed node --check"
     )
     return 0

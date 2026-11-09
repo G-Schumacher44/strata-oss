@@ -1,0 +1,15 @@
+{% extends "_layout.html" %}
+{% block title %}{{ title }} · Strata workbench{% endblock %}
+{% block head %}<meta http-equiv="Content-Security-Policy" content="{{ csp }}">
+<meta name="strata-export" content="read-only">
+<style>{{ stylesheet }}</style>
+<style>:root { {{ palette_css }} }</style>
+{% include "_graph_keys.html" %}
+{% endblock %}
+{% block main %}<noscript><p class="stale">This export is a read-only snapshot of the Strata workbench and needs JavaScript to show its pages.</p></noscript>
+{% endblock %}
+{% block after %}{{ super() }}
+{% for page in pages %}<template data-route="{{ page.route }}" data-title="{{ page.title }}">{{ page.html }}</template>
+{% endfor %}<script type="application/json" id="strata-export-data">{{ data }}</script>
+{% for script in scripts %}<script>{{ script }}</script>
+{% endfor %}{% endblock %}

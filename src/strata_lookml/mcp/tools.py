@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -518,13 +518,23 @@ def _explore_content(graph: IRGraph, key: str) -> dict[str, Any] | None:
     }
 
 
-def strata_object(graph: IRGraph, kind: str, name: str, model: str | None = None) -> dict[str, Any]:
+def strata_object(
+    graph: IRGraph,
+    kind: str,
+    name: str,
+    model: str | None = None,
+    *,
+    findings_by_node: Mapping[str, Sequence[str]] | None = None,
+) -> dict[str, Any]:
     """One read for an object's definition site, lineage, findings, coverage and usage.
 
     kind is explore | view | pdt | table | field. Upstream/downstream reuse
     strata_explore_deps / strata_impact / the consumer maps, grouped by relation.
     `content` (explores only) counts content viewed in the usage window; it is None, never 0,
     when usage or content-reference facts were not loaded, or the kind has no content.
+    `findings_by_node` is `gate.findings_by_node(finding_records(graph))` when the caller
+    already holds it (the workbench builds it once per graph): deriving the records walks every
+    explore, which per call made each workbench page cost a full findings pass.
     """
     if kind not in OBJECT_KINDS:
         raise InvalidInput(f"kind must be one of: {', '.join(OBJECT_KINDS)}. Got: {kind!r}")
@@ -606,7 +616,9 @@ def strata_object(graph: IRGraph, kind: str, name: str, model: str | None = None
         "source_line": node.attrs.get("source_line"),
         "upstream": upstream,
         "downstream": downstream,
-        "findings": _node_finding_ids(graph, node.id),
+        "findings": _node_finding_ids(graph, node.id)
+        if findings_by_node is None
+        else list(findings_by_node.get(node.id, ())),
         "coverage": {
             "usage_checked": coverage["usage"],
             "schema_checked": coverage["schema"],

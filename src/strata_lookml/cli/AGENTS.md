@@ -50,7 +50,8 @@ Commands that report status use `click.secho(..., fg="green"|"red"|"yellow")`.
 | `skill.py` | `strata skill [name]` — list skills or print one (CLI twin of `strata_list_skills`/`strata_skill`) |
 | `mcp.py` | `strata mcp` group (run, validate, config) |
 | `build_ir.py` | `strata build` |
-| `dashboard.py` | `strata dashboard` |
+| `workbench.py` | `strata workbench` and its alias `strata dashboard` (`--out`: the static export) |
+| `dashboard.py` | Loopback binding for the workbench: Host allow-list, exclusive bind, port fallback |
 | `generate_schema.py` | `strata generate-schema` |
 | `bootstrap.py` | `strata bootstrap` |
 | `validate.py` | `strata validate` |

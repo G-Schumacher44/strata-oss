@@ -2,6 +2,52 @@
 
 Older handoff blocks moved out of the thin active log (`handoff-log.md` keeps the current block only — conductor/AGENTS.md).
 
+## Date: 2026-11-08 — feat/wb-s8-graph-cmdk (graph drill-in, ⌘K jump-to-anything, shared theme palette; workbench S8)
+
+Commit: 662d13d
+  (Latest implementation commit; the PR squash-merges.)
+Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
+Conductor Mode: feature — slice S8 of `workbench-spec-2026-11-08.md` (D1, D2 graph/Cmd-K rows, D8, §4 Graph wireframe + keyboard map, §6b M4 + G15), folding in follow-ups G17 and G18.
+Context Budget: medium
+Context Loaded: AGENTS.md, handoff-log, the workbench spec (D1, D2, D3, D8, §4, §5 S8, §6b M4/G15/G17/G18), `workbench-validation-2026-11-08.md` (G15), the approved mockup (`pageGraph`, palette, `fuzzy`, shot-graph.png, shot-palette.png), workbench/{app,index,detail,render,overview}.py + templates, assets/js/{workbench,detail}.js, workbench.css, outputs/dashboard.py, identifiers.py, links.py, l1/enrich.py dead-code register, tests/test_workbench_{server,findings}.py, test_triage.py import guard.
+Exact Next Steps: twin gate, operator merges. S9 (parallel) also edits `workbench.js` and `app.py`: the palette is its own section (`// --- jump palette`) with its own keydown listener, and the routes are new entries in `_pages`, so a merge should only touch adjacent lines. S10 must export `/graph` (the export cannot fetch `/api/graph`: embed the neighbourhood per focus or render the list only) and `/search`, and delete the old renderer's import of `workbench/graph.py`.
+
+### What changed
+
+- `workbench/graph.py` (new): `build_graph_data`, `NODE_PALETTE`, `EDGE_PALETTE`, `palette_css` moved verbatim from `outputs/dashboard.py`, which now imports them (re-exported for the old renderer and its tests until S10). `node_var` / `edge_var` are the one rule for the `--n-*` / `--e-*` property names (palette CSS, legend and swatch classes). `neighbourhood(data, focus, up, down, siblings, cap)`: upstream = out-edges (what the focus reads, the detail pages' "Upstream · reads from"), downstream = in-edges; rings kept in order focus → upstream 1 → downstream 1 → upstream 2 → downstream 2 → siblings (other children of the focus's direct parents), id-sorted within a ring, cut at `cap` with the uncapped `total`; edges are the induced subgraph. Nodes gain `ring`, `caption` (one-line status computed here, never in JS), `focus`, `path`. `NODE_LEGEND` / `EDGE_LEGEND` word every palette entry.
+- G15: the register is read as `dead_explore_keys` (kind explore, `model.explore`) and `dead_view_names` (kind view); behaviour unchanged. `test_dead_flags_match_the_register_by_kind` asserts the invariant (explore keys dotted, view names not, only those two kinds) and that graph-data dead flags equal the register on enterprise_mono and gcs_analytics.
+- `app.py`: graph data, graph-id set and the jump index are built once in `App.__init__` (D8). `/graph` (no focus: a picker of explores; focus: toolbar with 1/2 hops, per-direction upstream 2 / downstream 2, siblings, Open detail page, the cap note, the no-JS ring list, the legend), `/api/graph` (JSON: focus, up, down, siblings, total, shown, cap, nodes, edges), `/search?q=`, `/api/index.json` (`{"kinds": {...}, "items": [{id, kind, label, path}]}`). `hops`/`up`/`down` must be 1|2 and `siblings` 0|1, else 400; an unknown focus is 404 with a hint. Detail and finding pages get `graph_href` ("Open in graph") when the graph draws the node (not fields). `placeholder.html` and `_placeholder` are deleted (no placeholder pages remain). `STATIC_ASSETS` gains `graph.js`.
+- `links.graph_path(node_id, up, down, siblings)`: `hops=N` when both directions match, else `up=`/`down=`.
+- `workbench/jump.py` (new): `jump_index` (every object page, sorted by kind then label, then every current finding), `fuzzy` (substring first, else in-order letters with consecutive/word-start bonuses — the mockup's scorer), `search` (top 50 + total), `segments` (highlight runs for `/search`).
+- `assets/js/graph.js` (new): fetches `data-src`, draws with Cytoscape + dagre (LR), colours from the JSON and theme tokens read from CSS (re-read on `data-theme` change via MutationObserver), node tap → its page, hover dims non-neighbours, hides the server list once drawn (fetch failure keeps it), Esc → `history.back()` unless a dialog or field has focus.
+- `assets/js/workbench.js`: new `// --- jump palette` section: `fuzzyMatch` between `// <fuzzy>` markers (a test runs it under node against `jump.fuzzy`), lazy one-time fetch of `/api/index.json`, arrows / Ctrl-N / Ctrl-P / Enter, click, backdrop click closes, Esc closes natively; on `/graph` an object refocuses the graph keeping the hop state. textContent / createElement only. The rest of the file is untouched.
+- `_layout.html`: "Jump to… ⌘K" button (hidden until JS), the `<dialog id="palette">`, a ⌘K line in the help map.
+- G18: `_detail_frame.html` and `overview.html` lose their inline `<style>` palettes (hex + `prefers-color-scheme`); their rules moved to `workbench.css` sections reading the shared tokens (`--c-dead`, `--c-zombie`, `--c-drift`, `--c-ok`, `--surface*`, `--text*`, ...). The detail frame's `.btn`/`.pill` are scoped under `.detail` so they do not restyle the Findings list; the overview no longer restyles the nav/coverage strip.
+- G17: `identifiers.resolve_field(view, field=None, graph=None)` splits a one-argument `view.field` after the longest known view name when given the graph, else at the first dot (unchanged). `strata_query_field` and `strata_object` pass the graph. The `..` view's field now has a page (the S4 round-trip test's known-gap branch is gone).
+- README (Graph + ⌘K paragraph), `docs/security-hardening.md` (JSON endpoints, no inline script data).
+
+### Deviations from the brief
+
+- `/api/index.json` holds every catalog node **that has a page** (explore, view, PDT, table, field) — model/include/connection nodes have no page and are left out — and adds a top-level `kinds` map (display names) beside `items`, so the palette never hard-codes kind labels.
+- Per-direction expand is `up=` / `down=` query params next to `hops=` (spec D3 names only `hops`); `hops` keeps its meaning (both directions).
+- Siblings = the other children of the focus's direct parents (co-children). Co-parents (e.g. another view on the same table) are not added.
+- The ⌘K empty state lists the first 12 findings rather than the mockup's hand-picked set.
+- The fuzzy scorer exists twice (Python for `/search`, JS for the palette, which must match offline-fast as you type); a node-driven parity test pins them to the same matches, hits and scores.
+
+### Gates
+
+pytest 694 passed, 1 skipped (base origin/main ff1b714: 672 passed, 1 skipped; +20 in `tests/test_workbench_graph.py`, +1 G17 test in `tests/test_identifiers.py`, +1 `/graph` case in `test_fixed_pages_render`); ruff check + format --check clean on src/ tests/ scripts/; mypy clean; `check_dashboard_js_syntax.py`: 5 generated blocks + 3 static scripts; `gen_reference.py` produced no change; `strata validate` 10 passed, 0 failed.
+Fail-before: against a detached worktree of origin/main the new graph tests and the updated server tests error at collection (no `links.graph_path` / `workbench.graph`); the G17 test fails (`resolve_field() got an unexpected keyword argument 'graph'`); main's `overview.html` and `_detail_frame.html` carry 2 hex-palette lines each.
+Negative controls (each a mutation in a scratch copy of `src/`, run via PYTHONPATH; the tree itself untouched): G17 prefix branch disabled (2 fail: the G17 test and the round-trip test), downstream walking out-edges (3), cap ignored (2), an inline hex palette back in `overview.html` (1), `--c-dead` dropped from the light theme (1), index without findings (1), the JS scorer's 8 → 7 (1, the parity test), the old bare-name explore lookup (2, G15 on both fixtures). In-suite guard controls: `test_the_hex_scan_catches_a_planted_palette`; the existing sink scan now also runs over `graph.js`.
+Hostile fixture: `/graph`, `/api/graph` (every graph node as focus at 2/2 hops + siblings, plus hostile focus/hops strings), `/search` (a `<` query that matches every hostile name) and `/api/index.json` pass `_assert_inert` (HTML tag/attr allow-list; JSON has no `<` and parses). `_SANCTIONED_SCRIPTS` lists the four graph scripts; `_SHELL_TAGS` gains `mark`, `_SHELL_ATTRS` gains `autocomplete` and `spellcheck`.
+Visual: headless Chrome (isolated profile, `--use-mock-keychain --password-store=basic --no-first-run`) driven over CDP, screenshots in `dev_project_tmp/wb-s8/`: graph.png (orders, 2 hops), graph-view-siblings.png, graph-light.png (canvas restyled by the toggle), palette.png ("lgcy ord" → legacy_order_detail first, as in the mockup), overview-dark/light.png, detail-light/dark.png, search.png. Verified: canvas drawn and list hidden; ⌘K opens, Esc closes; Ctrl-K on `/graph` + Enter → `/graph?focus=view%3Alegacy_order_detail&hops=2`. Only console error: the pre-existing `/favicon.ico` 404.
+
+### Review round 1 (Codex P2 on #93, after the merge of origin/main 670b090 (S9 #92) at 2e90496)
+
+- Codex P2 (`graph.html`: the unfocused `/graph` picker had no `data-graph`, so ⌘K there opened an object's detail page instead of focusing the graph): fixed in 671f174. The picker section now carries `data-graph data-up="1" data-down="1"` (default hops, siblings off). The palette's target rule is now a top-level `paletteTarget(graph, item)` between `// <target>` markers, with missing hop attributes defaulting to 1. Explores, views, PDTs and tables go to `/graph?focus=<id>&hops=1`; findings and fields still open their page.
+- Tests: `test_graph_without_a_focus_offers_explores` checks the marker and its defaults. `test_palette_pick_on_a_graph_page_refocuses_the_graph` runs `paletteTarget` under node: on the unfocused page an explore goes to the graph and a finding or field to its page; on a focused page up=2/down=1/siblings carry over; off the graph an explore opens its page. Negative control: removing the marker and only refocusing on focused pages fails both.
+- Gates: pytest 747 passed, 1 skipped; ruff, ruff format, mypy clean; JS syntax: 5 generated blocks + 3 static scripts; the sink scan is clean; reference regenerated with no change.
+
 ## Date: 2026-11-08 — feat/wb-s9-triage-post (acknowledge from the web; workbench S9)
 
 Commit: 0d6ef05

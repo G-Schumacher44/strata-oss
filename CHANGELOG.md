@@ -123,9 +123,27 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Changed
 
-- `strata dashboard` is now an alias of `strata workbench`. `strata dashboard --out DIR` keeps the static
-  export (JSON artifacts plus `dashboard.html`, written to DIR and served from it); without `--out` nothing is
-  written to `./output/` any more. `--baseline` and `--workbench-url` are refused with `--out`.
+- The old single-page dashboard is replaced by the workbench's static export (workbench S10).
+  `strata workbench --out DIR` (alias `strata dashboard --out DIR`) writes one read-only, self-contained
+  `DIR/dashboard.html` rendered by the same code as the live server: each page (every Findings status tab and
+  category chip, the Overview, every explore, view, PDT, table and finding page, the graph, search) is the
+  server's page for that route, held in an inert `<template>` and switched by `#/<route>` hash links; ⌘K, the
+  graph's neighbourhoods and the `c` PR-comment copy work offline from data embedded once. It has no acknowledge
+  controls and never opens the triage store: statuses come from `--baseline` (now accepted with `--out`, as is
+  `--workbench-url`). The file carries a hash-based Content-Security-Policy with no network access. View pages
+  now list their fields (name, kind, type). Measured on synthetic copies of `enterprise_mono`: 14.8 MB / 2.8 s at
+  20 copies, 35.7 MB / 16 s at 50 (see the README). Chart.js is no longer vendored.
+  **0.2.0 compatibility:** `--out` no longer writes the eight JSON artifacts (use `strata outputs --out DIR`) and
+  no longer serves DIR over HTTP (open the file directly); `--port` with `--out` is a usage error. The page's
+  anchors change from `dashboard.html#<id>` to `dashboard.html#/<route>` (for example `#/finding/<id>`,
+  `#/explore/<model>.<explore>`); old `#<finding id>`, `#<object id>`, `#roadmap:<id>` and section anchors
+  (`#drift`, `#dead-code`, `#graph`, ...) are still resolved to the matching page. There are no field pages in
+  the export: a `#/field/<view>.<field>` link opens the view's page at that field.
+- `strata_object` takes an optional `findings_by_node` (the workbench passes the index it builds once), so a
+  detail page no longer rebuilds every finding record per request (rendering every page of five copies of
+  `enterprise_mono` went from 31 s to 1.3 s under the profiler).
+- `strata dashboard` is now an alias of `strata workbench`; without `--out` nothing is written to `./output/`
+  any more.
 - `gate.findings_by_node` is the one rule for which findings sit on a node (`strata_object` and the workbench both
   read it); `identifiers.explore_matches` / `table_matches` expose the candidates an ambiguous name resolves to;
   the IR cache max age (`pipeline.CACHE_MAX_AGE_SECONDS`, 300 s) is shared by the MCP server and the workbench.

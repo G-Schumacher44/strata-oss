@@ -3,8 +3,7 @@
 <script src="/static/dagre.min.js" defer></script>
 <script src="/static/cytoscape-dagre.min.js" defer></script>
 <script src="/static/graph.js" defer></script>
-<style>{% for name, _ in node_legend + edge_legend %}.key-{{ name }} { background:var(--{{ name }}); }
-{% endfor %}</style>
+{% include "_graph_keys.html" %}
 {% endif %}{% endblock %}
 {% block content %}
 {% if not hood %}<section class="graph-page" data-graph data-up="1" data-down="1">
@@ -18,10 +17,10 @@
 {% else %}<section class="graph-page" data-graph data-focus="{{ focus.id }}" data-up="{{ hood.up }}" data-down="{{ hood.down }}"{% if hood.siblings %} data-siblings{% endif %}>
 <div class="gtool">
 <h1>Graph</h1>
-<span class="gfocus" title="{{ kind_label }} {{ focus.display_label }}">{{ focus.display_label }}</span>
-<span class="seg" aria-label="Hops"><a href="{{ controls.one }}"{% if hood.up == 1 and hood.down == 1 %} aria-current="true"{% endif %}>1 hop</a><a href="{{ controls.two }}"{% if hood.up == 2 and hood.down == 2 %} aria-current="true"{% endif %}>2 hops</a></span>
-<span class="seg" aria-label="Expand one direction"><a href="{{ controls.up }}"{% if hood.up == 2 %} aria-current="true"{% endif %}>upstream 2</a><a href="{{ controls.down }}"{% if hood.down == 2 %} aria-current="true"{% endif %}>downstream 2</a><a href="{{ controls.siblings }}"{% if hood.siblings %} aria-current="true"{% endif %}>siblings</a></span>
-{% if focus.path %}<a class="kbtn" href="{{ focus.path }}">Open detail page</a>{% endif %}
+<span class="gfocus" data-graph-focus title="{{ kind_label }} {{ focus.display_label }}">{{ focus.display_label }}</span>
+<span class="seg" aria-label="Hops"><a href="{{ controls.one }}" data-control="one"{% if hood.up == 1 and hood.down == 1 %} aria-current="true"{% endif %}>1 hop</a><a href="{{ controls.two }}" data-control="two"{% if hood.up == 2 and hood.down == 2 %} aria-current="true"{% endif %}>2 hops</a></span>
+<span class="seg" aria-label="Expand one direction"><a href="{{ controls.up }}" data-control="up"{% if hood.up == 2 %} aria-current="true"{% endif %}>upstream 2</a><a href="{{ controls.down }}" data-control="down"{% if hood.down == 2 %} aria-current="true"{% endif %}>downstream 2</a><a href="{{ controls.siblings }}" data-control="siblings"{% if hood.siblings %} aria-current="true"{% endif %}>siblings</a></span>
+{% if focus.path %}<a class="kbtn" href="{{ focus.path }}" data-control="page">Open detail page</a>{% endif %}
 <span class="ghint">Click a node to open it · <kbd>⌘K</kbd> to refocus</span>
 </div>
 {% if hood.shown < hood.total %}<p class="gnote" role="status">Showing {{ hood.shown }} of {{ hood.total }} nodes (capped at {{ cap }}). Use 1 hop or turn siblings off to see the rest.</p>

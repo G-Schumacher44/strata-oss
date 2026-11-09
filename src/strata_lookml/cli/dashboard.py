@@ -1,20 +1,12 @@
-"""Loopback serving shared by `strata workbench` and the legacy `strata dashboard --out` export.
-
-`allowed_hosts` and `bind_server` serve both. `make_handler` and `export_and_serve` are the
-legacy static-directory path, kept only for `--out` until the workbench export replaces it.
+"""Loopback binding for `strata workbench` (alias `strata dashboard`): the Host allow-list and
+the exclusive bind with port fallback. The request handler is `workbench/server.py`; `--out`
+writes a file instead (`workbench/export.py`) and serves nothing.
 """
 
 from __future__ import annotations
 
 import http.server
-import json
-import threading
-import webbrowser
 from collections.abc import Callable
-from pathlib import Path
-from typing import Any
-
-import click
 
 from strata_lookml.errors import StrataError
 from strata_lookml.loopback import ExclusiveHTTPServer, port_in_use
@@ -33,51 +25,24 @@ def allowed_hosts(port: int) -> frozenset[str]:
     return frozenset(permitted)
 
 
-def make_handler(port: int) -> type[http.server.SimpleHTTPRequestHandler]:
-    """Static-file handler that serves only requests whose Host header is a permitted loopback form.
-
-    Guards against DNS rebinding: a foreign page can point its own hostname at 127.0.0.1, but
-    the browser then sends that hostname in Host, which is not on the allowlist.
-    """
-    permitted = allowed_hosts(port)
-
-    class QuietHandler(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, format: str, *args: Any) -> None:
-            pass
-
-        def send_head(self) -> Any:  # GET and HEAD both route through here
-            if (self.headers.get("Host") or "").strip().lower() not in permitted:
-                self.send_error(403, "Forbidden")
-                return None
-            # `/` opens the dashboard rather than a raw directory listing; every artifact
-            # stays reachable at its own path, and the Host check above still runs first.
-            path, sep, query = self.path.partition("?")
-            if path == "/" and (Path(self.directory) / "dashboard.html").is_file():
-                self.path = "/dashboard.html" + sep + query
-            return super().send_head()
-
-    return QuietHandler
-
-
 def bind_server(
     port: int,
     explicit: bool,
     fallback_ports: range | None = None,
-    handler_factory: Callable[[int], type[http.server.BaseHTTPRequestHandler]] | None = None,
+    *,
+    handler_factory: Callable[[int], type[http.server.BaseHTTPRequestHandler]],
 ) -> ExclusiveHTTPServer:
     """Bind the loopback server, with the Host allow-list built from the port actually bound.
 
-    ``handler_factory(port)`` builds the handler for the candidate port (default: the legacy
-    static handler). An explicit ``--port`` that is busy fails; the default port falls back
-    through the range.
+    ``handler_factory(port)`` builds the handler for the candidate port. An explicit ``--port``
+    that is busy fails; the default port falls back through the range.
     """
     fallback = FALLBACK_PORTS if fallback_ports is None else fallback_ports
-    factory = make_handler if handler_factory is None else handler_factory
     candidates = [port] if explicit else [port, *fallback]
     for candidate in candidates:
         try:
             # Loopback only, by IP literal: "localhost" can resolve to other interfaces on some hosts.
-            return ExclusiveHTTPServer(("127.0.0.1", candidate), factory(candidate))
+            return ExclusiveHTTPServer(("127.0.0.1", candidate), handler_factory(candidate))
         except OSError as exc:
             if not port_in_use(exc):
                 raise
@@ -92,63 +57,3 @@ def bind_server(
         f"No free port for the dashboard (tried {tried}).",
         hint="Free a port, or pass --port with one that is open.",
     )
-
-
-def export_and_serve(
-    repo: str,
-    usage_fixture: str | None,
-    schema_fixture: str | None,
-    looker_url: str | None,
-    days: int,
-    out: str,
-    port: int,
-    explicit: bool,
-    no_browser: bool,
-) -> None:
-    """The pre-workbench `strata dashboard --out`: write the JSON artifacts and a self-contained
-    dashboard.html to OUT, then serve OUT (unchanged until the workbench export replaces it)."""
-    from strata_lookml.cli.outputs import live_looker_graph
-    from strata_lookml.outputs import write_artifacts
-    from strata_lookml.outputs.dashboard import build_dashboard_html
-    from strata_lookml.pipeline import build_graph
-
-    _repo = Path(repo).expanduser().resolve()
-    out_dir = Path(out).expanduser().resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    click.echo(f"Building IR for {_repo.name}...")
-    if looker_url:
-        graph = live_looker_graph(str(_repo), looker_url, days, schema_fixture)
-    else:
-        graph = build_graph(str(_repo), usage_fixture, schema_fixture)
-
-    click.echo("Writing artifacts...")
-    artifacts = write_artifacts(graph, str(out_dir))
-
-    click.echo("Generating dashboard...")
-    artifact_data = {
-        name: json.loads(Path(path).read_text(encoding="utf-8")) for name, path in artifacts.items()
-    }
-    html = build_dashboard_html(artifact_data, graph)
-    dashboard_path = out_dir / "dashboard.html"
-    dashboard_path.write_text(html, encoding="utf-8")
-    click.secho(f"Dashboard: {dashboard_path}", fg="green")
-
-    import os
-
-    os.chdir(out_dir)
-
-    server = bind_server(port if explicit else DEFAULT_PORT, explicit)
-    bound = server.server_address[1]
-    url = f"http://127.0.0.1:{bound}/dashboard.html"
-    if bound != DEFAULT_PORT and not explicit:
-        click.echo(f"Port {DEFAULT_PORT} is busy; using {bound}.")
-    click.echo(f"\nServing at {url}  (Ctrl+C to stop)\n")
-
-    if not no_browser:
-        threading.Timer(0.4, webbrowser.open, args=[url]).start()
-
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        click.echo("\nStopped.")

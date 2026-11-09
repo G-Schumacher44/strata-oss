@@ -5,6 +5,11 @@
 // it reads what the server rendered (data-* attributes) and moves a cursor over it. A status
 // shown after an acknowledge is the one POST /api/triage answers with.
 //
+// The static export runs this same file over the same pages: router.js swaps a page into
+// <main> and fires `strata:page`, which re-binds the per-page parts (`initPage`). There,
+// `window.StrataExport` holds what the live pages fetch (the ⌘K index, PR-comment text), the
+// page has no token, and the triage writes are hidden: the export is read-only.
+//
 // Safety: DOM is built with createElement/textContent only. No HTML string is ever parsed
 // (tests/test_workbench_findings.py bans the parsing sinks in this file).
 (function () {
@@ -12,10 +17,16 @@
 
   var doc = document;
   var root = doc.documentElement;
+  var exported = window.StrataExport || null;
   var THEME_KEY = "strata-workbench-theme";
   var G_WINDOW_MS = 900;
 
   function $(selector, scope) { return (scope || doc).querySelector(selector); }
+  // Open a page: a plain navigation live, a route change in the export.
+  function go(href) {
+    if (exported) exported.go(href);
+    else location.href = href;
+  }
   function $all(selector, scope) { return Array.prototype.slice.call((scope || doc).querySelectorAll(selector)); }
 
   // --- toast and clipboard -------------------------------------------------------------
@@ -66,6 +77,8 @@
   // Without JavaScript the pages are read-only; `strata ack` / `strata unack` write instead.
 
   var tokenMeta = $('meta[name="strata-token"]');
+  var readOnly = !tokenMeta; // the static export: no server to write to
+  var READ_ONLY = "Read-only export: acknowledge in `strata workbench` or with `strata ack`";
 
   function postTriage(action, ids, note) {
     var body = { action: action, ids: ids };
@@ -111,34 +124,37 @@
   }
 
   // Detail and finding pages: one button per finding card (server-rendered disabled).
-  $all("[data-triage]").forEach(function (button) {
-    button.disabled = false;
-    button.removeAttribute("title");
-    button.addEventListener("click", function () {
-      var id = button.getAttribute("data-triage-id");
-      var action = button.getAttribute("data-triage");
-      if (!id) return;
-      button.disabled = true;
-      postTriage(action, [id]).then(function (data) {
-        var row = rowsById(data)[id];
-        var next = row && row.acked_at ? "unack" : "ack";
-        $all("[data-triage-id]").forEach(function (b) {
-          if (b.getAttribute("data-triage-id") !== id) return;
-          b.setAttribute("data-triage", next);
-          b.textContent = next === "ack" ? "Acknowledge" : "Unacknowledge";
-          var card = b.closest(".fcard");
-          var pill = card && $("[data-status]", card);
-          if (pill) setStatusText(pill, row ? row.status : "untracked");
-          var acked = card && $("[data-acked]", card);
-          if (acked) {
-            acked.hidden = !(row && row.acked_at);
-            acked.textContent = acked.hidden ? "" : "acknowledged " + row.acked_at + (row.note ? " · " + row.note : "");
-          }
-        });
-        triageToast(action, 1);
-      }, triageFailed).then(function () { button.disabled = false; });
+  function bindTriageButtons() {
+    $all("[data-triage]").forEach(function (button) {
+      if (readOnly) { button.hidden = true; return; }
+      button.disabled = false;
+      button.removeAttribute("title");
+      button.addEventListener("click", function () {
+        var id = button.getAttribute("data-triage-id");
+        var action = button.getAttribute("data-triage");
+        if (!id) return;
+        button.disabled = true;
+        postTriage(action, [id]).then(function (data) {
+          var row = rowsById(data)[id];
+          var next = row && row.acked_at ? "unack" : "ack";
+          $all("[data-triage-id]").forEach(function (b) {
+            if (b.getAttribute("data-triage-id") !== id) return;
+            b.setAttribute("data-triage", next);
+            b.textContent = next === "ack" ? "Acknowledge" : "Unacknowledge";
+            var card = b.closest(".fcard");
+            var pill = card && $("[data-status]", card);
+            if (pill) setStatusText(pill, row ? row.status : "untracked");
+            var acked = card && $("[data-acked]", card);
+            if (acked) {
+              acked.hidden = !(row && row.acked_at);
+              acked.textContent = acked.hidden ? "" : "acknowledged " + row.acked_at + (row.note ? " · " + row.note : "");
+            }
+          });
+          triageToast(action, 1);
+        }, triageFailed).then(function () { button.disabled = false; });
+      });
     });
-  });
+  }
 
   // --- theme ---------------------------------------------------------------------------
 
@@ -186,7 +202,7 @@
 
   // --- findings list -------------------------------------------------------------------
 
-  var list = findingsList($("[data-findings]"));
+  var list = null;
 
   function findingsList(section) {
     if (!section) return null;
@@ -250,6 +266,16 @@
     function copyComment() {
       var rs = targets();
       if (!rs.length) { toast("Nothing to copy"); return; }
+      var n = ids(rs).length;
+      var copied = "Copied PR comment for " + n + " finding" + (n === 1 ? "" : "s");
+      var none = "No current finding to comment on (fixed and not-checked have no record)";
+      if (exported) {
+        // Built in Python when the export was written (pr_text.finding_lines), joined here.
+        var offline = exported.prComment(ids(rs));
+        if (offline === null) toast(none);
+        else copyText(offline, copied);
+        return;
+      }
       // The server builds the text (workbench/pr_text.py, the one PR-comment builder).
       var params = new URLSearchParams();
       ids(rs).forEach(function (id) { params.append("id", id); });
@@ -258,11 +284,8 @@
           if (!r.ok) throw new Error(r.status === 404 ? "none" : String(r.status));
           return r.text();
         });
-      var n = ids(rs).length;
-      copyAsync(text, "Copied PR comment for " + n + " finding" + (n === 1 ? "" : "s"), function (err) {
-        return err && err.message === "none"
-          ? "No current finding to comment on (fixed and not-checked have no record)"
-          : "Could not build the PR comment";
+      copyAsync(text, copied, function (err) {
+        return err && err.message === "none" ? none : "Could not build the PR comment";
       });
     }
 
@@ -280,6 +303,7 @@
     // a / u: acknowledge or withdraw the selected rows (else the cursor row), then repaint
     // each row's status from the server's answer for its lead id.
     function triage(action) {
+      if (readOnly) { toast(READ_ONLY); return; }
       var rs = targets();
       var wanted = ids(rs);
       if (!wanted.length) { toast("No finding selected"); return; }
@@ -304,7 +328,7 @@
       });
       var at = usable.findIndex(function (c) { return c.getAttribute("aria-current") === "page"; });
       var next = usable[(at + 1) % usable.length];
-      if (next) location.href = next.href;
+      if (next) go(next.getAttribute("href"));
     }
 
     rows.forEach(function (row, i) {
@@ -328,6 +352,9 @@
     }
     if (actionbar) {
       actionbar.hidden = false;
+      if (readOnly) {
+        $all('[data-action="ack"], [data-action="unack"], [data-note]', actionbar).forEach(function (el) { el.hidden = true; });
+      }
       actionbar.addEventListener("click", function (e) {
         var button = e.target.closest("[data-action]");
         if (!button) return;
@@ -352,7 +379,7 @@
         if (k === "k" || k === "ArrowUp") { move(-1); return true; }
         if (k === "Enter" || k === "o") {
           var href = rows.length && rows[cursor].getAttribute("data-href");
-          if (href) location.href = href;
+          if (href) go(href);
           return true;
         }
         if (k === "x") {
@@ -363,7 +390,7 @@
         if (k === "f") { cycleCategory(); return true; }
         if (/^[1-6]$/.test(k)) {
           var tab = tabs[Number(k) - 1];
-          if (tab) location.href = tab.href;
+          if (tab) go(tab.getAttribute("href"));
           return true;
         }
         if (k === "a") { triage("ack"); return true; }
@@ -438,12 +465,12 @@
     var input = $("[data-palette-input]", dialog);
     var listbox = $("[data-palette-list]", dialog);
     var count = $("[data-palette-count]", dialog);
-    var graph = $("[data-graph]");
     var index = { kinds: {}, items: [] };
     var results = [];
     var cursor = 0;
 
     function load() {
+      if (!paletteIndex && exported) paletteIndex = Promise.resolve(exported.data.index);
       if (!paletteIndex) {
         paletteIndex = fetch("/api/index.json", { credentials: "same-origin" }).then(function (r) {
           if (!r.ok) throw new Error(String(r.status));
@@ -489,7 +516,7 @@
         kind.className = "kd";
         kind.textContent = index.kinds[res.item.kind] || res.item.kind;
         li.appendChild(kind);
-        li.addEventListener("click", function () { go(i); });
+        li.addEventListener("click", function () { pick(i); });
         li.addEventListener("mousemove", function () { if (cursor !== i) { cursor = i; paint(); } });
         return li;
       });
@@ -522,18 +549,18 @@
       paint();
     }
 
-    function go(i) {
+    function pick(i) {
       var res = results[i];
       if (!res) return;
       dialog.close();
-      location.href = paletteTarget(graph, res.item);
+      go(paletteTarget($("[data-graph]"), res.item));
     }
 
     input.addEventListener("input", function () { cursor = 0; match(); });
     input.addEventListener("keydown", function (e) {
       if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) { cursor = Math.min(cursor + 1, results.length - 1); paint(); e.preventDefault(); }
       else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) { cursor = Math.max(cursor - 1, 0); paint(); e.preventDefault(); }
-      else if (e.key === "Enter") { go(cursor); e.preventDefault(); }
+      else if (e.key === "Enter") { pick(cursor); e.preventDefault(); }
     });
     dialog.addEventListener("click", function (e) {
       if (e.target !== dialog) return;
@@ -542,10 +569,10 @@
       if (!inside) dialog.close();
     });
 
-    function open() {
+    function open(text) {
       if (dialog.open || typeof dialog.showModal !== "function") return;
       if (help && help.open) help.close();
-      input.value = "";
+      input.value = typeof text === "string" ? text : "";
       cursor = 0;
       results = [];
       dialog.showModal();
@@ -571,7 +598,7 @@
   var jump = jumpPalette(palette);
   if (jump && paletteButton) {
     paletteButton.hidden = false;
-    paletteButton.addEventListener("click", jump.open);
+    paletteButton.addEventListener("click", function () { jump.open(); });
   }
   doc.addEventListener("keydown", function (e) {
     if (!jump || !(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "k") return;
@@ -593,8 +620,8 @@
     var k = e.key;
     if (gPressedAt && Date.now() - gPressedAt < G_WINDOW_MS) {
       gPressedAt = 0;
-      var go = { f: "/findings", o: "/overview", g: "/graph" }[k];
-      if (go) { e.preventDefault(); location.href = go; }
+      var target = { f: "/findings", o: "/overview", g: "/graph" }[k];
+      if (target) { e.preventDefault(); go(target); }
       return;
     }
     if (k === "g") { gPressedAt = Date.now(); return; }
@@ -603,4 +630,22 @@
     if (k === "Enter" && e.target.closest && e.target.closest("a, button")) return;
     if (list && list.key(e)) e.preventDefault();
   });
+
+  // --- per page ------------------------------------------------------------------------
+  //
+  // Live, once; in the export, again each time router.js puts a page into <main>. A query the
+  // export could not pre-render (Search, the Findings filter) arrives as data-query: ⌘K runs it.
+
+  function initPage() {
+    list = findingsList($("[data-findings]"));
+    bindTriageButtons();
+    var main = $("main");
+    var query = main && main.getAttribute("data-query");
+    if (query && jump) {
+      main.removeAttribute("data-query");
+      jump.open(query);
+    }
+  }
+  initPage();
+  doc.addEventListener("strata:page", initPage);
 })();

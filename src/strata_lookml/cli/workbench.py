@@ -1,4 +1,5 @@
-"""strata workbench (alias: strata dashboard) — serve the local triage workbench."""
+"""strata workbench (alias: strata dashboard) — serve the local triage workbench, or write it
+as one static file with `--out`."""
 
 from __future__ import annotations
 
@@ -62,8 +63,8 @@ def _url_port(url: str | None) -> int | None:
 @click.option(
     "--out",
     default=None,
-    help="Instead of the workbench: write the JSON artifacts and the static dashboard.html to "
-    "this directory and serve it",
+    help="Instead of serving: write the workbench as one read-only, self-contained "
+    "dashboard.html in this directory (statuses from --baseline; no acknowledgements)",
 )
 @click.option(
     "--port",
@@ -89,7 +90,8 @@ def workbench(
     Loads the IR from the cache (`strata build` / the MCP server write the same one) or builds
     and caches it, then serves until Ctrl+C. Opens the browser automatically — use
     --no-browser for headless environments. If the repo or a fixture changes while it runs, the
-    pages show a "restart to reload" banner. `--out DIR` writes the static dashboard instead.
+    pages show a "restart to reload" banner. `--out DIR` writes DIR/dashboard.html instead: the
+    same pages in one file that opens offline (file://), read-only, nothing served.
 
     \b
     strata workbench \\
@@ -101,15 +103,10 @@ def workbench(
         click.get_current_context().get_parameter_source("port")
         is not click.core.ParameterSource.DEFAULT
     )
-    if out:
-        if baseline_path or workbench_url:
-            raise click.UsageError(
-                "--baseline and --workbench-url apply to the workbench, not --out"
-            )
-        dash.export_and_serve(
-            repo, usage_fixture, schema_fixture, looker_url, days, out, port, explicit, no_browser
+    if out and explicit:
+        raise click.UsageError(
+            "--port applies to the server; --out writes a file and serves nothing"
         )
-        return
 
     from strata_lookml.config import load_workbench_url
     from strata_lookml.gate import BaselineError, load_baseline
@@ -147,6 +144,18 @@ def workbench(
         baseline_path=baseline_path,
         base_url=base_url,
     )
+    if out:
+        from strata_lookml.workbench.export import export
+
+        out_dir = Path(out).expanduser().resolve()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / "dashboard.html"
+        path.write_text(export(index), encoding="utf-8")
+        click.secho(f"Workbench export: {path}", fg="green")
+        if not no_browser:
+            webbrowser.open(path.as_uri())
+        return
+
     token = new_token()
     staleness = Staleness(index.inputs, index.fingerprint)
 
@@ -185,6 +194,5 @@ dashboard = click.Command(
     params=workbench.params,
     callback=workbench.callback,
     help="Alias of `strata workbench` (same options).\n\n"
-    "`--out DIR` keeps the static dashboard export: JSON artifacts plus a self-contained "
-    "dashboard.html written to DIR and served from it.",
+    "`--out DIR` writes the workbench as one read-only, self-contained dashboard.html in DIR.",
 )

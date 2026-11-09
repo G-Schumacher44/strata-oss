@@ -1,9 +1,8 @@
 """The workbench graph: the Cytoscape graph data, its palette, and a focus neighbourhood.
 
-`build_graph_data` is the one graph-data builder (the legacy dashboard imports it from here
-until S10 deletes that renderer). `neighbourhood` cuts the focus view out of it (M4): one hop
-both ways by default, two hops per direction on request, siblings opt-in, capped at
-`NODE_CAP` nodes with the full count reported. Plain Python: no HTTP, no templates.
+`build_graph_data` is the one graph-data builder. `neighbourhood` cuts the focus view out of
+it (M4): one hop both ways by default, two hops per direction on request, siblings opt-in,
+capped at `NODE_CAP` nodes with the full count reported. Plain Python: no HTTP, no templates.
 """
 
 from __future__ import annotations
@@ -13,10 +12,10 @@ from typing import Any
 
 from strata_lookml.ir.types import IRGraph, explore_key
 from strata_lookml.l1.enrich import analysis_coverage, view_consumer_map
-from strata_lookml.links import object_path
+from strata_lookml.links import graph_path, object_path
 
 # The one source for graph status colors: build_graph_data stamps these onto nodes/edges
-# and every page (the workbench layout, the legacy dashboard) emits the same dict as CSS
+# and every page (the workbench layout, the static export) emits the same dict as CSS
 # custom properties (--n-<key>), which legends, status badges and theme tokens read. A node can never disagree with the legend that
 # explains it, because both come from here.
 NODE_PALETTE = {
@@ -60,8 +59,8 @@ def palette_css() -> str:
 
 def build_graph_data(graph: IRGraph) -> dict[str, Any]:
     """Every explore, view, PDT and warehouse table as Cytoscape elements, coloured from
-    NODE_PALETTE/EDGE_PALETTE. The workbench graph cuts a focus neighbourhood out of this; the
-    legacy dashboard renders all of it."""
+    NODE_PALETTE/EDGE_PALETTE. The workbench graph cuts a focus neighbourhood out of this (on
+    the server, or in the browser for the static export: `export_graph_data`)."""
     l1 = graph.metadata.get("l1", {})
     # G15 invariant: the register names an explore by its model-qualified key
     # (`explore_key`, always dotted) and a view by its bare name (never dotted in LookML), so
@@ -409,4 +408,37 @@ def neighbourhood(
             for node_id in kept
         ],
         "edges": [{"data": e} for e in edges if e["source"] in keep and e["target"] in keep],
+    }
+
+
+# What graph.js reads from a node (beyond the neighbourhood's `ring` and `focus`), and from an
+# edge: the static export embeds only these.
+EXPORT_NODE_KEYS = ("id", "display_label", "kind", "color", "caption", "path", "graph")
+EXPORT_EDGE_KEYS = ("id", "source", "target", "relation", "color")
+
+
+def export_graph_data(data: dict[str, Any]) -> dict[str, Any]:
+    """`build_graph_data` output slimmed for the static export, where graph.js computes each
+    neighbourhood itself (`neighbourhood` in assets/js/graph.js, tested against the one here).
+
+    Nodes carry `caption`, `path` and `graph` (their default graph route) precomputed (they
+    depend on the node alone, and quoting stays in links.py) and come
+    sorted by id, so the browser orders a ring by position and never compares strings (its
+    sort order differs from Python's outside the BMP).
+    """
+    nodes = sorted(
+        (
+            {
+                **n["data"],
+                "caption": caption(n["data"]),
+                "path": object_path(n["data"]["id"]),
+                "graph": graph_path(n["data"]["id"]),
+            }
+            for n in data["nodes"]
+        ),
+        key=lambda d: d["id"],
+    )
+    return {
+        "nodes": [{k: d[k] for k in EXPORT_NODE_KEYS} for d in nodes],
+        "edges": [{k: e["data"][k] for k in EXPORT_EDGE_KEYS} for e in data["edges"]],
     }

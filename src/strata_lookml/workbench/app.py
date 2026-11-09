@@ -28,7 +28,6 @@ from strata_lookml.ir.types import explore_id, explore_key
 from strata_lookml.links import finding_path, graph_path, object_path
 from strata_lookml.mcp.tools import strata_object
 from strata_lookml.outputs.artifacts import cleanup_roadmap
-from strata_lookml.outputs.dashboard import _embed_json
 from strata_lookml.triage import TriageRow, TriageStore, triage_rows
 from strata_lookml.workbench.detail import KIND_LABELS, Detail
 from strata_lookml.workbench.graph import (
@@ -47,9 +46,17 @@ from strata_lookml.workbench.index import Staleness, Workbench
 from strata_lookml.workbench.jump import KIND_LABELS as JUMP_KINDS
 from strata_lookml.workbench.jump import jump_index, search, segments
 from strata_lookml.workbench.overview import overview_context
-from strata_lookml.workbench.pages.findings import STATUS_LABELS, findings_context, parse_query
+from strata_lookml.workbench.pages.findings import (
+    CATEGORIES,
+    STATUS_LABELS,
+    STATUS_TABS,
+    Query,
+    findings_context,
+    findings_href,
+    parse_query,
+)
 from strata_lookml.workbench.pr_text import pr_comment
-from strata_lookml.workbench.render import render
+from strata_lookml.workbench.render import embed_json, render
 
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
     (
@@ -118,7 +125,7 @@ def bare_error(status: int) -> Response:
 def _json(
     status: int, payload: Mapping[str, Any], extra: tuple[tuple[str, str], ...] = ()
 ) -> Response:
-    return _response(status, _embed_json(payload).encode("utf-8"), JSON, extra)
+    return _response(status, embed_json(payload).encode("utf-8"), JSON, extra)
 
 
 _WRITE_HINT = (
@@ -243,16 +250,27 @@ def _static_body(name: str) -> bytes:
 
 
 class App:
-    """The routes for one bound server: `hosts` is the allow-list for its port."""
+    """The routes for one bound server: `hosts` is the allow-list for its port.
+
+    `read_only` (the static export, `export.py`) opens no triage store: statuses come from the
+    baseline alone, nothing under ~/.strata is read or written, and the triage POST is refused.
+    """
 
     def __init__(
-        self, workbench: Workbench, hosts: frozenset[str], token: str, staleness: Staleness
+        self,
+        workbench: Workbench,
+        hosts: frozenset[str],
+        token: str,
+        staleness: Staleness,
+        *,
+        read_only: bool = False,
     ) -> None:
         self.workbench = workbench
         self.hosts = hosts
         self.token = token
         self.staleness = staleness
-        self._store = TriageStore.open(workbench.repo, workbench.graph)
+        self._store = None if read_only else TriageStore.open(workbench.repo, workbench.graph)
+        self._fixed_rows: dict[str, TriageRow] | None = None
         self._detail = Detail(workbench, cleanup_roadmap(workbench.graph.metadata.get("l1", {})))
         # Built once (D8): the graph never changes under a running server.
         self._graph_data = build_graph_data(workbench.graph)
@@ -267,6 +285,16 @@ class App:
             "/api/graph": self._api_graph,
             "/api/pr-comment": self._api_pr_comment,
         }
+
+    @property
+    def graph_data(self) -> dict[str, Any]:
+        """`build_graph_data` for this workbench (built once)."""
+        return self._graph_data
+
+    @property
+    def jump_items(self) -> list[dict[str, str]]:
+        """The ⌘K / search index items (`jump.jump_index`, built once)."""
+        return self._jump
 
     # --- dispatch ----------------------------------------------------------------------
 
@@ -322,6 +350,30 @@ class App:
                 return self._static(name)
         raise NotFound(f"no workbench page at {path}", hint="Start at /findings.")
 
+    def export_routes(self) -> list[str]:
+        """Every page the static export renders, as the target a link on another page uses.
+
+        Findings: each status tab x category chip, and each further page of either (the
+        free-text `q` filter is the one Findings query left out: it is unbounded). Then the
+        overview, the graph picker and one focused graph page, the frame every other focus and
+        hop state is drawn into in the browser from the embedded graph; search without a query
+        (⌘K is its offline twin), every object page except fields (a view page lists its
+        fields) and every finding page. The same graph gives the same list, in the same order.
+        """
+        rows = list(self._triage_rows().values())
+        routes: list[str] = []
+        for status, _ in STATUS_TABS:
+            for category in ("all", *CATEGORIES):
+                context = self._findings_context(rows, Query(status, category, "", 1))
+                routes.append(findings_href(status, category))
+                routes += [p["href"] for p in context["pages"][1:]]
+        routes += ["/overview", "/graph"]
+        routes += [graph_path(n["data"]["id"]) for n in self._graph_data["nodes"][:1]]
+        routes.append("/search")
+        routes += [i["path"] for i in self._jump if i["kind"] not in ("field", "finding")]
+        routes += [finding_path(i) for i in self.workbench.findings_by_id]
+        return list(dict.fromkeys(routes))
+
     # --- the one write: POST /api/triage -----------------------------------------------
 
     def _triage_post(
@@ -334,9 +386,15 @@ class App:
         """Acknowledge or unacknowledge from a workbench page: an adapter over `TriageStore`.
 
         `_write_request` refuses anything a page of this server did not send; only then is the
-        store called. Every answer is JSON (`_embed_json`), never HTML, so nothing from the
+        store called. Every answer is JSON (`embed_json`), never HTML, so nothing from the
         request reaches markup.
         """
+        if self._store is None:
+            return _refusal(
+                HTTPStatus.METHOD_NOT_ALLOWED,
+                "This workbench is read-only.",
+                extra=(("Allow", "GET, HEAD"),),
+            )
         if method != "POST":
             return _refusal(
                 HTTPStatus.METHOD_NOT_ALLOWED,
@@ -370,7 +428,7 @@ class App:
         """The usage window (`{start, end, days}`) the usage facts cover, or {}."""
         return self.workbench.graph.metadata.get("l1", {}).get("period") or {}
 
-    def _coverage(self) -> list[tuple[bool, str]]:
+    def coverage(self) -> list[tuple[bool, str]]:
         """The coverage strip: (ran, text) per check, the baseline, and the analysed git ref."""
         wb = self.workbench
         cov = wb.coverage
@@ -405,7 +463,7 @@ class App:
             "palette_css": palette_css(),
             "token": self.token,
             "stale": self.staleness.stale(),
-            "coverage": self._coverage(),
+            "coverage": self.coverage(),
         }
 
     def _page(
@@ -438,18 +496,13 @@ class App:
     # --- pages ----------------------------------------------------------------------------
 
     def _findings(self, query: Mapping[str, list[str]]) -> Response:
-        wb = self.workbench
-        parsed = parse_query(query)
-        rows = list(self._triage_rows().values())
-        costs = {r["id"]: float(r["cost_usd"]) for r in wb.records if r.get("cost_usd") is not None}
-        period = self._period()
-        context = findings_context(
-            rows,
-            parsed,
-            costs=costs,
-            days=period.get("days"),
-        )
+        context = self._findings_context(list(self._triage_rows().values()), parse_query(query))
         return self._page("findings.html", "Findings", nav="findings", **context)
+
+    def _findings_context(self, rows: list[TriageRow], query: Query) -> dict[str, Any]:
+        records = self.workbench.records
+        costs = {r["id"]: float(r["cost_usd"]) for r in records if r.get("cost_usd") is not None}
+        return findings_context(rows, query, costs=costs, days=self._period().get("days"))
 
     def _api_pr_comment(self, query: Mapping[str, list[str]]) -> Response:
         """`pr_text.pr_comment` for the current findings among `?id=...` (the list's `c`).
@@ -568,9 +621,7 @@ class App:
         """The focus neighbourhood as Cytoscape elements: graph.js fetches this, never inline JSON."""
         focus, up, down, siblings = self._graph_query(query)
         hood = self._neighbourhood(focus, up, down, siblings)
-        return _response(
-            HTTPStatus.OK, _embed_json({**hood, "cap": NODE_CAP}).encode("utf-8"), JSON
-        )
+        return _response(HTTPStatus.OK, embed_json({**hood, "cap": NODE_CAP}).encode("utf-8"), JSON)
 
     def _search(self, query: Mapping[str, list[str]]) -> Response:
         """`/search?q=`: ⌘K without JavaScript, matched on the server over the same index."""
@@ -590,11 +641,12 @@ class App:
 
     def _api_index(self, query: Mapping[str, list[str]]) -> Response:
         """The ⌘K index: `items` ({id, kind, label, path}) plus the kind display names."""
-        body = _embed_json({"kinds": JUMP_KINDS, "items": self._jump}).encode("utf-8")
+        body = embed_json({"kinds": JUMP_KINDS, "items": self._jump}).encode("utf-8")
         return _response(HTTPStatus.OK, body, JSON)
 
     def _object(self, kind: str, name: str) -> Response:
         graph = self.workbench.graph
+        indexed = self.workbench.findings_by_node
         keyed = explores_by_key(graph, name) if kind == "explore" else []
         if len(keyed) > 1:
             return self._candidates_page(
@@ -604,9 +656,9 @@ class App:
             if keyed:
                 # The canonical `model.explore` key links.py publishes: exact, never re-split.
                 ((model, explore),) = keyed
-                obj = strata_object(graph, kind, explore, model=model)
+                obj = strata_object(graph, kind, explore, model=model, findings_by_node=indexed)
             else:  # a hand-typed name: the shorthand rules every surface shares
-                obj = strata_object(graph, kind, name)
+                obj = strata_object(graph, kind, name, findings_by_node=indexed)
         except InvalidInput as exc:
             candidates = self._candidates(kind, name)
             if not candidates:
@@ -636,9 +688,14 @@ class App:
         """Each finding id's triage row in `triage_rows` order, read fresh per request (an ack
         made by the CLI shows on reload). Findings, the finding page and the detail pages all
         read rows through here."""
+        if self._store is None and self._fixed_rows is not None:
+            return self._fixed_rows  # read-only: no store, so the rows never change
         wb = self.workbench
         baseline = None if wb.baseline is None else {k: set(v) for k, v in wb.baseline.items()}
-        return {r.id: r for r in triage_rows(wb.graph, baseline, self._store)}
+        rows = {r.id: r for r in triage_rows(wb.graph, baseline, self._store)}
+        if self._store is None:
+            self._fixed_rows = rows
+        return rows
 
     def _candidates_page(
         self, kind: str, name: str, message: str, links: list[tuple[str, str]]

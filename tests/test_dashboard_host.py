@@ -1,67 +1,16 @@
-"""strata dashboard — Host header allowlist (DNS-rebinding guard)."""
+"""strata workbench — the Host allow-list built for a bound port (DNS-rebinding guard).
+
+The workbench's own Host checks (refused before routing, never shown the token) are in
+test_workbench_server.py; this pins the allow-list itself.
+"""
 
 from __future__ import annotations
 
-import http.client
-import http.server
-import threading
-from collections.abc import Iterator
-from functools import partial
-from pathlib import Path
-
-import pytest
-
-from strata_lookml.cli.dashboard import allowed_hosts, make_handler
+from strata_lookml.cli.dashboard import allowed_hosts
 
 
-@pytest.fixture
-def server(tmp_path: Path) -> Iterator[int]:
-    (tmp_path / "secret.json").write_text('{"k": "v"}')
-    (tmp_path / "dashboard.html").write_text("<title>strata dashboard</title>")
-    probe = http.server.HTTPServer(("127.0.0.1", 0), http.server.BaseHTTPRequestHandler)
-    port = probe.server_address[1]
-    probe.server_close()
-    handler = partial(make_handler(port), directory=str(tmp_path))
-    httpd = http.server.HTTPServer(("127.0.0.1", port), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    yield port
-    httpd.shutdown()
-    httpd.server_close()
-
-
-def _get(port: int, host: str | None, path: str = "/secret.json") -> tuple[int, bytes]:
-    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-    conn.putrequest("GET", path, skip_host=True)
-    if host is not None:
-        conn.putheader("Host", host)
-    conn.endheaders()
-    resp = conn.getresponse()
-    body = resp.read()
-    conn.close()
-    return resp.status, body
-
-
-@pytest.mark.parametrize("form", ["127.0.0.1:{p}", "localhost:{p}", "[::1]:{p}", "LOCALHOST:{p}"])
-def test_loopback_host_served(server: int, form: str) -> None:
-    status, body = _get(server, form.format(p=server))
-    assert status == 200
-    assert b'"k"' in body
-
-
-@pytest.mark.parametrize(
-    "host",
-    ["evil.example", "evil.example:{p}", "127.0.0.1:1", "127.0.0.1", "localhost.evil.com:{p}", ""],
-)
-def test_foreign_host_refused(server: int, host: str) -> None:
-    status, body = _get(server, host.format(p=server))
-    assert status == 403
-    assert b'"k"' not in body
-
-
-def test_missing_host_refused(server: int) -> None:
-    status, body = _get(server, None)
-    assert status == 403
-    assert b'"k"' not in body
+def test_loopback_forms_are_allowed_with_the_port() -> None:
+    assert allowed_hosts(8765) == {"127.0.0.1:8765", "localhost:8765", "[::1]:8765"}
 
 
 def test_portless_hosts_only_permitted_on_port_80() -> None:
@@ -69,16 +18,3 @@ def test_portless_hosts_only_permitted_on_port_80() -> None:
     assert portless <= allowed_hosts(80)
     assert "127.0.0.1:80" in allowed_hosts(80)
     assert not portless & allowed_hosts(8765)
-
-
-def test_root_serves_dashboard_not_a_listing(server: int) -> None:
-    status, body = _get(server, f"127.0.0.1:{server}", "/")
-    assert status == 200
-    assert b"strata dashboard" in body
-    assert b"secret.json" not in body, "root must not fall through to the directory listing"
-
-
-def test_root_still_enforces_host_check(server: int) -> None:
-    status, body = _get(server, "evil.example", "/")
-    assert status == 403
-    assert b"strata dashboard" not in body
