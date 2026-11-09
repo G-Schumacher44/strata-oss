@@ -10,11 +10,17 @@ from typing import Any
 from strata_lookml.errors import InvalidInput, NotFound
 from strata_lookml.identifiers import resolve_explore, resolve_field, resolve_table
 from strata_lookml.ir.types import IRGraph, explore_id, explore_key
-from strata_lookml.l1.enrich import analysis_coverage
+from strata_lookml.l1.enrich import (
+    analysis_coverage,
+    direct_view_consumers,
+    evidence_facts,
+    view_consumer_map,
+)
 from strata_lookml.validation import validation_scope
 
 FIND_FIELD_DEFAULT_LIMIT = 50
 FIND_FIELD_MAX_LIMIT = 200
+OBJECT_KINDS = ("explore", "view", "pdt", "table", "field")
 
 _FIXTURE_ENV = {"usage": "STRATA_USAGE_FIXTURE", "schema": "STRATA_SCHEMA_FIXTURE"}
 
@@ -427,3 +433,167 @@ def _parse_skill_meta(content: str) -> dict[str, str]:
 def _field_count_for_view(graph: IRGraph, view: str) -> int:
     prefix = f"field:{view}."
     return sum(1 for node_id in graph.nodes if node_id.startswith(prefix))
+
+
+def _edge_targets(graph: IRGraph, source: str, relation: str, prefix: str) -> list[str]:
+    return sorted(
+        {
+            edge.target.removeprefix(prefix)
+            for edge in graph.edges
+            if edge.source == source and edge.relation == relation
+        }
+    )
+
+
+def _view_ancestors(chain: Sequence[str], own_name: str) -> list[str]:
+    """Ancestors from a view's resolution chain: `+` refinement markers stripped, the view
+    itself dropped (a refined view's chain ends in its own `+name`), duplicates removed in order."""
+    ancestors: dict[str, None] = {}
+    for entry in chain:
+        entry = entry.lstrip("+")
+        if entry != own_name:
+            ancestors.setdefault(entry)
+    return list(ancestors)
+
+
+def _node_finding_ids(graph: IRGraph, node_id: str) -> list[str]:
+    """Ids of the findings on one node: the `finding_records` (the same records `strata check`
+    gates on) whose `subject_id` is this node. A table also carries the column drift on it
+    (that record's subject is the field, but its evidence names the table)."""
+    # Deferred: gate -> synthesis.slices imports this module.
+    from strata_lookml.gate import finding_records
+
+    table_ref = f"schema_table:{node_id.removeprefix('physical_table:')}"
+    is_table = node_id.startswith("physical_table:")
+    return sorted(
+        {
+            r["id"]
+            for r in finding_records(graph)
+            if r["subject_id"] == node_id or (is_table and table_ref in r["evidence_ids"])
+        }
+    )
+
+
+def _explore_content(graph: IRGraph, key: str) -> dict[str, Any] | None:
+    """Content that references this explore, from the L1 usage facts; None when usage was not
+    checked (never 0). The window is the usage period the facts were pulled for, not all time."""
+    l1 = graph.metadata.get("l1", {})
+    if not analysis_coverage(graph)["usage"]:
+        return None
+    items = sorted(
+        (
+            {"content_id": r["content_id"], "content_type": r["content_type"], "title": r["title"]}
+            for r in l1.get("content_references", [])
+            if explore_key(r["model"], r["explore"]) == key
+        ),
+        key=lambda r: (r["content_type"], r["content_id"]),
+    )
+    by_type: dict[str, int] = {}
+    for item in items:
+        by_type[item["content_type"]] = by_type.get(item["content_type"], 0) + 1
+    period = l1.get("period")
+    days = period.get("days") if isinstance(period, dict) else None
+    return {
+        "reference_count": evidence_facts(graph)["content_reference_counts"].get(key, 0),
+        "by_type": by_type,
+        "items": items,
+        "window": period,
+        "window_label": f"viewed in {days}d"
+        if days
+        else "viewed in the usage window (length not recorded)",
+    }
+
+
+def strata_object(graph: IRGraph, kind: str, name: str) -> dict[str, Any]:
+    """One read for an object's definition site, lineage, findings, coverage and usage.
+
+    kind is explore | view | pdt | table | field. Upstream/downstream reuse
+    strata_explore_deps / strata_impact / the consumer maps, grouped by relation.
+    `content` (explores only) counts content viewed in the usage window; it is None, never 0,
+    when usage was not checked or the kind has no content.
+    """
+    if kind not in OBJECT_KINDS:
+        raise InvalidInput(f"kind must be one of: {', '.join(OBJECT_KINDS)}. Got: {kind!r}")
+    coverage = analysis_coverage(graph)
+    upstream: dict[str, list[str]] = {}
+    downstream: dict[str, list[Any]] = {}
+    content: dict[str, Any] | None = None
+    details: dict[str, Any] = {}
+
+    if kind == "explore":
+        model, explore = resolve_explore(graph, name)
+        node = graph.nodes[explore_id(model, explore)]
+        label = explore_key(model, explore)
+        deps = strata_explore_deps(graph, explore, model)
+        upstream = {
+            "base_view": [deps["base_view"]] if deps["base_view"] else [],
+            "joined_view": sorted({j["view"] for j in deps["joins"]}),
+        }
+        content = _explore_content(graph, label)
+        if content is not None:
+            downstream = {"content": content["items"]}
+        details = {"model": model, "joins": deps["joins"], "field_count": deps["field_count"]}
+    elif kind == "table":
+        table = resolve_table(graph, name)
+        node = graph.nodes[f"physical_table:{table}"]
+        label = table
+        impact = strata_impact(graph, table)
+        downstream = {k: impact[k] for k in ("views", "explores", "fields")}
+    elif kind == "field":
+        view, field = resolve_field(name)
+        found = graph.get_node(f"field:{view}.{field}")
+        if found is None:
+            raise NotFound(
+                f"field not found: {view}.{field}",
+                hint="Search field names with strata_find_field (CLI: strata query find-field).",
+            )
+        node = found
+        label = node.name
+        upstream = {
+            "view": [view],
+            "physical_table": _edge_targets(
+                graph, f"view:{view}", "view→physical_table", "physical_table:"
+            ),
+        }
+        downstream = {"explore": view_consumer_map(graph).get(view, [])}
+        details = strata_query_field(graph, view, field)
+    else:  # view | pdt
+        found = graph.get_node(f"{kind}:{name}")
+        if found is None:
+            raise NotFound(
+                f"{kind} not found: {name}",
+                hint="strata_view_sources lists every view; strata_pdt_costs lists PDTs.",
+            )
+        node = found
+        label = node.name
+        if kind == "view":
+            upstream = {
+                "physical_table": _edge_targets(
+                    graph, node.id, "view→physical_table", "physical_table:"
+                ),
+                "pdt": _edge_targets(graph, node.id, "view→pdt", "pdt:"),
+                "extends": _view_ancestors(node.attrs.get("resolution_chain", []), node.name),
+            }
+            downstream = {"explore": view_consumer_map(graph).get(name, [])}
+            details = {"field_count": _field_count_for_view(graph, name)}
+        else:
+            upstream = {
+                "physical_table": _edge_targets(graph, node.id, "pdt→upstream", "physical_table:")
+            }
+            downstream = {"explore": direct_view_consumers(graph).get(name, [])}
+            ledger = graph.metadata.get("l1", {}).get("pdt_ledger", [])
+            details = {"ledger": next((r for r in ledger if r.get("view") == name), None)}
+
+    return {
+        "kind": kind,
+        "id": node.id,
+        "name": label,
+        "source_file": node.source_file,
+        "source_line": node.attrs.get("source_line"),
+        "upstream": upstream,
+        "downstream": downstream,
+        "findings": _node_finding_ids(graph, node.id),
+        "coverage": {"usage_checked": coverage["usage"], "schema_checked": coverage["schema"]},
+        "content": content,
+        "details": details,
+    }

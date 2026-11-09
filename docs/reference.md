@@ -4,7 +4,7 @@
 > change the help string or tool docstring, then run `python scripts/gen_reference.py`.
 > `tests/test_docs_consistency.py` fails when this file is stale.
 
-At a glance: 38 CLI commands (incl. subcommands), 18 MCP tools (17 read-only).
+At a glance: 39 CLI commands (incl. subcommands), 19 MCP tools (18 read-only).
 
 ## CLI
 
@@ -353,6 +353,18 @@ Build a navigator brief for a ticket anchor — no agent needed.
 - `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON for query counts + PDT costs
 - `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON for drift detection
 
+### `strata query object`
+
+`strata query object [OPTIONS] {explore|view|pdt|table|field} NAME`
+
+Show one object's lineage, findings, coverage and usage in one read.
+
+- `{explore|view|pdt|table|field}` — argument — required
+- `NAME` — argument — required
+- `--repo TEXT` — env `STRATA_REPO_PATH` — LookML repo path (overrides config)
+- `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Usage facts JSON for query counts + PDT costs
+- `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON for drift detection
+
 ### `strata query orphans`
 
 `strata query orphans [OPTIONS]`
@@ -416,7 +428,7 @@ Validate the Conductor spine and (optionally) replay L1 facts.
 
 ## MCP tools
 
-18 tools, 17 read-only.
+19 tools, 18 read-only.
 
 ### `strata_chart_templates`
 
@@ -525,6 +537,18 @@ Parameters:
 - `anchor` — string — required — BQ table, field name, view, explore, or .lkml filename.
 - `model` — string | null — optional — default `None` — Disambiguate an explore name shared across models.
 - `ticket` — string | null — optional — default `None` — Ticket text; when set, adds an inferred change type and a what-to-touch list.
+
+Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
+
+### `strata_object`
+
+**Object** (read-only)
+
+Read one object in one call: {kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details}. upstream/downstream group neighbour names by relation and agree with strata_explore_deps / strata_impact; findings are the ids of findings on this node. For explores, content counts dashboards/looks viewed in the usage window (window_label states it); content is null, never 0, when usage was not checked (coverage.usage_checked false) and for other kinds. An ambiguous explore name fails with invalid_input listing the candidates; an unknown object with not_found.
+
+Parameters:
+- `kind` — 'explore' | 'view' | 'pdt' | 'table' | 'field' — required — What kind of object to read.
+- `name` — string — required — Object name: 'model.explore' (or a unique explore name), a view or PDT name, a table as dataset.table (or a unique suffix), or 'view.field'.
 
 Annotations: `destructive_hint=False`, `open_world_hint=False`, `read_only_hint=True`
 
