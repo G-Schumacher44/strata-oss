@@ -4,6 +4,7 @@ HTML strings."""
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -79,7 +80,9 @@ class _Rows(HTMLParser):
         a = dict(attrs)
         cls = a.get("class") or ""
         if "data-row" in a:
-            self.rows.append({**a, "cats": [], "status": None})
+            ids = json.loads(a["data-ids"] or "[]")  # a JSON array, never space-split
+            joined = " ".join(ids)
+            self.rows.append({**a, "ids": ids, "data-ids": joined, "cats": [], "status": None})
         elif self.rows and cls.startswith("pill cat-"):
             self.rows[-1]["cats"].append(cls.removeprefix("pill cat-"))
         elif self.rows and cls.startswith("st st-"):
@@ -116,13 +119,11 @@ def test_rows_are_triage_rows_in_order_with_their_status_and_category() -> None:
     shown = _rows(_get(_app(wb), "/findings?status=all"))
 
     by_id = {r.id: r for r in expected}
-    assert [r["data-ids"].split(" ") for r in shown] == [
-        [r.id for r in item.rows] for item in group_rows(expected)
-    ]
-    flat = [i for r in shown for i in r["data-ids"].split(" ")]
+    assert [r["ids"] for r in shown] == [[r.id for r in item.rows] for item in group_rows(expected)]
+    flat = [i for r in shown for i in r["ids"]]
     assert sorted(flat) == sorted(by_id), "every triage row is listed exactly once"
     for row in shown:
-        members = [by_id[i] for i in row["data-ids"].split(" ")]
+        members = [by_id[i] for i in row["ids"]]
         assert {m.status for m in members} == {row["status"]}
         assert row["cats"] == list(dict.fromkeys(m.category for m in members))
     statuses = {r["status"] for r in shown}
@@ -250,7 +251,8 @@ def test_the_list_copies_the_one_pr_comment_builder() -> None:
     wb = _workbench()
     app = _app(wb)
     (pair,) = [r for r in _rows(_get(app, "/findings")) if PDT in r["data-ids"]]
-    ids = pair["data-ids"].split(" ")
+    ids = pair["ids"]
+    assert ids == [f"pdt:{PDT}", f"dead:view:{PDT}"]
     response = _comment(app, ids)
     assert response.status == 200
     assert ("Content-Type", "text/plain; charset=utf-8") in response.headers
@@ -391,3 +393,36 @@ def test_each_top_level_page_marks_its_own_nav_link_current(page_key: str) -> No
     body = _get(_app(_workbench()), f"/{page_key}").body.decode()
     current = re.findall(r'<a class="navlink" href="/(\w+)" aria-current="page">', body)
     assert current == [page_key]
+
+
+def test_an_id_with_a_space_reaches_the_comment_endpoint_intact(tmp_path: Path) -> None:
+    """Codex P2: ids travel as a JSON array, so a quoted table name with a space stays one id."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.model.lkml").write_text(
+        'connection: "c"\ninclude: "*.view.lkml"\nexplore: od {}\n', encoding="utf-8"
+    )
+    (repo / "od.view.lkml").write_text(
+        "view: od {\n  sql_table_name: `p.d.Order Details` ;;\n"
+        "  dimension: id { sql: ${TABLE}.id ;; }\n}\n",
+        encoding="utf-8",
+    )
+    schema = tmp_path / "schema.json"
+    schema.write_text('{"tables": [{"name": "p.d.other", "columns": ["id"]}]}', encoding="utf-8")
+    graph = build_graph(repo, None, schema)
+    wb = index_graph(graph, repo=repo, usage_fixture=None, schema_fixture=str(schema), inputs={})
+    app = _app(wb)
+    (row,) = _rows(_get(app, "/findings"))
+    assert row["ids"] == ["schema:missing_table:p.d.Order Details"]
+    assert json.loads(row["data-locations"]) == ["od.view.lkml:1"]
+    response = _comment(app, row["ids"])
+    assert response.status == 200
+    assert "`schema:missing_table:p.d.Order Details`" in response.body.decode()
+    # What a space-split would have sent: neither half is an id.
+    assert _comment(app, row["ids"][0].split(" ")).status == 404
+
+
+def test_workbench_js_never_splits_ids_on_whitespace() -> None:
+    source = WORKBENCH_JS.read_text(encoding="utf-8")
+    assert 'jsonList(r, "data-ids")' in source and 'jsonList(r, "data-locations")' in source
+    assert not re.search(r'getAttribute\("data-(ids|locations)"\)[^;]*\.split\(', source)

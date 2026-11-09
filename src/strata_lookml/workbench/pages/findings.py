@@ -12,6 +12,7 @@ item carrying both ids and both category chips; ids are unchanged and actions fa
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -236,7 +237,9 @@ def _item_context(item: Item, costs: Mapping[str, float]) -> dict[str, Any]:
     cost = next((costs[r.id] for r in item.rows if r.id in costs), None)
     locations = list(dict.fromkeys(loc for r in item.rows if (loc := _location(r))))
     return {
-        "ids": [r.id for r in item.rows],
+        # Multi-value attributes are JSON arrays: an id or a path may contain a space or a
+        # newline, so the page script parses them and never splits text.
+        "ids_json": json.dumps([r.id for r in item.rows]),
         "chips": [(c, CATEGORY_LABELS[c]) for c in item.categories],
         "label": lead.label,
         "title": "\n".join(r.id for r in item.rows),
@@ -248,6 +251,7 @@ def _item_context(item: Item, costs: Mapping[str, float]) -> dict[str, Any]:
         ],
         "location": locations[0] if locations else None,
         "locations": "\n".join(locations),
+        "locations_json": json.dumps(locations),
         "cost": usd(cost) if cost is not None else None,
         "status": lead.status,
         "status_label": STATUS_LABELS[lead.status],

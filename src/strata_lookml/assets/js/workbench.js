@@ -117,10 +117,19 @@
     var actionbar = $("[data-actionbar]", section);
     var cursor = 0;
 
+    // A JSON array the server put in a data attribute (ids and paths may hold spaces).
+    function jsonList(el, name) {
+      try {
+        var value = JSON.parse(el.getAttribute(name) || "[]");
+        return Array.isArray(value) ? value.filter(function (v) { return typeof v === "string"; }) : [];
+      } catch (_) {
+        return [];
+      }
+    }
     function checkbox(row) { return $("[data-select]", row); }
     function selected() { return rows.filter(function (r) { return r.classList.contains("sel"); }); }
     function ids(rs) {
-      return rs.reduce(function (all, r) { return all.concat(r.getAttribute("data-ids").split(" ")); }, []);
+      return rs.reduce(function (all, r) { return all.concat(jsonList(r, "data-ids")); }, []);
     }
 
     function paint() {
@@ -177,7 +186,7 @@
     function copyPaths() {
       var seen = [];
       targets().forEach(function (r) {
-        (r.getAttribute("data-locations") || "").split("\n").forEach(function (p) {
+        jsonList(r, "data-locations").forEach(function (p) {
           if (p && seen.indexOf(p) < 0) seen.push(p);
         });
       });
