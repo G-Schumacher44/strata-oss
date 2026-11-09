@@ -19,6 +19,10 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- `strata findings`, `strata ack` and `strata unack`: triage from the terminal (workbench S4c). `findings`
+  lists the triage rows (`--status`, `--category`, `--baseline`, `--format table|lines|json`); `lines` is
+  `file:line: [category] label — message (id)` for fzf and vim quickfix (`-:0:` when a row has no file).
+  `ack`/`unack` take ids (or `-` for stdin) and write only the out-of-repo triage store.
 - Triage core (`strata_lookml.triage`, workbench S4b): `TriageStore` keeps acknowledged finding ids in
   `~/.strata/triage/<repo_key>.json` (0600, atomic replace, writers serialized by an OS advisory lock plus a `rev` check, ids allowlisted against the
   current findings), append-only (unacknowledge sets `unacked_at`; an entry is pruned only 90 days after its id was
