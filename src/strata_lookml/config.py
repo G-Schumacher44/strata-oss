@@ -85,6 +85,12 @@ def load_cache_path(repo: str | Path, cache: str | Path | None = None) -> Path:
     return default_cache_path(repo)
 
 
+def triage_path(repo: str | Path) -> Path:
+    """Where a repo's triage store (acknowledged finding ids) lives:
+    ~/.strata/triage/<repo_key>.json, outside the LookML checkout, one file per repo."""
+    return strata_home() / "triage" / f"{repo_key(repo)}.json"
+
+
 def ensure_private_dir(directory: Path, *, tighten: bool) -> None:
     """Create `directory` (and any missing parents) mode 0700 on POSIX.
 

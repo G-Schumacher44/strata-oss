@@ -19,6 +19,15 @@ All notable changes to `strata-lookml` are documented here. The format follows
 
 ### Added
 
+- Triage core (`strata_lookml.triage`, workbench S4b): `TriageStore` keeps acknowledged finding ids in
+  `~/.strata/triage/<repo_key>.json` (0600, atomic replace, writers serialized by an OS advisory lock plus a `rev` check, ids allowlisted against the
+  current findings), append-only (unacknowledge sets `unacked_at`; an entry is pruned only 90 days after its id was
+  last seen absent from a checked category). `triage_rows` derives each id's status once: new, acknowledged, baselined
+  (wins over an acknowledgement), fixed, or not checked (never fixed when the category did not run). `strata check`
+  ignores acknowledgements.
+- `strata_lookml.links`: the one id-to-URL builder for the workbench (`object_path`, `finding_path`, `link`); no base
+  URL means no link. An import-graph test keeps the core (triage, links, gate, MCP tools) free of HTTP, Jinja and TUI
+  code.
 - `strata diff <base-ref> [<head-ref>]` (workbench S13): analyses both refs (head defaults to the working
   tree) with the same usage/schema fixtures and classifies every finding id as new, fixed or unchanged.
   `--json` prints `{base, head, new, fixed, unchanged_count}`; `--fail-on-new` exits 1 when the head introduces
