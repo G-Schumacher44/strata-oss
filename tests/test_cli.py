@@ -470,6 +470,7 @@ def test_check_json_is_stable():
     assert first.returncode == 1
     assert first.stdout == second.stdout
     payload = json.loads(first.stdout)
+    payload.pop("source", None)  # run provenance: present whenever the repo is a git checkout
     assert payload == {
         "passed": False,
         "failures": [

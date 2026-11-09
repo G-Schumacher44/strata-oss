@@ -4,7 +4,7 @@
 > change the help string or tool docstring, then run `python scripts/gen_reference.py`.
 > `tests/test_docs_consistency.py` fails when this file is stale.
 
-At a glance: 39 CLI commands (incl. subcommands), 19 MCP tools (18 read-only).
+At a glance: 40 CLI commands (incl. subcommands), 19 MCP tools (18 read-only).
 
 ## CLI
 
@@ -167,7 +167,7 @@ Gate a LookML repo in CI: exit 0 pass, 1 gate failed, 2 usage error.
 - `--fail-on CATEGORIES` — default `none` — Comma-separated finding categories that also fail the gate: dead-code, unused-pdt, zombie-pdt, drift; or all / none. dead-code and the PDT categories need --usage-fixture; drift needs --schema-fixture.
 - `--baseline FILE` — Baseline file: known finding ids are ignored, so only NEW findings fail --fail-on.
 - `--write-baseline FILE` — Write the current findings' ids to this baseline file (sorted JSON), then gate.
-- `--json` — flag — Print {passed, failures, counts} as JSON
+- `--json` — flag — Print {passed, failures, counts, source?} as JSON
 
 ### `strata clean`
 
@@ -225,6 +225,20 @@ Build all artifacts and open an interactive observability dashboard.
 - `--out TEXT` — Output directory (default: output/<repo-name>)
 - `--port INTEGER` — default `8765` — Local server port (without --port, the next free port is used if the default is busy)
 - `--no-browser` — flag — Skip opening the browser
+
+### `strata diff`
+
+`strata diff [OPTIONS] BASE_REF [HEAD_REF]`
+
+Which findings does a branch introduce or fix? Exit 0, or 1 with --fail-on-new.
+
+- `BASE_REF` — argument — required
+- `[HEAD_REF]` — argument — optional
+- `--repo TEXT` — env `STRATA_REPO_PATH` — Path to the LookML git repo (defaults to cwd)
+- `--usage-fixture TEXT` — env `STRATA_USAGE_FIXTURE` — Production usage facts JSON, applied to both sides.
+- `--schema-fixture TEXT` — env `STRATA_SCHEMA_FIXTURE` — Schema facts JSON, applied to both sides.
+- `--fail-on-new` — flag — Exit 1 if the head introduces any new finding (CI use).
+- `--json` — flag — Print {base, head, new, fixed, unchanged_count}
 
 ### `strata generate-schema`
 

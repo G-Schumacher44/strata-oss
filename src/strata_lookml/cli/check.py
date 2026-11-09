@@ -82,7 +82,9 @@ def _parse_fail_on(value: str) -> set[str]:
     type=click.Path(dir_okay=False),
     help="Write the current findings' ids to this baseline file (sorted JSON), then gate.",
 )
-@click.option("--json", "as_json", is_flag=True, help="Print {passed, failures, counts} as JSON")
+@click.option(
+    "--json", "as_json", is_flag=True, help="Print {passed, failures, counts, source?} as JSON"
+)
 def check(
     repo: str | None,
     usage_fixture: str | None,
@@ -136,6 +138,8 @@ def check(
             raise click.UsageError(str(exc)) from exc
         click.echo(f"Wrote {written} finding ids to {write_baseline_path}", err=True)
     result = evaluate_gate(graph, fail_on, baseline)
+    if "source" in graph.metadata:
+        result["source"] = graph.metadata["source"]
 
     if as_json:
         click.echo(json.dumps(result, indent=2, sort_keys=True))
