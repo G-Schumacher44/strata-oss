@@ -2,30 +2,22 @@
 
 Current active handoff block only — older entries move to `handoff-archive.md`.
 
-## Date: 2026-11-08 — feat/wb-s2-strata-object (workbench S2: `strata_object`)
+## Date: 2026-11-08 — feat/wb-s3-jinja (workbench S3: Jinja rendering foundation)
 
-Commit: 73dbfcc
+Commit: 905cee5
   (Implementation commit; the PR squash-merges.)
 Post-merge: resolve the landed anchor with `gh pr view <n> --json mergeCommit`.
-Conductor Mode: feature — slice S2 of `workbench-spec-2026-11-08.md` (D2, G3/G6, M5; operator Q5: yes, an MCP tool).
+Conductor Mode: feature — slice S3 (D1, D6, §6a/§6b Q2 revised) of `workbench-spec-2026-11-08.md`.
 Context Budget: low
-Context Loaded: AGENTS.md, handoff-log, workbench spec + validation (M5), mcp/{tools,server}.py, cli/query.py, identifiers.py, l1/{enrich,types,schema}.py, gate.py.
-Exact Next Steps: twin gate, operator merges. S1 (`finding_records`) and S3 land in parallel; once S1 merges, `_node_finding_ids` in `mcp/tools.py` should read `finding_records(...).subject_id` instead of matching per category.
+Context Loaded: AGENTS.md, handoff-log, the workbench spec (D1, D6, S3, Q2), pyproject.toml, mcpb/, tests/test_security.py.
+Exact Next Steps: twin gate, operator merges. S4b onward builds pages on `workbench.render.render()`; S10 retires `outputs/dashboard.py`.
 
 ### What changed
 
-- `mcp/tools.strata_object(graph, kind, name)` for explore | view | pdt | table | field: `{kind, id, name, source_file, source_line, upstream, downstream, findings, coverage, content, details}`. Names resolve through `identifiers.py` (`model.explore`, `view.field`, table suffix); ambiguous -> InvalidInput with candidates, unknown -> NotFound.
-- Reuse, not re-derivation: explore lineage from `strata_explore_deps`, table downstream from `strata_impact`, view/field downstream from `view_consumer_map`, PDT downstream from `direct_view_consumers`; findings are the ids of `gate.findings_by_category` records on the node (dead-code, PDT, drift).
-- M5: explores carry `content` = `{reference_count, by_type, items, window, window_label}` from the existing L1 `content_references` / `evidence_facts` counts. The window is the usage period the facts were pulled for (`l1.period`, 30d in the fixtures), labelled "viewed in <days>d", not 90d and not all-time. `content` is null (never 0) when usage was not checked, and for non-explore kinds. Content items also appear as the explore's downstream.
-- MCP tool `strata_object` (read-only, every parameter described) and CLI `strata query object KIND NAME` (JsonCommand). README tool counts (19 / 18 read-only) and table, `docs/reference.md` regenerated.
-- `gate` is imported lazily inside `_node_finding_ids` (gate -> synthesis.slices -> mcp.tools would otherwise cycle).
-
-### Deviations from the brief
-
-- Window label is "viewed in 30d" (the data's real window), not the spec's "90d" — the fixtures and the Looker provider default to 30 days; the label is read from `l1.period`.
-- PDT `source_line` is null until S1 (M1). Added a `details` key (kind-specific facts: explore joins/field count, field definition, PDT ledger record, view field count) beyond the brief's list.
+- New package `strata_lookml.workbench` (render.py, templates/_base.html, _smoke.html, _smoke.txt). One Environment factory: `PackageLoader`, `select_autoescape(default_for_string=True, default=True)` (escapes every extension), `StrictUndefined`, no extensions. `render(name, **ctx)`. `safe_svg()` is the only `Markup(` site.
+- `jinja2>=3.1.3,<4` added to runtime dependencies (dbt-core's range; MarkupSafe comes with it). The wheel already packages all of `src/strata_lookml`, so templates ship; the mcpb shim pins `strata-lookml==` and needs no change. Dashboard untouched; L0 import guard green.
+- `tests/test_workbench_render.py`: hostile-string escaping (text + attribute positions), StrictUndefined, autoescape on for .txt/unknown/string templates, static template scan (`|safe`, `autoescape false`, `Markup(`), AST scan for `Markup(` outside `safe_svg`, wheel contents + `Requires-Dist: jinja2`.
 
 ### Gates
 
-- [x] pytest 397 passed; ruff check; ruff format --check; mypy src/strata_lookml --ignore-missing-imports; docs/reference.md regenerated.
-- [x] Fail-before: `tests/test_strata_object.py` against a detached worktree of origin/main errors at collection (no `strata_object`).
+pytest 400 passed, ruff check + format --check clean, mypy (CI invocation) clean, `docs/reference.md` regenerated with no diff. Negative controls (each planted, tests fail, then restored): `|safe` in the real template (5 fail incl. template scan); `Markup(` in a stray module (module scan fails); `autoescape=False` (5 fail); `default=False` (txt test fails); lax `Undefined` (2 fail); plus planted-violation tests for both scans.
