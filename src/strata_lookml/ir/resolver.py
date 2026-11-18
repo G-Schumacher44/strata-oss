@@ -259,7 +259,19 @@ def _resolve_named_objects(
 
     for name in sorted(definitions if roots is None else roots):
         resolve_one(name)
-    return _ResolvedSet(resolved, errors)
+
+    # nx.simple_cycles and the resolve_one DFS recursion guard both fire for the same cycle,
+    # producing duplicate extends_cycle entries.  Deduplicate by sorted chain before returning.
+    seen_cycle_keys: set[tuple[str, ...]] = set()
+    deduped: list[dict[str, Any]] = []
+    for e in errors:
+        if e.get("type") == "extends_cycle":
+            key = tuple(sorted(e.get("chain", [])))
+            if key in seen_cycle_keys:
+                continue
+            seen_cycle_keys.add(key)
+        deduped.append(e)
+    return _ResolvedSet(resolved, deduped)
 
 
 def _emit_models(graph: IRGraph, models: list[dict[str, Any]]) -> None:

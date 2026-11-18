@@ -64,7 +64,10 @@ view: cycle_b {
 
     graph = resolve_graph(build_raw_graph(parse_repo(tmp_path), tmp_path))
 
-    assert any(error["type"] == "extends_cycle" for error in graph.metadata["resolution_errors"])
+    cycle_errors = [e for e in graph.metadata["resolution_errors"] if e["type"] == "extends_cycle"]
+    assert len(cycle_errors) == 1, (
+        f"expected exactly 1 extends_cycle error, got {len(cycle_errors)}: {cycle_errors}"
+    )
 
 
 def test_store_round_trip(tmp_path):
